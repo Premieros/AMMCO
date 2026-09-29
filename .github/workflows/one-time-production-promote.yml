@@ -1,0 +1,22 @@
+name: One-time AMMCO production promote
+
+on:
+  push:
+    branches:
+      - development/excel-intelligence-foundation-20260929
+
+permissions:
+  contents: read
+
+jobs:
+  promote:
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - name: Promote verified preview to production
+        run: |
+          if [ -z "${{ secrets.VERCEL_TOKEN }}" ]; then
+            echo "VERCEL_TOKEN secret is not configured"
+            exit 2
+          fi
+          npx --yes vercel@latest promote https://ammcofoods-6g3hp82e5-premieros-3817.vercel.app --token="${{ secrets.VERCEL_TOKEN }}" --scope="premieros-3817" --yes
