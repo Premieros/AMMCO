@@ -20,7 +20,7 @@ export async function POST(
     supabase.from('profiles').select('role, is_active').eq('user_id', userId).maybeSingle(),
     supabase
       .from('import_batches')
-      .select('id, branch_id, storage_path, status, metadata')
+      .select('id, branch_id, period_start, storage_path, status, metadata')
       .eq('id', batchId)
       .maybeSingle(),
   ])
@@ -62,12 +62,16 @@ export async function POST(
       throw new Error('تعذر تنزيل ملف Excel من التخزين')
     }
 
-    const parsed = await parseWorkbook(Buffer.from(await fileBlob.arrayBuffer()))
+    const parsed = await parseWorkbook(
+      Buffer.from(await fileBlob.arrayBuffer()),
+      { periodStart: batch.period_start },
+    )
 
     await Promise.all([
       admin.from('import_sheets').delete().eq('batch_id', batchId),
       admin.from('import_validation_issues').delete().eq('batch_id', batchId),
       admin.from('import_raw_rows').delete().eq('batch_id', batchId),
+      admin.from('sales_rep_daily').delete().eq('batch_id', batchId),
     ])
 
     if (parsed.sheets.length > 0) {
@@ -89,6 +93,7 @@ export async function POST(
         parsed.issues.map((issue) => ({
           batch_id: batchId,
           sheet_name: issue.sheetName ?? null,
+          cell_ref: issue.cellRef ?? null,
           row_number: issue.rowNumber ?? null,
           code: issue.code,
           severity: issue.severity,
@@ -115,6 +120,34 @@ export async function POST(
       if (error) throw error
     }
 
+    const representativeRows = parsed.representativeDays.flatMap((day) =>
+      day.reps.map((rep) => ({
+        batch_id: batchId,
+        branch_id: batch.branch_id,
+        business_date: day.businessDate,
+        rep_name: rep.repName,
+        rep_slot: rep.slot,
+        opening_balance: rep.openingBalance,
+        sales: rep.netAfterDiscount,
+        sales_before_discount: rep.salesBeforeDiscount,
+        net_after_discount: rep.netAfterDiscount,
+        collections: rep.depositAmount,
+        deposit_amount: rep.depositAmount,
+        discounts: rep.totalDiscount,
+        closing_balance: rep.closingBalance,
+        collection_rate: null,
+        source_anchor_cell: rep.sourceAnchorCell,
+        raw_payload: rep.rawPayload,
+      })),
+    )
+
+    for (let offset = 0; offset < representativeRows.length; offset += 500) {
+      const { error } = await admin
+        .from('sales_rep_daily')
+        .insert(representativeRows.slice(offset, offset + 500))
+      if (error) throw error
+    }
+
     const hasErrors = parsed.issues.some((issue) => issue.severity === 'error')
     const status = hasErrors ? 'rejected' : 'validated'
 
@@ -138,6 +171,7 @@ export async function POST(
       issues: parsed.issues.length,
       sheets: parsed.stats.sheetCount,
       rows: parsed.stats.rawRowCount,
+      representatives: parsed.stats.representativeRowCount,
     })
   } catch (error) {
     const message = error instanceof Error ? error.message : 'فشل تحليل ملف Excel'
