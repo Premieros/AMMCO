@@ -3,6 +3,7 @@ import { NextResponse } from 'next/server'
 import { createClient as createUserClient } from '@/lib/supabase/server'
 import { createAdminClient } from '@/lib/supabase/admin'
 import { parseWorkbook } from '@/lib/importer/workbook'
+import type { Json } from '@/types/database'
 
 export const runtime = 'nodejs'
 
@@ -57,7 +58,7 @@ function buildDaySnapshots(parsed: ParsedWorkbook) {
     .map(([businessDate, bucket]) => {
       bucket.remittances.sort((a, b) => a.repSlot - b.repSlot || a.sourceRow - b.sourceRow)
       bucket.treasury.sort((a, b) => a.sourceRow - b.sourceRow)
-      const snapshot = stableValue(bucket)
+      const snapshot = stableValue(bucket) as Json
       const sourceHash = createHash('sha256')
         .update(JSON.stringify(snapshot))
         .digest('hex')
