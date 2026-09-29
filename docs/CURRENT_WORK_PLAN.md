@@ -151,3 +151,21 @@ Phase 4 rule: calculations are database-derived from approved batches only; Exce
 - [ ] Reconcile migration history bookkeeping: live schema contains branch-locking/treasury functions and tables although migration history currently stops before those repository migrations.
 
 Do not fabricate product-level movement from aggregate warehouse rows. Product matrices become authoritative only after a real workbook layout is available and the importer persists product-level facts.
+
+
+### Reference workbook validation — uploaded files
+- [x] Parsed `سبتمبر طنطا(1).xlsx` read-only and mapped product-level daily inventory from daily sheets.
+  - Daily movement columns: AX barcode, AY opening, AZ factory in, BA branch in, BB sales qty, BC bonus, BD gifts, BE damages, BF factory return, BG branch out, BH adjustment, BI closing.
+  - Product identity/value source: D product name, E inventory unit value.
+  - Dry run: 1,872 inventory rows, 52 unique products, 2026-08-26 through 2026-09-30.
+  - Daily movement reconciliation failures: 0.
+  - September sales qty: 3,274.
+  - September pre-discount product value (qty × unit value): 932,805, matching gross sales.
+  - 2026-09-30 closing inventory value: 520,315.
+- [x] Product-level parser and persistence added to the import pipeline; production data not rewritten.
+- [x] Parsed management workbook `New Microsoft 14-6-2026 -.xlsm` read-only.
+  - Reference accrual model confirmed: wages + branch manager + sector manager + rent.
+  - Accrued-to-date model: monthly fixed accrual / working-day basis (26 in reference) × elapsed workdays + carried expenses.
+  - Reference commission rate is 3% of sales.
+- [x] Added branch monthly accrual settings model and Accrued vs Cash UI on development branch.
+- [ ] Apply new migrations only after final verification and explicit approval.
