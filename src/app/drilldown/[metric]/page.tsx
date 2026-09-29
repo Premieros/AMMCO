@@ -216,7 +216,7 @@ export default async function DrilldownPage({
                 {daily.map((row) => {
                   const wh = whByKey.get(`${row.branch_id}:${row.business_date}`)
                   return (
-                    <tr className="click-row" key={row.id}>
+                    <tr className="click-row" key={`${row.branch_id ?? 'all'}-${row.business_date ?? 'date'}`}>
                       <td><Link className="row-link" href={`/drilldown/${metric}?branch=${row.branch_id}&date=${row.business_date}&from=${from}&to=${to}`}>{row.business_date}</Link></td>
                       <td>{row.branch_name ?? '-'}</td>
                       <td>{money(Number(row.gross_sales ?? 0))}</td>
