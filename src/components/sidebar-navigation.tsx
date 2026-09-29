@@ -31,6 +31,7 @@ const groups = [
       { href: '/executive-comparison', label: 'مقارنة الفروع', icon: 'dashboard' as const },
       { href: '/representatives', label: 'أداء المناديب', icon: 'reps' as const },
       { href: '/expense-matrix', label: 'مصفوفة المصروفات', icon: 'expenses' as const },
+      { href: '/accrued-expenses', label: 'المستحق مقابل النقدي', icon: 'expenses' as const },
       { href: '/sales', label: 'المبيعات', icon: 'sales' as const },
       { href: '/expenses', label: 'تحليل المصروفات', icon: 'expenses' as const },
       { href: '/treasury', label: 'الخزائن', icon: 'inventory' as const },
