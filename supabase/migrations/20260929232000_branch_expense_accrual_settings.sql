@@ -17,6 +17,8 @@ create table if not exists public.branch_expense_accrual_settings (
 
 create index if not exists branch_expense_accrual_settings_org_month_idx
   on public.branch_expense_accrual_settings(organization_id, month_start);
+create index if not exists branch_expense_accrual_settings_updated_by_idx
+  on public.branch_expense_accrual_settings(updated_by);
 
 alter table public.branch_expense_accrual_settings enable row level security;
 
@@ -47,8 +49,27 @@ using (
 );
 
 drop policy if exists branch_expense_accrual_settings_admin_write on public.branch_expense_accrual_settings;
-create policy branch_expense_accrual_settings_admin_write on public.branch_expense_accrual_settings
-for all to authenticated
+drop policy if exists branch_expense_accrual_settings_admin_insert on public.branch_expense_accrual_settings;
+drop policy if exists branch_expense_accrual_settings_admin_update on public.branch_expense_accrual_settings;
+
+create policy branch_expense_accrual_settings_admin_insert on public.branch_expense_accrual_settings
+for insert to authenticated
+with check (
+  exists (
+    select 1 from public.profiles p
+    where p.user_id=(select auth.uid()) and p.is_active
+      and p.role='admin'::public.app_role
+      and p.organization_id=branch_expense_accrual_settings.organization_id
+      and exists (
+        select 1 from public.branches b
+        where b.id=branch_expense_accrual_settings.branch_id
+          and b.organization_id=branch_expense_accrual_settings.organization_id
+      )
+  )
+);
+
+create policy branch_expense_accrual_settings_admin_update on public.branch_expense_accrual_settings
+for update to authenticated
 using (
   exists (
     select 1 from public.profiles p
