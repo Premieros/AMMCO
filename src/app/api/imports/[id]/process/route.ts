@@ -20,7 +20,7 @@ export async function POST(
     supabase.from('profiles').select('role, is_active').eq('user_id', userId).maybeSingle(),
     supabase
       .from('import_batches')
-      .select('id, branch_id, organization_id, period_start, storage_path, status, metadata')
+      .select('id, branch_id, organization_id, period_start, period_end, storage_path, status, metadata')
       .eq('id', batchId)
       .maybeSingle(),
   ])
@@ -64,7 +64,7 @@ export async function POST(
 
     const parsed = await parseWorkbook(
       Buffer.from(await fileBlob.arrayBuffer()),
-      { periodStart: batch.period_start },
+      { periodStart: batch.period_start, periodEnd: batch.period_end },
     )
 
     await Promise.all([
@@ -74,6 +74,7 @@ export async function POST(
       admin.from('sales_rep_daily').delete().eq('batch_id', batchId),
       admin.from('rep_remittance_daily').delete().eq('batch_id', batchId),
       admin.from('warehouse_daily_summary').delete().eq('batch_id', batchId),
+      admin.from('inventory_counts').delete().eq('batch_id', batchId),
     ])
 
     if (parsed.sheets.length > 0) {
@@ -242,6 +243,30 @@ export async function POST(
       if (error) throw error
     }
 
+    if (parsed.inventoryCounts.length > 0) {
+      const countRows = parsed.inventoryCounts.map((row) => ({
+        batch_id: batchId,
+        branch_id: batch.branch_id,
+        count_date: row.countDate,
+        product_name: row.productName,
+        location_type: row.locationType,
+        location_label: row.locationLabel,
+        book_qty: row.bookQty,
+        actual_qty: row.actualQty,
+        variance_qty: row.varianceQty,
+        unit_value: row.unitValue,
+        variance_value: row.varianceValue,
+        raw_payload: row.rawPayload,
+      }))
+
+      for (let offset = 0; offset < countRows.length; offset += 500) {
+        const { error } = await admin
+          .from('inventory_counts')
+          .insert(countRows.slice(offset, offset + 500))
+        if (error) throw error
+      }
+    }
+
     const hasErrors = parsed.issues.some((issue) => issue.severity === 'error')
     const status = hasErrors ? 'rejected' : 'validated'
 
@@ -269,6 +294,7 @@ export async function POST(
       products: parsed.stats.productCount,
       remittances: parsed.stats.remittanceRowCount,
       warehouseDays: parsed.stats.warehouseDayCount,
+      inventoryCountRows: parsed.stats.inventoryCountRowCount,
     })
   } catch (error) {
     const message = error instanceof Error ? error.message : 'فشل تحليل ملف Excel'
