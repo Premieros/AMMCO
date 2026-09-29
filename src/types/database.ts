@@ -14,6 +14,33 @@ export type Database = {
   }
   public: {
     Tables: {
+      bootstrap_admin_config: {
+        Row: {
+          active: boolean
+          consumed_at: string | null
+          consumed_by: string | null
+          created_at: string
+          email: string
+          id: boolean
+        }
+        Insert: {
+          active?: boolean
+          consumed_at?: string | null
+          consumed_by?: string | null
+          created_at?: string
+          email: string
+          id?: boolean
+        }
+        Update: {
+          active?: boolean
+          consumed_at?: string | null
+          consumed_by?: string | null
+          created_at?: string
+          email?: string
+          id?: boolean
+        }
+        Relationships: []
+      }
       branch_daily_metrics: {
         Row: {
           batch_id: string
@@ -207,6 +234,67 @@ export type Database = {
             columns: ["branch_id"]
             isOneToOne: false
             referencedRelation: "branches"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      cash_entry_correction_log: {
+        Row: {
+          branch_id: string
+          cash_entry_id: number
+          changed_at: string
+          changed_by: string
+          id: number
+          new_canonical_category: string | null
+          new_expense_group: string | null
+          old_canonical_category: string | null
+          old_expense_group: string | null
+          reason: string
+        }
+        Insert: {
+          branch_id: string
+          cash_entry_id: number
+          changed_at?: string
+          changed_by: string
+          id?: never
+          new_canonical_category?: string | null
+          new_expense_group?: string | null
+          old_canonical_category?: string | null
+          old_expense_group?: string | null
+          reason: string
+        }
+        Update: {
+          branch_id?: string
+          cash_entry_id?: number
+          changed_at?: string
+          changed_by?: string
+          id?: never
+          new_canonical_category?: string | null
+          new_expense_group?: string | null
+          old_canonical_category?: string | null
+          old_expense_group?: string | null
+          reason?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "cash_entry_correction_log_branch_id_fkey"
+            columns: ["branch_id"]
+            isOneToOne: false
+            referencedRelation: "branches"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "cash_entry_correction_log_cash_entry_id_fkey"
+            columns: ["cash_entry_id"]
+            isOneToOne: false
+            referencedRelation: "cash_entries"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "cash_entry_correction_log_cash_entry_id_fkey"
+            columns: ["cash_entry_id"]
+            isOneToOne: false
+            referencedRelation: "v_expense_analysis"
             referencedColumns: ["id"]
           },
         ]
@@ -1259,7 +1347,40 @@ export type Database = {
       }
     }
     Functions: {
-      [_ in never]: never
+      correct_cash_entry: {
+        Args: {
+          p_canonical_category: string
+          p_cash_entry_id: number
+          p_expense_group: string
+          p_reason: string
+        }
+        Returns: {
+          account_code: string | null
+          amount: number
+          batch_id: string
+          branch_id: string
+          canonical_category: string | null
+          category: string | null
+          classification_confidence: string
+          description: string | null
+          direction: string
+          entry_date: string | null
+          entry_kind: string
+          expense_group: string | null
+          id: number
+          is_expense: boolean
+          raw_payload: Json
+          running_balance: number | null
+          source_code: string | null
+          source_row: number | null
+        }
+        SetofOptions: {
+          from: "*"
+          to: "cash_entries"
+          isOneToOne: true
+          isSetofReturn: false
+        }
+      }
     }
     Enums: {
       app_role: "admin" | "analyst" | "branch_user"
