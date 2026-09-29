@@ -1,3 +1,4 @@
+import Link from 'next/link'
 import { redirect } from 'next/navigation'
 import { AppShell } from '@/components/app-shell'
 import { createClient } from '@/lib/supabase/server'
@@ -125,7 +126,7 @@ export default async function ExpensesPage({
       <section className="grid analytics-grid" style={{ marginTop: 18 }}>
         <div className="card">
           <h2>حسب مجموعة المصروف</h2>
-          <div className="table-wrap">
+          <div className="table-wrap enterprise-table">
             <table>
               <thead><tr><th>المجموعة</th><th>القيمة</th><th>النسبة</th></tr></thead>
               <tbody>
@@ -177,14 +178,14 @@ export default async function ExpensesPage({
             <thead><tr><th>التاريخ</th><th>الفرع</th><th>الكود</th><th>البيان</th><th>التوجيه</th><th>المجموعة</th><th>المبلغ</th></tr></thead>
             <tbody>
               {rows.slice(0, 250).map((row, index) => (
-                <tr key={row.id ?? index}>
+                <tr className="click-row" key={row.id ?? index}>
                   <td>{row.entry_date ?? '-'}</td>
                   <td>{row.branch_name ?? '-'}</td>
                   <td>{row.source_code ?? '-'}</td>
-                  <td>{row.description ?? '-'}</td>
+                  <td>{row.id ? <Link className="row-link" href={`/expenses/${row.id}`}>{row.description ?? 'فتح الحركة'}</Link> : (row.description ?? '-')}</td>
                   <td>{row.canonical_category ?? row.source_category ?? 'غير مصنف'}</td>
                   <td>{row.expense_group ?? '-'}</td>
-                  <td>{money(Number(row.amount ?? 0))}</td>
+                  <td>{row.id ? <Link className="row-link" href={`/expenses/${row.id}`}>{money(Number(row.amount ?? 0))}</Link> : money(Number(row.amount ?? 0))}</td>
                 </tr>
               ))}
             </tbody>
