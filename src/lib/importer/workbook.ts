@@ -46,6 +46,36 @@ export type RepresentativeDay = {
   reps: RepresentativeBlock[]
 }
 
+export type ParsedProduct = {
+  sourceProductKey: string
+  name: string
+  category: string | null
+  model: string | null
+  flavor: string | null
+  barcode: string | null
+  priceCategory: string | null
+  packagingCount: number | null
+  boxCount: number | null
+  cartonDescriptor: string | null
+  retailCartonPrice: number | null
+  retailPackPrice: number | null
+  wholesaleCartonPrice: number | null
+  wholesalePackPrice: number | null
+  rawPayload: Json
+}
+
+export type RepRemittanceRow = {
+  businessDate: string
+  repSlot: number
+  repName: string
+  openingDebt: number
+  salesAmount: number
+  depositAmount: number
+  closingDebt: number
+  sourceRow: number
+  rawPayload: Json
+}
+
 const REQUIRED_SHEETS = [
   'DATA',
   'Total',
@@ -153,6 +183,112 @@ function numberCell(cell: ExcelJS.Cell) {
   return 0
 }
 
+function dateCell(cell: ExcelJS.Cell) {
+  const value = cellResult(cell)
+  if (value instanceof Date && !Number.isNaN(value.getTime())) {
+    return value.toISOString().slice(0, 10)
+  }
+  if (typeof value === 'string') {
+    const date = new Date(value)
+    if (!Number.isNaN(date.getTime())) return date.toISOString().slice(0, 10)
+  }
+  return null
+}
+
+function nullableNumber(cell: ExcelJS.Cell) {
+  const value = cellResult(cell)
+  if (value === null || value === undefined || value === '') return null
+  const number = numberCell(cell)
+  return Number.isFinite(number) ? number : null
+}
+
+function extractProducts(worksheet: ExcelJS.Worksheet) {
+  const products: ParsedProduct[] = []
+
+  for (let row = 4; row <= worksheet.actualRowCount; row += 1) {
+    const baseName = textCell(worksheet.getCell(`H${row}`))
+    if (!baseName) continue
+
+    const model = textCell(worksheet.getCell(`I${row}`)) || null
+    const flavor = textCell(worksheet.getCell(`J${row}`)) || null
+    const priceCategory = textCell(worksheet.getCell(`K${row}`)) || null
+    const barcodeText = textCell(worksheet.getCell(`O${row}`)) || null
+    const displayName = [baseName, model, flavor, priceCategory].filter(Boolean).join(' ')
+    const sourceProductKey = barcodeText ?? displayName.replace(/\s+/g, ' ').trim().toLowerCase()
+
+    products.push({
+      sourceProductKey,
+      name: displayName,
+      category: textCell(worksheet.getCell(`G${row}`)) || null,
+      model,
+      flavor,
+      barcode: barcodeText,
+      priceCategory: textCell(worksheet.getCell(`S${row}`)) || priceCategory,
+      packagingCount: nullableNumber(worksheet.getCell(`L${row}`)),
+      boxCount: nullableNumber(worksheet.getCell(`M${row}`)),
+      cartonDescriptor: textCell(worksheet.getCell(`N${row}`)) || null,
+      retailCartonPrice: nullableNumber(worksheet.getCell(`A${row}`)),
+      retailPackPrice: nullableNumber(worksheet.getCell(`B${row}`)),
+      wholesaleCartonPrice: nullableNumber(worksheet.getCell(`D${row}`)),
+      wholesalePackPrice: nullableNumber(worksheet.getCell(`E${row}`)),
+      rawPayload: {
+        row,
+        category: textCell(worksheet.getCell(`G${row}`)),
+        base_name: baseName,
+        model,
+        flavor,
+        price_category: priceCategory,
+        packaging: nullableNumber(worksheet.getCell(`L${row}`)),
+        box_count: nullableNumber(worksheet.getCell(`M${row}`)),
+        carton: textCell(worksheet.getCell(`N${row}`)),
+        barcode: barcodeText,
+      },
+    })
+  }
+
+  return products
+}
+
+function extractRemittances(worksheet: ExcelJS.Worksheet) {
+  const rows: RepRemittanceRow[] = []
+  const groupStarts = [2, 5, 8, 11, 14, 17, 20, 23, 26, 29, 32, 35]
+
+  groupStarts.forEach((startColumn, index) => {
+    const repName = textCell(worksheet.getCell(2, startColumn)).replace(/\s+/g, ' ').trim()
+    if (!repName) return
+
+    const openingDebt = numberCell(worksheet.getCell(1, startColumn))
+
+    for (let row = 6; row <= worksheet.actualRowCount; row += 1) {
+      const businessDate = dateCell(worksheet.getCell(row, 1))
+      if (!businessDate) continue
+
+      const salesAmount = numberCell(worksheet.getCell(row, startColumn))
+      const depositAmount = numberCell(worksheet.getCell(row, startColumn + 1))
+      const closingDebt = numberCell(worksheet.getCell(row, startColumn + 2))
+
+      rows.push({
+        businessDate,
+        repSlot: index + 1,
+        repName,
+        openingDebt,
+        salesAmount,
+        depositAmount,
+        closingDebt,
+        sourceRow: row,
+        rawPayload: {
+          sales_cell: worksheet.getCell(row, startColumn).address,
+          deposit_cell: worksheet.getCell(row, startColumn + 1).address,
+          debt_cell: worksheet.getCell(row, startColumn + 2).address,
+          opening_debt_cell: worksheet.getCell(1, startColumn).address,
+        },
+      })
+    }
+  })
+
+  return rows
+}
+
 function dateForDailySheet(sheetName: string, periodStart?: string) {
   if (!periodStart) return null
   const match = sheetName.trim().match(/^(\d{1,2})(-?)$/)
@@ -253,6 +389,8 @@ export async function parseWorkbook(
   const issues: WorkbookIssue[] = []
   const sheets: ParsedSheet[] = []
   const representativeDays: RepresentativeDay[] = []
+  let products: ParsedProduct[] = []
+  let remittances: RepRemittanceRow[] = []
 
   if (workbook.worksheets.length === 0) {
     issues.push({
@@ -309,6 +447,14 @@ export async function parseWorkbook(
       rows,
     })
 
+    if (worksheet.name.trim() === 'DATA') {
+      products = extractProducts(worksheet)
+    }
+
+    if (worksheet.name.trim() === 'توريدات') {
+      remittances = extractRemittances(worksheet)
+    }
+
     const businessDate = dateForDailySheet(worksheet.name, options.periodStart)
     if (businessDate) {
       representativeDays.push(extractRepresentativeDay(worksheet, businessDate, issues))
@@ -319,7 +465,9 @@ export async function parseWorkbook(
     sheets,
     issues,
     representativeDays,
-    schemaVersion: 'ammco-reference-v2-rep12',
+    products,
+    remittances,
+    schemaVersion: 'ammco-reference-v3-products-remittances',
     stats: {
       sheetCount: sheets.length,
       rawRowCount: sheets.reduce((sum, sheet) => sum + sheet.rows.length, 0),
@@ -327,6 +475,8 @@ export async function parseWorkbook(
       representativeDayCount: representativeDays.length,
       representativeRowCount: representativeDays.reduce((sum, day) => sum + day.reps.length, 0),
       representativeTemplateSlots: REPRESENTATIVE_COLUMNS.length,
+      productCount: products.length,
+      remittanceRowCount: remittances.length,
     },
   }
 }
