@@ -7,7 +7,7 @@ import { correctExpense } from './actions'
 export const dynamic = 'force-dynamic'
 
 function money(value: number) {
-  return new Intl.NumberFormat('ar-EG', {
+  return new Intl.NumberFormat('en-US', {
     style: 'currency',
     currency: 'EGP',
     maximumFractionDigits: 2,
@@ -164,7 +164,7 @@ export default async function ExpenseDetailPage({
                 </div>
                 <div className="audit-meta">
                   <span>السبب: {item.reason}</span>
-                  <span>{item.changed_at ? new Date(item.changed_at).toLocaleString('ar-EG') : '-'}</span>
+                  <span>{item.changed_at ? new Date(item.changed_at).toLocaleString('en-US') : '-'}</span>
                 </div>
               </div>
             ))
