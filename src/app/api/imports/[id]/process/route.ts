@@ -223,6 +223,37 @@ export async function POST(
 
     if (previousSnapshotsError) throw previousSnapshotsError
 
+    const { data: approvedBatches, error: approvedBatchesError } = await admin
+      .from('import_batches')
+      .select('id,approved_at')
+      .eq('branch_id', batch.branch_id)
+      .eq('status', 'approved')
+      .order('approved_at', { ascending: false })
+
+    if (approvedBatchesError) throw approvedBatchesError
+
+    const approvedBatchIds = (approvedBatches ?? []).map((row) => row.id)
+    const { data: legacyMetrics, error: legacyMetricsError } =
+      approvedBatchIds.length > 0 && businessDates.length > 0
+        ? await admin
+            .from('branch_daily_metrics')
+            .select('batch_id,business_date,gross_sales,net_sales,discounts,collections,opening_receivables,closing_receivables,cash_in,cash_out,closing_cash,expenses,returns_value,bonuses_value,gifts_value,damages_value,inventory_value')
+            .in('batch_id', approvedBatchIds)
+            .in('business_date', businessDates)
+        : { data: [], error: null }
+
+    if (legacyMetricsError) throw legacyMetricsError
+
+    const approvedRank = new Map(
+      (approvedBatches ?? []).map((row, index) => [row.id, index]),
+    )
+    const legacyByDate = new Map<string, (typeof legacyMetrics)[number]>()
+    for (const row of [...(legacyMetrics ?? [])].sort(
+      (a, b) => (approvedRank.get(a.batch_id) ?? 9999) - (approvedRank.get(b.batch_id) ?? 9999),
+    )) {
+      if (!legacyByDate.has(row.business_date)) legacyByDate.set(row.business_date, row)
+    }
+
     const lockedByDate = new Map((lockedDays ?? []).map((row) => [row.business_date, row]))
     const previousSnapshotByKey = new Map(
       (previousSnapshots ?? []).map((row) => [`${row.batch_id}:${row.business_date}`, row.snapshot]),
@@ -257,6 +288,86 @@ export async function POST(
       }]
     })
 
+    const metricKeys = [
+      'grossSales','netSales','discounts','collections',
+      'openingReceivables','closingReceivables',
+      'cashIn','cashOut','closingCash','expenses',
+      'returnsValue','bonusesValue','giftsValue','damagesValue','inventoryValue',
+    ] as const
+
+    const legacyColumnByMetric = {
+      grossSales: 'gross_sales',
+      netSales: 'net_sales',
+      discounts: 'discounts',
+      collections: 'collections',
+      openingReceivables: 'opening_receivables',
+      closingReceivables: 'closing_receivables',
+      cashIn: 'cash_in',
+      cashOut: 'cash_out',
+      closingCash: 'closing_cash',
+      expenses: 'expenses',
+      returnsValue: 'returns_value',
+      bonusesValue: 'bonuses_value',
+      giftsValue: 'gifts_value',
+      damagesValue: 'damages_value',
+      inventoryValue: 'inventory_value',
+    } as const
+
+    const legacyChanges = daySnapshots.flatMap((day) => {
+      if (lockedByDate.has(day.businessDate)) return []
+      const legacy = legacyByDate.get(day.businessDate)
+      if (!legacy) return []
+
+      const differences = metricKeys.flatMap((key) => {
+        const oldValue = Number(legacy[legacyColumnByMetric[key]] ?? 0)
+        const newValue = Number(day.metrics[key] ?? 0)
+        return Math.abs(oldValue - newValue) > 0.02
+          ? [{ metric: key, old_value: oldValue, new_value: newValue }]
+          : []
+      })
+
+      if (differences.length === 0) return []
+
+      const oldSnapshot = stableValue({
+        source: 'legacy_approved_metrics',
+        metrics: Object.fromEntries(
+          metricKeys.map((key) => [key, Number(legacy[legacyColumnByMetric[key]] ?? 0)]),
+        ),
+      }) as Json
+      const newSnapshot = stableValue({
+        source: 'normal_pipeline_metrics',
+        metrics: day.metrics,
+        source_snapshot: day.snapshot,
+      }) as Json
+      const oldHash = createHash('sha256').update(JSON.stringify(oldSnapshot)).digest('hex')
+      const newHash = createHash('sha256').update(JSON.stringify(newSnapshot)).digest('hex')
+
+      parsed.issues.push({
+        sheetName: day.businessDate,
+        code: 'LEGACY_APPROVED_DAY_CHANGED',
+        severity: 'error',
+        message: `الملف الجديد يغيّر بيانات يوم معتمد سابقًا قبل تفعيل القفل: ${day.businessDate}`,
+        rawValue: {
+          business_date: day.businessDate,
+          previous_batch_id: legacy.batch_id,
+          differences,
+        },
+      })
+
+      return [{
+        batch_id: batchId,
+        branch_id: batch.branch_id,
+        business_date: day.businessDate,
+        previous_batch_id: legacy.batch_id,
+        old_hash: oldHash,
+        new_hash: newHash,
+        old_snapshot: oldSnapshot,
+        new_snapshot: newSnapshot,
+      }]
+    })
+
+    const allHistoricalChanges = [...historicalChanges, ...legacyChanges]
+
     await Promise.all([
       admin.from('import_sheets').delete().eq('batch_id', batchId),
       admin.from('import_validation_issues').delete().eq('batch_id', batchId),
@@ -285,8 +396,8 @@ export async function POST(
       if (error) throw error
     }
 
-    if (historicalChanges.length > 0) {
-      const { error } = await admin.from('import_day_changes').insert(historicalChanges)
+    if (allHistoricalChanges.length > 0) {
+      const { error } = await admin.from('import_day_changes').insert(allHistoricalChanges)
       if (error) throw error
     }
 
@@ -619,7 +730,7 @@ export async function POST(
       treasuryEntries: parsed.stats.treasuryEntryCount,
       expenseEntries: parsed.stats.expenseEntryCount,
       daySnapshots: daySnapshots.length,
-      historicalDayChanges: historicalChanges.length,
+      historicalDayChanges: allHistoricalChanges.length,
     })
   } catch (error) {
     const message = error instanceof Error ? error.message : 'فشل تحليل ملف Excel'
