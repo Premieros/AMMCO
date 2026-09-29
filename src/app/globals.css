@@ -797,3 +797,13 @@ tbody tr:last-child td { border-bottom: 0; }
   .filters { grid-template-columns: 1fr; }
   .page-container { padding: 14px; }
 }
+
+.sidebar-link.active {
+  background: rgb(var(--ui-primary-soft));
+  color: rgb(var(--ui-primary));
+  border-color: rgb(var(--ui-primary) / .14);
+  font-weight: 900;
+}
+.sidebar-link.active .nav-icon {
+  color: rgb(var(--ui-primary));
+}
