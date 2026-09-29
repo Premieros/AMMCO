@@ -175,8 +175,6 @@ export default async function DashboardPage({
   )
 
   const salesQty = warehouse.reduce((sum, row) => sum + Number(row.sales_qty ?? 0), 0)
-  const latestWarehouse = warehouse.at(-1)
-  const latestDaily = daily.at(-1)
   const discountRate = totals.gross ? totals.discount / totals.gross : 0
   const expenseRate = totals.net ? totals.expenses / totals.net : 0
 
@@ -189,13 +187,15 @@ export default async function DashboardPage({
     receivables: number
     expenses: number
     qty: number
+    closingStockQty: number
+    closingStockValue: number
   }>()
 
   for (const row of daily) {
     const id = row.branch_id ?? ''
     const item = branchMap.get(id) ?? {
       name: row.branch_name ?? '-',
-      net: 0, gross: 0, discount: 0, collections: 0, receivables: 0, expenses: 0, qty: 0,
+      net: 0, gross: 0, discount: 0, collections: 0, receivables: 0, expenses: 0, qty: 0, closingStockQty: 0, closingStockValue: 0,
     }
     item.net += Number(row.net_sales ?? 0)
     item.gross += Number(row.gross_sales ?? 0)
@@ -208,8 +208,20 @@ export default async function DashboardPage({
 
   for (const row of warehouse) {
     const item = branchMap.get(row.branch_id)
-    if (item) item.qty += Number(row.sales_qty ?? 0)
+    if (item) {
+      item.qty += Number(row.sales_qty ?? 0)
+      item.closingStockQty = Number(row.closing_qty ?? item.closingStockQty)
+      item.closingStockValue = Number(row.closing_value ?? item.closingStockValue)
+    }
   }
+
+  const companyClosingReceivables = [...branchMap.values()].reduce((sum,row)=>sum+row.receivables,0)
+  const companyClosingStockQty = [...branchMap.values()].reduce((sum,row)=>sum+row.closingStockQty,0)
+  const companyClosingStockValue = [...branchMap.values()].reduce((sum,row)=>sum+row.closingStockValue,0)
+  const selectedBranchRow = filters.branch ? branchMap.get(filters.branch) : null
+  const closingReceivables = selectedBranchRow?.receivables ?? companyClosingReceivables
+  const closingStockQty = selectedBranchRow?.closingStockQty ?? companyClosingStockQty
+  const closingStockValue = selectedBranchRow?.closingStockValue ?? companyClosingStockValue
 
   const repsSorted = [...reps].sort((a, b) => Number(b.net_after_discount ?? 0) - Number(a.net_after_discount ?? 0))
   const repMax = Math.max(1, ...repsSorted.map((row) => Math.abs(Number(row.net_after_discount ?? 0))))
@@ -274,8 +286,8 @@ export default async function DashboardPage({
         <Link className="card click-card" href={`/drilldown/discounts?branch=${filters.branch ?? ''}&from=${from}&to=${to}`}><div className="kpi-label">الخصومات</div><div className="kpi-value">{money(totals.discount)}</div><div className="muted">{pct(discountRate)}</div></Link>
         <Link className="card click-card" href={`/drilldown/quantity?branch=${filters.branch ?? ''}&from=${from}&to=${to}`}><div className="kpi-label">كمية البيع</div><div className="kpi-value">{number(salesQty, 2)}</div></Link>
         <Link className="card click-card" href={`/drilldown/collections?branch=${filters.branch ?? ''}&from=${from}&to=${to}`}><div className="kpi-label">التحصيلات</div><div className="kpi-value">{money(totals.collections)}</div></Link>
-        <Link className="card click-card" href={`/drilldown/receivables?branch=${filters.branch ?? ''}&from=${from}&to=${to}`}><div className="kpi-label">رصيد المديونية</div><div className="kpi-value">{money(Number(latestDaily?.closing_receivables ?? 0))}</div></Link>
-        <Link className="card click-card" href={`/drilldown/inventory?branch=${filters.branch ?? ''}&from=${from}&to=${to}`}><div className="kpi-label">رصيد المخزون</div><div className="kpi-value">{money(Number(latestWarehouse?.closing_value ?? 0))}</div><div className="muted">{number(Number(latestWarehouse?.closing_qty ?? 0), 2)} وحدة</div></Link>
+        <Link className="card click-card" href={`/drilldown/receivables?branch=${filters.branch ?? ''}&from=${from}&to=${to}`}><div className="kpi-label">رصيد المديونية</div><div className="kpi-value">{money(closingReceivables)}</div></Link>
+        <Link className="card click-card" href={`/drilldown/inventory?branch=${filters.branch ?? ''}&from=${from}&to=${to}`}><div className="kpi-label">رصيد المخزون</div><div className="kpi-value">{money(closingStockValue)}</div><div className="muted">{number(closingStockQty, 2)} وحدة</div></Link>
         <Link className="card click-card" href={`/expenses?branch=${filters.branch ?? ''}&from=${from}&to=${to}`}><div className="kpi-label">المصروفات</div><div className="kpi-value">{money(totals.expenses)}</div><div className="muted">{pct(expenseRate)} من صافي البيع</div></Link>
       </section>
 
