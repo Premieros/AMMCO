@@ -247,7 +247,7 @@ export async function POST(
     const approvedRank = new Map(
       (approvedBatches ?? []).map((row, index) => [row.id, index]),
     )
-    const legacyByDate = new Map<string, (typeof legacyMetrics)[number]>()
+    const legacyByDate = new Map<string, NonNullable<typeof legacyMetrics>[number]>()
     for (const row of [...(legacyMetrics ?? [])].sort(
       (a, b) => (approvedRank.get(a.batch_id) ?? 9999) - (approvedRank.get(b.batch_id) ?? 9999),
     )) {
