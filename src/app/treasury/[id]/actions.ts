@@ -21,7 +21,7 @@ export async function editTreasuryEntry(formData: FormData) {
     p_description: description,
     p_canonical_category: canonicalCategory,
     p_expense_group: expenseGroup,
-    p_treasury_account_id: treasuryAccountId || null,
+    p_treasury_account_id: treasuryAccountId,
     p_reason: reason,
   })
 
