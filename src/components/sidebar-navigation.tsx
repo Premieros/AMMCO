@@ -28,8 +28,9 @@ const groups = [
   {
     label: 'التحليل',
     items: [
+      { href: '/sales', label: 'المبيعات', icon: 'sales' as const },
       { href: '/expenses', label: 'تحليل المصروفات', icon: 'expenses' as const },
-      { href: '/drilldown/sales', label: 'تحليل المبيعات', icon: 'sales' as const },
+      { href: '/treasury', label: 'الخزائن', icon: 'inventory' as const },
       { href: '/drilldown/reps', label: 'المناديب', icon: 'reps' as const },
       { href: '/drilldown/inventory', label: 'المخزون', icon: 'inventory' as const },
     ],
@@ -37,6 +38,7 @@ const groups = [
   {
     label: 'البيانات',
     items: [
+      { href: '/branches', label: 'الفروع', icon: 'dashboard' as const },
       { href: '/uploads', label: 'رفع الشيت', icon: 'upload' as const },
       { href: '/imports', label: 'سجل الرفع', icon: 'history' as const },
     ],
