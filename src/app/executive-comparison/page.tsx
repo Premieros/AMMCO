@@ -59,17 +59,17 @@ export default async function ExecutiveBranchComparison({
   const ytd=(ytdData??[]) as Pick<Daily,'branch_id'|'branch_name'|'net_sales'>[]
   const warehouse=(warehouseData??[]) as Warehouse[]
 
-  type Row={name:string;gross:number;net:number;collections:number;discounts:number;expenses:number;openingDebt:number;closingDebt:number;prevNet:number;ytdNet:number;stockQty:number;stockValue:number}
+  type Row={name:string;gross:number;net:number;collections:number;discounts:number;expenses:number;openingDebt:number;closingDebt:number;prevNet:number;hasPrev:boolean;ytdNet:number;stockQty:number;stockValue:number}
   const rows=new Map<string,Row>()
   for(const d of current){
     const id=d.branch_id??''
-    const r=rows.get(id)??{name:d.branch_name??'-',gross:0,net:0,collections:0,discounts:0,expenses:0,openingDebt:0,closingDebt:0,prevNet:0,ytdNet:0,stockQty:0,stockValue:0}
+    const r=rows.get(id)??{name:d.branch_name??'-',gross:0,net:0,collections:0,discounts:0,expenses:0,openingDebt:0,closingDebt:0,prevNet:0,hasPrev:false,ytdNet:0,stockQty:0,stockValue:0}
     if(r.gross===0 && r.net===0 && r.collections===0) r.openingDebt=n(d.opening_receivables)
     r.gross+=n(d.gross_sales); r.net+=n(d.net_sales); r.collections+=n(d.collections); r.discounts+=n(d.discounts); r.expenses+=n(d.expenses)
     r.closingDebt=n(d.closing_receivables)
     rows.set(id,r)
   }
-  for(const d of previous){ const id=d.branch_id??''; const r=rows.get(id); if(r) r.prevNet+=n(d.net_sales) }
+  for(const d of previous){ const id=d.branch_id??''; const r=rows.get(id); if(r){ r.prevNet+=n(d.net_sales); r.hasPrev=true } }
   for(const d of ytd){ const id=d.branch_id??''; const r=rows.get(id); if(r) r.ytdNet+=n(d.net_sales) }
   for(const w of warehouse){ const r=rows.get(w.branch_id); if(r){r.stockQty=n(w.closing_qty);r.stockValue=n(w.closing_value)} }
 
@@ -95,7 +95,7 @@ export default async function ExecutiveBranchComparison({
           <td><Link className="row-link" href={`/?branch=${id}&from=${from}&to=${to}`}>{r.name}</Link></td>
           <td>{money(r.gross)}</td><td>{money(r.discounts)}</td><td>{pct(r.gross?r.discounts/r.gross:0)}</td>
           <td>{money(r.net)}</td><td>{money(r.collections)}</td><td>{money(r.openingDebt)}</td><td>{money(r.closingDebt)}</td>
-          <td>{money(r.prevNet)}</td><td>{pct(r.prevNet?(r.net-r.prevNet)/Math.abs(r.prevNet):0)}</td><td>{money(r.ytdNet)}</td>
+          <td>{r.hasPrev?money(r.prevNet):'غير متاح'}</td><td>{r.hasPrev&&r.prevNet!==0?pct((r.net-r.prevNet)/Math.abs(r.prevNet)):'—'}</td><td>{money(r.ytdNet)}</td>
           <td>{money(r.expenses)}</td><td>{pct(r.net?r.expenses/r.net:0)}</td><td>{num(r.stockQty,2)}</td><td>{money(r.stockValue)}</td>
         </tr>)}</tbody>
       </table></div>
