@@ -192,6 +192,7 @@ Do not fabricate product-level movement from aggregate warehouse rows. Product m
   - 20260929222500 branch/day locking + treasury (schema already present; replay-safe reconciliation plus index/RLS cleanup)
   - 20260929231000 representative expense amount
   - 20260929232000 monthly accrual settings
+- [x] Legacy guard dry validation against the real Tanta workbook: 30 days × 15 metrics compared with the current approved operator-import batch, with 0 differences above the 0.02 tolerance.
 - [ ] After migrations: upload the real Tanta workbook through the normal pipeline, verify 1,872 product movement rows / 52 products / zero daily reconciliation differences, then approve.
 - [ ] Re-upload a changed historical day and confirm `HISTORICAL_DAY_CHANGED` blocks approval until explicit resolution.
 - [ ] Final advisor sweep and PR verification before requesting merge approval.
