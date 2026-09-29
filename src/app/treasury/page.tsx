@@ -16,24 +16,31 @@ function money(value: number) {
 export default async function TreasuryPage({
   searchParams,
 }: {
-  searchParams: Promise<{ error?: string; success?: string }>
+  searchParams: Promise<{ error?: string; success?: string; from?: string; to?: string }>
 }) {
   const messages = await searchParams
+  const from = messages.from ?? ''
+  const to = messages.to ?? ''
   const supabase = await createClient()
   const { data: auth } = await supabase.auth.getClaims()
   const userId = auth?.claims?.sub
   if (!userId) redirect('/login')
 
+  let entriesQuery = supabase
+    .from('cash_entries')
+    .select('id,branch_id,entry_date,direction,category,source_code,description,amount,running_balance,entry_kind,canonical_category,expense_group,treasury_account_id,branches(name),treasury_accounts(name,account_type),import_batches(uploaded_at,status)')
+    .order('entry_date', { ascending: false })
+    .order('id', { ascending: false })
+    .limit(5000)
+
+  if (from) entriesQuery = entriesQuery.gte('entry_date', from)
+  if (to) entriesQuery = entriesQuery.lte('entry_date', to)
+
   const [{ data: profile }, { data: branches }, { data: accounts }, { data: entries }] = await Promise.all([
     supabase.from('profiles').select('role').eq('user_id', userId).maybeSingle(),
     supabase.from('branches').select('id,name').eq('is_active', true).order('name'),
     supabase.from('treasury_accounts').select('id,branch_id,code,name,account_type,is_default,is_active,branches(name)').eq('is_active', true).order('name'),
-    supabase
-      .from('cash_entries')
-      .select('id,branch_id,entry_date,direction,category,source_code,description,amount,running_balance,entry_kind,canonical_category,expense_group,treasury_account_id,branches(name),treasury_accounts(name,account_type),import_batches(uploaded_at,status)')
-      .order('entry_date', { ascending: false })
-      .order('id', { ascending: false })
-      .limit(5000),
+    entriesQuery,
   ])
 
   const cashEntries = entries ?? []
@@ -71,6 +78,12 @@ export default async function TreasuryPage({
     >
       {messages.error ? <div className="error">{messages.error}</div> : null}
       {messages.success ? <div className="success">{messages.success}</div> : null}
+
+      <form className="card filters" method="get" style={{ marginBottom: 16 }}>
+        <div className="field"><label>من</label><input name="from" type="date" defaultValue={from} /></div>
+        <div className="field"><label>إلى</label><input name="to" type="date" defaultValue={to} /></div>
+        <div className="field filter-action"><label>&nbsp;</label><button className="btn" type="submit">تطبيق الفترة</button></div>
+      </form>
 
       <section className="grid portal-kpis" style={{ marginBottom: 16 }}>
         <div className="card"><div className="kpi-label">إجمالي الوارد</div><div className="kpi-value">{money(incoming)}</div></div>
