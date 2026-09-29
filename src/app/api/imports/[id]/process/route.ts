@@ -330,6 +330,7 @@ export async function POST(
         net_after_discount: rep.netAfterDiscount,
         collections: rep.depositAmount,
         deposit_amount: rep.depositAmount,
+        expense_amount: rep.expenseAmount,
         discounts: rep.totalDiscount,
         closing_balance: rep.closingBalance,
         collection_rate: null,
