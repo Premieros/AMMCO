@@ -20,7 +20,7 @@ export async function POST(
     supabase.from('profiles').select('role, is_active').eq('user_id', userId).maybeSingle(),
     supabase
       .from('import_batches')
-      .select('id, branch_id, period_start, storage_path, status, metadata')
+      .select('id, branch_id, organization_id, period_start, storage_path, status, metadata')
       .eq('id', batchId)
       .maybeSingle(),
   ])
@@ -72,6 +72,7 @@ export async function POST(
       admin.from('import_validation_issues').delete().eq('batch_id', batchId),
       admin.from('import_raw_rows').delete().eq('batch_id', batchId),
       admin.from('sales_rep_daily').delete().eq('batch_id', batchId),
+      admin.from('rep_remittance_daily').delete().eq('batch_id', batchId),
     ])
 
     if (parsed.sheets.length > 0) {
@@ -148,6 +149,62 @@ export async function POST(
       if (error) throw error
     }
 
+    if (parsed.products.length > 0) {
+      const productRows = parsed.products.map((product) => ({
+        organization_id: batch.organization_id,
+        source_product_key: product.sourceProductKey,
+        name: product.name,
+        category: product.category,
+        model: product.model,
+        flavor: product.flavor,
+        barcode: product.barcode,
+        price_category: product.priceCategory,
+        packaging_count: product.packagingCount,
+        box_count: product.boxCount,
+        carton_descriptor: product.cartonDescriptor,
+        retail_carton_price: product.retailCartonPrice,
+        retail_pack_price: product.retailPackPrice,
+        wholesale_carton_price: product.wholesaleCartonPrice,
+        wholesale_pack_price: product.wholesalePackPrice,
+        first_seen_batch_id: batchId,
+        last_seen_batch_id: batchId,
+        raw_payload: product.rawPayload,
+        is_active: true,
+      }))
+
+      const { error } = await admin
+        .from('products')
+        .upsert(productRows, {
+          onConflict: 'organization_id,source_product_key',
+          ignoreDuplicates: false,
+        })
+      if (error) throw error
+    }
+
+    if (parsed.remittances.length > 0) {
+      const remittanceRows = parsed.remittances.map((row) => ({
+        batch_id: batchId,
+        branch_id: batch.branch_id,
+        business_date: row.businessDate,
+        rep_slot: row.repSlot,
+        rep_name: row.repName,
+        opening_debt: row.openingDebt,
+        sales_amount: row.salesAmount,
+        deposit_amount: row.depositAmount,
+        closing_debt: row.closingDebt,
+        source_sheet: 'توريدات',
+        source_row: row.sourceRow,
+        raw_payload: row.rawPayload,
+      }))
+
+      for (let offset = 0; offset < remittanceRows.length; offset += 500) {
+        const { error } = await admin
+          .from('rep_remittance_daily')
+          .insert(remittanceRows.slice(offset, offset + 500))
+        if (error) throw error
+      }
+    }
+
     const hasErrors = parsed.issues.some((issue) => issue.severity === 'error')
     const status = hasErrors ? 'rejected' : 'validated'
 
@@ -172,6 +229,8 @@ export async function POST(
       sheets: parsed.stats.sheetCount,
       rows: parsed.stats.rawRowCount,
       representatives: parsed.stats.representativeRowCount,
+      products: parsed.stats.productCount,
+      remittances: parsed.stats.remittanceRowCount,
     })
   } catch (error) {
     const message = error instanceof Error ? error.message : 'فشل تحليل ملف Excel'
