@@ -15,21 +15,21 @@ Each branch uploads its workbook. AMMCO validates, versions, stores, normalizes,
 - [x] Initialize isolated repository
 - [x] Add mandatory database-isolation rules
 - [x] Analyze workbook sheet structure
-- [ ] Create secured Supabase schema
-- [ ] Create private workbook storage bucket
-- [ ] Create organization and first branch
-- [ ] Add upload/import status model
-- [ ] Add raw import preservation
-- [ ] Add normalized reporting facts
-- [ ] Verify RLS and security advisors
+- [x] Create secured Supabase schema
+- [x] Create private workbook storage bucket
+- [x] Create organization and first branch
+- [x] Add upload/import status model
+- [x] Add raw import preservation
+- [x] Add normalized reporting facts
+- [x] Verify RLS and security advisors
 
 ## Phase 2 — Import engine
-- [ ] Accept .xlsx only
-- [ ] Calculate SHA-256 before import
-- [ ] Detect branch + reporting period
-- [ ] Detect duplicate workbook
+- [x] Accept .xlsx only
+- [x] Calculate SHA-256 before import
+- [x] Detect branch + reporting period
+- [x] Detect duplicate workbook
 - [ ] Parse DATA master data
-- [ ] Parse daily sheets (1..31 and carry-over sheets)
+- [x] Parse daily sheets (1..31 and carry-over sheets) — 12 rep blocks normalized
 - [ ] Parse Total
 - [ ] Parse تحليلي الفرع
 - [ ] Parse توريدات
@@ -37,7 +37,7 @@ Each branch uploads its workbook. AMMCO validates, versions, stores, normalizes,
 - [ ] Parse حركة المخزن
 - [ ] Parse ملاحظات
 - [ ] Parse الجرد
-- [ ] Persist validation errors
+- [x] Persist validation errors
 - [ ] Publish normalized batch only after validation
 
 ## Phase 3 — Dashboard
