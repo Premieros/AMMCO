@@ -125,6 +125,54 @@ export type Database = {
           },
         ]
       }
+      branch_day_submissions: {
+        Row: {
+          branch_id: string
+          business_date: string
+          current_batch_id: string
+          current_hash: string
+          first_submitted_at: string
+          first_uploaded_by: string | null
+          last_submitted_at: string
+          locked_at: string
+        }
+        Insert: {
+          branch_id: string
+          business_date: string
+          current_batch_id: string
+          current_hash: string
+          first_submitted_at: string
+          first_uploaded_by?: string | null
+          last_submitted_at: string
+          locked_at: string
+        }
+        Update: {
+          branch_id?: string
+          business_date?: string
+          current_batch_id?: string
+          current_hash?: string
+          first_submitted_at?: string
+          first_uploaded_by?: string | null
+          last_submitted_at?: string
+          locked_at?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "branch_day_submissions_branch_id_fkey"
+            columns: ["branch_id"]
+            isOneToOne: false
+            referencedRelation: "branches"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "branch_day_submissions_current_batch_id_fkey"
+            columns: ["current_batch_id"]
+            isOneToOne: false
+            referencedRelation: "import_batches"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
       branches: {
         Row: {
           code: string
@@ -180,6 +228,7 @@ export type Database = {
           running_balance: number | null
           source_code: string | null
           source_row: number | null
+          treasury_account_id: string | null
         }
         Insert: {
           account_code?: string | null
@@ -200,6 +249,7 @@ export type Database = {
           running_balance?: number | null
           source_code?: string | null
           source_row?: number | null
+          treasury_account_id?: string | null
         }
         Update: {
           account_code?: string | null
@@ -220,6 +270,7 @@ export type Database = {
           running_balance?: number | null
           source_code?: string | null
           source_row?: number | null
+          treasury_account_id?: string | null
         }
         Relationships: [
           {
@@ -236,6 +287,13 @@ export type Database = {
             referencedRelation: "branches"
             referencedColumns: ["id"]
           },
+          {
+            foreignKeyName: "cash_entries_treasury_account_id_fkey"
+            columns: ["treasury_account_id"]
+            isOneToOne: false
+            referencedRelation: "treasury_accounts"
+            referencedColumns: ["id"]
+          },
         ]
       }
       cash_entry_correction_log: {
@@ -246,9 +304,13 @@ export type Database = {
           changed_by: string
           id: number
           new_canonical_category: string | null
+          new_description: string | null
           new_expense_group: string | null
+          new_treasury_account_id: string | null
           old_canonical_category: string | null
+          old_description: string | null
           old_expense_group: string | null
+          old_treasury_account_id: string | null
           reason: string
         }
         Insert: {
@@ -258,9 +320,13 @@ export type Database = {
           changed_by: string
           id?: never
           new_canonical_category?: string | null
+          new_description?: string | null
           new_expense_group?: string | null
+          new_treasury_account_id?: string | null
           old_canonical_category?: string | null
+          old_description?: string | null
           old_expense_group?: string | null
+          old_treasury_account_id?: string | null
           reason: string
         }
         Update: {
@@ -270,9 +336,13 @@ export type Database = {
           changed_by?: string
           id?: never
           new_canonical_category?: string | null
+          new_description?: string | null
           new_expense_group?: string | null
+          new_treasury_account_id?: string | null
           old_canonical_category?: string | null
+          old_description?: string | null
           old_expense_group?: string | null
+          old_treasury_account_id?: string | null
           reason?: string
         }
         Relationships: [
@@ -295,6 +365,20 @@ export type Database = {
             columns: ["cash_entry_id"]
             isOneToOne: false
             referencedRelation: "v_expense_analysis"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "cash_entry_correction_log_new_treasury_account_id_fkey"
+            columns: ["new_treasury_account_id"]
+            isOneToOne: false
+            referencedRelation: "treasury_accounts"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "cash_entry_correction_log_old_treasury_account_id_fkey"
+            columns: ["old_treasury_account_id"]
+            isOneToOne: false
+            referencedRelation: "treasury_accounts"
             referencedColumns: ["id"]
           },
         ]
@@ -455,6 +539,121 @@ export type Database = {
             columns: ["replaces_batch_id"]
             isOneToOne: false
             referencedRelation: "import_batches"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      import_day_changes: {
+        Row: {
+          batch_id: string
+          branch_id: string
+          business_date: string
+          detected_at: string
+          id: number
+          new_hash: string
+          new_snapshot: Json
+          old_hash: string
+          old_snapshot: Json
+          previous_batch_id: string
+          resolution_note: string | null
+          resolution_status: string
+          resolved_at: string | null
+          resolved_by: string | null
+        }
+        Insert: {
+          batch_id: string
+          branch_id: string
+          business_date: string
+          detected_at?: string
+          id?: never
+          new_hash: string
+          new_snapshot?: Json
+          old_hash: string
+          old_snapshot?: Json
+          previous_batch_id: string
+          resolution_note?: string | null
+          resolution_status?: string
+          resolved_at?: string | null
+          resolved_by?: string | null
+        }
+        Update: {
+          batch_id?: string
+          branch_id?: string
+          business_date?: string
+          detected_at?: string
+          id?: never
+          new_hash?: string
+          new_snapshot?: Json
+          old_hash?: string
+          old_snapshot?: Json
+          previous_batch_id?: string
+          resolution_note?: string | null
+          resolution_status?: string
+          resolved_at?: string | null
+          resolved_by?: string | null
+        }
+        Relationships: [
+          {
+            foreignKeyName: "import_day_changes_batch_id_fkey"
+            columns: ["batch_id"]
+            isOneToOne: false
+            referencedRelation: "import_batches"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "import_day_changes_branch_id_fkey"
+            columns: ["branch_id"]
+            isOneToOne: false
+            referencedRelation: "branches"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "import_day_changes_previous_batch_id_fkey"
+            columns: ["previous_batch_id"]
+            isOneToOne: false
+            referencedRelation: "import_batches"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      import_day_snapshots: {
+        Row: {
+          batch_id: string
+          branch_id: string
+          business_date: string
+          created_at: string
+          snapshot: Json
+          source_hash: string
+        }
+        Insert: {
+          batch_id: string
+          branch_id: string
+          business_date: string
+          created_at?: string
+          snapshot?: Json
+          source_hash: string
+        }
+        Update: {
+          batch_id?: string
+          branch_id?: string
+          business_date?: string
+          created_at?: string
+          snapshot?: Json
+          source_hash?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "import_day_snapshots_batch_id_fkey"
+            columns: ["batch_id"]
+            isOneToOne: false
+            referencedRelation: "import_batches"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "import_day_snapshots_branch_id_fkey"
+            columns: ["branch_id"]
+            isOneToOne: false
+            referencedRelation: "branches"
             referencedColumns: ["id"]
           },
         ]
@@ -1058,6 +1257,60 @@ export type Database = {
           },
         ]
       }
+      treasury_accounts: {
+        Row: {
+          account_type: string
+          branch_id: string
+          code: string
+          created_at: string
+          created_by: string | null
+          id: string
+          is_active: boolean
+          is_default: boolean
+          name: string
+          organization_id: string
+        }
+        Insert: {
+          account_type?: string
+          branch_id: string
+          code: string
+          created_at?: string
+          created_by?: string | null
+          id?: string
+          is_active?: boolean
+          is_default?: boolean
+          name: string
+          organization_id: string
+        }
+        Update: {
+          account_type?: string
+          branch_id?: string
+          code?: string
+          created_at?: string
+          created_by?: string | null
+          id?: string
+          is_active?: boolean
+          is_default?: boolean
+          name?: string
+          organization_id?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "treasury_accounts_branch_id_fkey"
+            columns: ["branch_id"]
+            isOneToOne: false
+            referencedRelation: "branches"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "treasury_accounts_organization_id_fkey"
+            columns: ["organization_id"]
+            isOneToOne: false
+            referencedRelation: "organizations"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
       user_branch_access: {
         Row: {
           branch_id: string
@@ -1347,6 +1600,37 @@ export type Database = {
       }
     }
     Functions: {
+      approve_import_batch: {
+        Args: { p_batch_id: string }
+        Returns: {
+          approved_at: string | null
+          approved_by: string | null
+          branch_id: string
+          failure_message: string | null
+          file_sha256: string
+          file_size_bytes: number | null
+          id: string
+          metadata: Json
+          organization_id: string
+          original_file_name: string
+          period_end: string
+          period_start: string
+          replaces_batch_id: string | null
+          status: Database["public"]["Enums"]["import_status"]
+          storage_path: string
+          uploaded_at: string
+          uploaded_by: string | null
+          validated_at: string | null
+          version: number
+          workbook_schema_version: string | null
+        }
+        SetofOptions: {
+          from: "*"
+          to: "import_batches"
+          isOneToOne: true
+          isSetofReturn: false
+        }
+      }
       correct_cash_entry: {
         Args: {
           p_canonical_category: string
@@ -1373,6 +1657,61 @@ export type Database = {
           running_balance: number | null
           source_code: string | null
           source_row: number | null
+          treasury_account_id: string | null
+        }
+        SetofOptions: {
+          from: "*"
+          to: "cash_entries"
+          isOneToOne: true
+          isSetofReturn: false
+        }
+      }
+      create_branch_with_default_treasury: {
+        Args: { p_code: string; p_name: string }
+        Returns: {
+          code: string
+          created_at: string
+          id: string
+          is_active: boolean
+          name: string
+          organization_id: string
+        }
+        SetofOptions: {
+          from: "*"
+          to: "branches"
+          isOneToOne: true
+          isSetofReturn: false
+        }
+      }
+      edit_cash_entry: {
+        Args: {
+          p_canonical_category: string
+          p_cash_entry_id: number
+          p_description: string
+          p_expense_group: string
+          p_reason: string
+          p_treasury_account_id: string
+        }
+        Returns: {
+          account_code: string | null
+          amount: number
+          batch_id: string
+          branch_id: string
+          canonical_category: string | null
+          category: string | null
+          classification_confidence: string
+          description: string | null
+          direction: string
+          entry_date: string | null
+          entry_kind: string
+          expense_group: string | null
+          id: number
+          is_expense: boolean
+          raw_payload: Json
+          running_balance: number | null
+          source_code: string | null
+          source_row: number | null
+          treasury_account_id: string | null
         }
         SetofOptions: {
           from: "*"
