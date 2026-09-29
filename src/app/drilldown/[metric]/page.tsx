@@ -104,6 +104,21 @@ export default async function DrilldownPage({
 
   const branchName = new Map((branches ?? []).map((b) => [b.id, b.name]))
 
+  const latestWarehouseByBranch = new Map<string, (typeof warehouse)[number]>()
+  for (const row of warehouse) {
+    if (!latestWarehouseByBranch.has(row.branch_id)) latestWarehouseByBranch.set(row.branch_id, row)
+  }
+
+  const latestDailyByBranch = new Map<string, (typeof daily)[number]>()
+  for (const row of daily) {
+    const branchId = row.branch_id ?? ''
+    if (!latestDailyByBranch.has(branchId)) latestDailyByBranch.set(branchId, row)
+  }
+
+  const uniqueRepCount = new Set(
+    reps.map((row) => `${row.branch_id}::${row.rep_name}`),
+  ).size
+
   const summary = {
     net: daily.reduce((s,r)=>s+Number(r.net_sales ?? 0),0),
     gross: daily.reduce((s,r)=>s+Number(r.gross_sales ?? 0),0),
@@ -111,9 +126,10 @@ export default async function DrilldownPage({
     collections: daily.reduce((s,r)=>s+Number(r.collections ?? 0),0),
     expenses: daily.reduce((s,r)=>s+Number(r.expenses ?? 0),0),
     qty: warehouse.reduce((s,r)=>s+Number(r.sales_qty ?? 0),0),
-    inventory: Number(warehouse[0]?.closing_value ?? 0),
-    inventoryQty: Number(warehouse[0]?.closing_qty ?? 0),
-    receivables: Number(daily[0]?.closing_receivables ?? 0),
+    inventory: [...latestWarehouseByBranch.values()].reduce((s,r)=>s+Number(r.closing_value ?? 0),0),
+    inventoryQty: [...latestWarehouseByBranch.values()].reduce((s,r)=>s+Number(r.closing_qty ?? 0),0),
+    receivables: [...latestDailyByBranch.values()].reduce((s,r)=>s+Number(r.closing_receivables ?? 0),0),
+    repCount: uniqueRepCount,
   }
 
   return (
@@ -170,7 +186,7 @@ export default async function DrilldownPage({
           </>
         ) : null}
         {metric === 'reps' ? (
-          <div className="card"><div className="kpi-label">عدد المناديب</div><div className="kpi-value">{reps.length}</div></div>
+          <div className="card"><div className="kpi-label">عدد المناديب</div><div className="kpi-value">{summary.repCount}</div></div>
         ) : null}
       </section>
 
