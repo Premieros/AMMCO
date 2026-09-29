@@ -1,9 +1,109 @@
+import { createHash } from 'node:crypto'
 import { NextResponse } from 'next/server'
 import { createClient as createUserClient } from '@/lib/supabase/server'
 import { createAdminClient } from '@/lib/supabase/admin'
 import { parseWorkbook } from '@/lib/importer/workbook'
 
 export const runtime = 'nodejs'
+
+type ParsedWorkbook = Awaited<ReturnType<typeof parseWorkbook>>
+type DayBucket = {
+  reps: ParsedWorkbook['representativeDays'][number]['reps']
+  remittances: ParsedWorkbook['remittances']
+  warehouse: ParsedWorkbook['warehouseDaily'][number] | null
+  treasury: ParsedWorkbook['treasuryEntries']
+}
+
+function stableValue(value: unknown): unknown {
+  if (Array.isArray(value)) return value.map(stableValue)
+  if (value && typeof value === 'object') {
+    return Object.fromEntries(
+      Object.entries(value as Record<string, unknown>)
+        .sort(([a], [b]) => a.localeCompare(b))
+        .map(([key, item]) => [key, stableValue(item)]),
+    )
+  }
+  return value
+}
+
+function buildDaySnapshots(parsed: ParsedWorkbook) {
+  const days = new Map<string, DayBucket>()
+  const getDay = (date: string) => {
+    const existing = days.get(date)
+    if (existing) return existing
+    const next: DayBucket = { reps: [], remittances: [], warehouse: null, treasury: [] }
+    days.set(date, next)
+    return next
+  }
+
+  for (const day of parsed.representativeDays) {
+    getDay(day.businessDate).reps = [...day.reps].sort((a, b) => a.slot - b.slot)
+  }
+
+  for (const row of parsed.remittances) {
+    getDay(row.businessDate).remittances.push(row)
+  }
+
+  for (const row of parsed.warehouseDaily) {
+    getDay(row.businessDate).warehouse = row
+  }
+
+  for (const row of parsed.treasuryEntries) {
+    if (row.entryDate) getDay(row.entryDate).treasury.push(row)
+  }
+
+  return [...days.entries()]
+    .sort(([a], [b]) => a.localeCompare(b))
+    .map(([businessDate, bucket]) => {
+      bucket.remittances.sort((a, b) => a.repSlot - b.repSlot || a.sourceRow - b.sourceRow)
+      bucket.treasury.sort((a, b) => a.sourceRow - b.sourceRow)
+      const snapshot = stableValue(bucket)
+      const sourceHash = createHash('sha256')
+        .update(JSON.stringify(snapshot))
+        .digest('hex')
+
+      const grossSales = bucket.reps.reduce((sum, rep) => sum + rep.salesBeforeDiscount, 0)
+      const netSales = bucket.reps.reduce((sum, rep) => sum + rep.netAfterDiscount, 0)
+      const discounts = bucket.reps.reduce((sum, rep) => sum + rep.totalDiscount, 0)
+      const collections = bucket.reps.reduce((sum, rep) => sum + rep.depositAmount, 0)
+      const openingReceivables = bucket.reps.reduce((sum, rep) => sum + rep.openingBalance, 0)
+      const closingReceivables = bucket.reps.reduce((sum, rep) => sum + rep.closingBalance, 0)
+      const cashIn = bucket.treasury
+        .filter((entry) => entry.direction === 'in')
+        .reduce((sum, entry) => sum + entry.amount, 0)
+      const cashOut = bucket.treasury
+        .filter((entry) => entry.direction === 'out')
+        .reduce((sum, entry) => sum + entry.amount, 0)
+      const expenses = bucket.treasury
+        .filter((entry) => entry.isExpense)
+        .reduce((sum, entry) => sum + entry.amount, 0)
+      const closingCash =
+        [...bucket.treasury].reverse().find((entry) => entry.runningBalance !== null)?.runningBalance ?? 0
+
+      return {
+        businessDate,
+        sourceHash,
+        snapshot,
+        metrics: {
+          grossSales,
+          netSales,
+          discounts,
+          collections,
+          openingReceivables,
+          closingReceivables,
+          cashIn,
+          cashOut,
+          closingCash,
+          expenses,
+          returnsValue: bucket.warehouse?.returnFactoryValue ?? 0,
+          bonusesValue: bucket.warehouse?.bonusValue ?? 0,
+          giftsValue: bucket.warehouse?.giftsValue ?? 0,
+          damagesValue: bucket.warehouse?.damagesValue ?? 0,
+          inventoryValue: bucket.warehouse?.closingValue ?? 0,
+        },
+      }
+    })
+}
 
 export async function POST(
   _request: Request,
@@ -67,6 +167,65 @@ export async function POST(
       { periodStart: batch.period_start, periodEnd: batch.period_end },
     )
 
+    const daySnapshots = buildDaySnapshots(parsed)
+    const businessDates = daySnapshots.map((day) => day.businessDate)
+
+    const { data: lockedDays, error: lockedDaysError } = businessDates.length
+      ? await admin
+          .from('branch_day_submissions')
+          .select('business_date,current_batch_id,current_hash')
+          .eq('branch_id', batch.branch_id)
+          .in('business_date', businessDates)
+      : { data: [], error: null }
+
+    if (lockedDaysError) throw lockedDaysError
+
+    const previousBatchIds = [...new Set((lockedDays ?? []).map((row) => row.current_batch_id))]
+    const { data: previousSnapshots, error: previousSnapshotsError } = previousBatchIds.length
+      ? await admin
+          .from('import_day_snapshots')
+          .select('batch_id,business_date,snapshot')
+          .eq('branch_id', batch.branch_id)
+          .in('batch_id', previousBatchIds)
+          .in('business_date', businessDates)
+      : { data: [], error: null }
+
+    if (previousSnapshotsError) throw previousSnapshotsError
+
+    const lockedByDate = new Map((lockedDays ?? []).map((row) => [row.business_date, row]))
+    const previousSnapshotByKey = new Map(
+      (previousSnapshots ?? []).map((row) => [`${row.batch_id}:${row.business_date}`, row.snapshot]),
+    )
+
+    const historicalChanges = daySnapshots.flatMap((day) => {
+      const locked = lockedByDate.get(day.businessDate)
+      if (!locked || locked.current_hash === day.sourceHash) return []
+
+      parsed.issues.push({
+        sheetName: day.businessDate,
+        code: 'HISTORICAL_DAY_CHANGED',
+        severity: 'error',
+        message: `تم اكتشاف تعديل في يوم سبق إرساله: ${day.businessDate}`,
+        rawValue: {
+          business_date: day.businessDate,
+          previous_batch_id: locked.current_batch_id,
+          old_hash: locked.current_hash,
+          new_hash: day.sourceHash,
+        },
+      })
+
+      return [{
+        batch_id: batchId,
+        branch_id: batch.branch_id,
+        business_date: day.businessDate,
+        previous_batch_id: locked.current_batch_id,
+        old_hash: locked.current_hash,
+        new_hash: day.sourceHash,
+        old_snapshot: previousSnapshotByKey.get(`${locked.current_batch_id}:${day.businessDate}`) ?? {},
+        new_snapshot: day.snapshot,
+      }]
+    })
+
     await Promise.all([
       admin.from('import_sheets').delete().eq('batch_id', batchId),
       admin.from('import_validation_issues').delete().eq('batch_id', batchId),
@@ -76,7 +235,28 @@ export async function POST(
       admin.from('warehouse_daily_summary').delete().eq('batch_id', batchId),
       admin.from('inventory_counts').delete().eq('batch_id', batchId),
       admin.from('cash_entries').delete().eq('batch_id', batchId),
+      admin.from('branch_daily_metrics').delete().eq('batch_id', batchId),
+      admin.from('import_day_snapshots').delete().eq('batch_id', batchId),
+      admin.from('import_day_changes').delete().eq('batch_id', batchId),
     ])
+
+    if (daySnapshots.length > 0) {
+      const { error } = await admin.from('import_day_snapshots').insert(
+        daySnapshots.map((day) => ({
+          batch_id: batchId,
+          branch_id: batch.branch_id,
+          business_date: day.businessDate,
+          source_hash: day.sourceHash,
+          snapshot: day.snapshot,
+        })),
+      )
+      if (error) throw error
+    }
+
+    if (historicalChanges.length > 0) {
+      const { error } = await admin.from('import_day_changes').insert(historicalChanges)
+      if (error) throw error
+    }
 
     if (parsed.sheets.length > 0) {
       const { error } = await admin.from('import_sheets').insert(
@@ -297,6 +477,33 @@ export async function POST(
       }
     }
 
+    if (daySnapshots.length > 0) {
+      const { error } = await admin.from('branch_daily_metrics').insert(
+        daySnapshots.map((day) => ({
+          batch_id: batchId,
+          branch_id: batch.branch_id,
+          business_date: day.businessDate,
+          gross_sales: day.metrics.grossSales,
+          net_sales: day.metrics.netSales,
+          discounts: day.metrics.discounts,
+          collections: day.metrics.collections,
+          opening_receivables: day.metrics.openingReceivables,
+          closing_receivables: day.metrics.closingReceivables,
+          cash_in: day.metrics.cashIn,
+          cash_out: day.metrics.cashOut,
+          closing_cash: day.metrics.closingCash,
+          expenses: day.metrics.expenses,
+          returns_value: day.metrics.returnsValue,
+          bonuses_value: day.metrics.bonusesValue,
+          gifts_value: day.metrics.giftsValue,
+          damages_value: day.metrics.damagesValue,
+          inventory_value: day.metrics.inventoryValue,
+          raw_payload: { source: 'derived_from_workbook' },
+        })),
+      )
+      if (error) throw error
+    }
+
     const hasErrors = parsed.issues.some((issue) => issue.severity === 'error')
     const status = hasErrors ? 'rejected' : 'validated'
 
@@ -327,6 +534,8 @@ export async function POST(
       inventoryCountRows: parsed.stats.inventoryCountRowCount,
       treasuryEntries: parsed.stats.treasuryEntryCount,
       expenseEntries: parsed.stats.expenseEntryCount,
+      daySnapshots: daySnapshots.length,
+      historicalDayChanges: historicalChanges.length,
     })
   } catch (error) {
     const message = error instanceof Error ? error.message : 'فشل تحليل ملف Excel'
