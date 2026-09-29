@@ -38,6 +38,8 @@ const groups = [
       { href: '/inventory-movement', label: 'حركة المخزون', icon: 'inventory' as const },
       { href: '/product-matrix', label: 'مصفوفة الأصناف', icon: 'inventory' as const },
       { href: '/banks-ytd', label: 'البنوك وYTD', icon: 'sales' as const },
+      { href: '/receivables', label: 'المديونيات والتحصيل', icon: 'sales' as const },
+      { href: '/monthly-analysis', label: 'التحليل الشهري وYTD', icon: 'dashboard' as const },
       { href: '/drilldown/inventory', label: 'المخزون', icon: 'inventory' as const },
     ],
   },
