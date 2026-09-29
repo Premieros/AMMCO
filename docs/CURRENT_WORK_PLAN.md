@@ -92,3 +92,39 @@ Deployment rule: `premier.os` is out of scope for AMMCO.
 - [x] Western 0-9 digits only in UI.
 - [ ] Verify real next-day workbook upload against an already locked day using a second live branch workbook.
 - [ ] Promote current development preview after final Vercel deployment is green.
+
+
+## Phase 4 — Management intelligence replacement for consolidated Excel
+Reference workbook: `اقفال 5 2026.xlsm`
+
+- [x] Executive Branch Comparison page
+  - current period sales, collections, opening/closing receivables
+  - prior-month comparison
+  - YTD sales
+  - discount and expense ratios
+  - latest inventory quantity/value
+- [x] Expense Matrix page
+  - expense category × branch
+  - branch/company totals
+  - expense-to-sales ratios
+  - drill-through to approved expense entries
+- [x] Representative Performance page
+  - opening receivable, gross sales, discount, discount rate, net sales, deposit, representative expense when present in source payload, closing receivable
+  - branch/date filters and drill-down
+- [x] Inventory Movement page
+  - opening, factory receipts, branch receipts, sales, bonuses, gifts, damages, factory returns, branch transfers, count adjustments, closing
+- [x] Product Sales & Stock Matrix
+  - product × branch quantity/value sales view
+  - product × branch closing stock
+  - company totals
+- [x] Banks + YTD center
+  - bank accounts by branch
+  - grouped bank movements: CIB / QNB / الأهلي / مصر / القاهرة / other
+  - YTD branch sales / discounts / collections / receivables / expenses
+- [ ] Verify latest Phase 4 HEAD with Typecheck + Build
+- [ ] Validate all Phase 4 totals against real approved AMMCO workbook data
+- [ ] Add accrued-vs-cash expense model when source mapping is finalized
+- [ ] Execute historical-day re-upload test with a real next-day workbook
+- [ ] Final review before any merge
+
+Phase 4 rule: calculations are database-derived from approved batches only; Excel formulas and external links are never a reporting source of truth.
