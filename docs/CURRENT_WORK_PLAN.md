@@ -28,15 +28,15 @@ Each branch uploads its workbook. AMMCO validates, versions, stores, normalizes,
 - [x] Calculate SHA-256 before import
 - [x] Detect branch + reporting period
 - [x] Detect duplicate workbook
-- [ ] Parse DATA master data
+- [x] Parse DATA master data
 - [x] Parse daily sheets (1..31 and carry-over sheets) — 12 rep blocks normalized
 - [ ] Parse Total
 - [ ] Parse تحليلي الفرع
-- [ ] Parse توريدات
+- [x] Parse توريدات
 - [ ] Parse الخزنة
-- [ ] Parse حركة المخزن
+- [x] Parse حركة المخزن
 - [ ] Parse ملاحظات
-- [ ] Parse الجرد
+- [x] Parse الجرد
 - [x] Persist validation errors
 - [ ] Publish normalized batch only after validation
 
