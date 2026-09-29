@@ -69,3 +69,26 @@ Each branch uploads its workbook. AMMCO validates, versions, stores, normalizes,
 - [ ] Production deploy only after explicit approval
 
 Deployment rule: `premier.os` is out of scope for AMMCO.
+
+
+## Branch locking & treasury center
+- [x] Admin can add branches from the portal.
+- [x] Every new branch gets a default main treasury automatically.
+- [x] Workbook uploads retain file hash, version, uploader and upload timestamp.
+- [x] Parsed business days now receive deterministic snapshots and hashes.
+- [x] Historical submitted days are compared on every later upload.
+- [x] A changed locked day creates an explicit HISTORICAL_DAY_CHANGED validation error.
+- [x] Historical changes are recorded in import_day_changes with old/new snapshots.
+- [x] Only validated batches can be approved by an admin.
+- [x] Approval supersedes the previous approved batch for the same branch/period.
+- [x] Approval locks the submitted business days in branch_day_submissions.
+- [x] Reports continue reading approved batches only.
+- [x] Multi-treasury support added per branch.
+- [x] Imported cash movements attach to the branch default treasury.
+- [x] Treasury movement edits are audited; source date/code/amount remain locked.
+- [x] Treasury center supports cumulative view, date range, multi-branch filtering, search, per-column filtering, sorting and column visibility.
+- [x] Sales page supports the same Excel-like interaction model.
+- [x] Expense analysis uses the same interaction model and audited drill-down correction.
+- [x] Western 0-9 digits only in UI.
+- [ ] Verify real next-day workbook upload against an already locked day using a second live branch workbook.
+- [ ] Promote current development preview after final Vercel deployment is green.
