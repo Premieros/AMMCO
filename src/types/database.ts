@@ -1259,6 +1259,66 @@ export type Database = {
           },
         ]
       }
+      branch_expense_accrual_settings: {
+        Row: {
+          branch_id: string
+          organization_id: string
+          month_start: string
+          wages: number
+          branch_manager: number
+          sector_manager: number
+          rent: number
+          carried_expenses: number
+          commission_rate: number
+          working_days_basis: number
+          updated_by: string | null
+          updated_at: string
+        }
+        Insert: {
+          branch_id: string
+          organization_id: string
+          month_start: string
+          wages?: number
+          branch_manager?: number
+          sector_manager?: number
+          rent?: number
+          carried_expenses?: number
+          commission_rate?: number
+          working_days_basis?: number
+          updated_by?: string | null
+          updated_at?: string
+        }
+        Update: {
+          branch_id?: string
+          organization_id?: string
+          month_start?: string
+          wages?: number
+          branch_manager?: number
+          sector_manager?: number
+          rent?: number
+          carried_expenses?: number
+          commission_rate?: number
+          working_days_basis?: number
+          updated_by?: string | null
+          updated_at?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "branch_expense_accrual_settings_branch_id_fkey"
+            columns: ["branch_id"]
+            isOneToOne: false
+            referencedRelation: "branches"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "branch_expense_accrual_settings_organization_id_fkey"
+            columns: ["organization_id"]
+            isOneToOne: false
+            referencedRelation: "organizations"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
       treasury_accounts: {
         Row: {
           account_type: string
