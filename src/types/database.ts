@@ -795,12 +795,17 @@ export type Database = {
           closing_balance: number
           collection_rate: number | null
           collections: number
+          deposit_amount: number
           discounts: number
           id: number
+          net_after_discount: number
           opening_balance: number
           raw_payload: Json
           rep_name: string
+          rep_slot: number | null
           sales: number
+          sales_before_discount: number
+          source_anchor_cell: string | null
         }
         Insert: {
           batch_id: string
@@ -809,12 +814,17 @@ export type Database = {
           closing_balance?: number
           collection_rate?: number | null
           collections?: number
+          deposit_amount?: number
           discounts?: number
           id?: number
+          net_after_discount?: number
           opening_balance?: number
           raw_payload?: Json
           rep_name: string
+          rep_slot?: number | null
           sales?: number
+          sales_before_discount?: number
+          source_anchor_cell?: string | null
         }
         Update: {
           batch_id?: string
@@ -823,12 +833,17 @@ export type Database = {
           closing_balance?: number
           collection_rate?: number | null
           collections?: number
+          deposit_amount?: number
           discounts?: number
           id?: number
+          net_after_discount?: number
           opening_balance?: number
           raw_payload?: Json
           rep_name?: string
+          rep_slot?: number | null
           sales?: number
+          sales_before_discount?: number
+          source_anchor_cell?: string | null
         }
         Relationships: [
           {
