@@ -397,7 +397,7 @@ export async function POST(
         unit_value: row.unitValue,
         closing_value: row.closingValue,
         raw_payload: {
-          ...row.rawPayload,
+          source: row.rawPayload,
           barcode: row.barcode,
         },
       }))
