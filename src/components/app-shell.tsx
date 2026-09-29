@@ -13,6 +13,7 @@ export function AppShell({ children, title, subtitle }: {
           <Link href="/">لوحة التحكم</Link>
           <Link href="/uploads">رفع الشيت</Link>
           <Link href="/imports">سجل الرفع</Link>
+          <Link href="/expenses">تحليل المصروفات</Link>
         </nav>
       </aside>
       <main className="main">
