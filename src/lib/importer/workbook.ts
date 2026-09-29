@@ -89,6 +89,23 @@ export type InventoryCountRow = {
   rawPayload: Json
 }
 
+export type TreasuryEntry = {
+  entryDate: string | null
+  sourceRow: number
+  sourceCode: string | null
+  description: string | null
+  sourceCategory: string | null
+  canonicalCategory: string | null
+  expenseGroup: string | null
+  entryKind: 'collection' | 'expense' | 'bank_deposit' | 'hq_transfer' | 'advance' | 'custody' | 'interbranch' | 'cash_balance' | 'other'
+  isExpense: boolean
+  classificationConfidence: 'exact' | 'alias' | 'inferred' | 'unclassified'
+  amount: number
+  direction: 'in' | 'out'
+  runningBalance: number | null
+  rawPayload: Json
+}
+
 export type WarehouseDailySummary = {
   businessDate: string
   sourceQtyRow: number
@@ -397,6 +414,227 @@ function extractInventoryCounts(worksheet: ExcelJS.Worksheet, countDate?: string
   return rows
 }
 
+function normalizeCategory(value: string) {
+  return value
+    .replace(/\s+/g, ' ')
+    .replace(/أ|إ|آ/g, 'ا')
+    .replace(/ة/g, 'ه')
+    .trim()
+}
+
+function expenseGroupFor(category: string | null) {
+  if (!category) return null
+  const c = normalizeCategory(category)
+
+  if (/(سيارات|سولار|زيوت|غسيل|كارتات طريق|اطارات|كاوتش|قطع غيار|جراج|غرامات|تراخيص)/.test(c)) {
+    return 'مصروفات السيارات'
+  }
+  if (/(اجور|مرتبات|عمولات|حوافز|منح|مكافات|تامينات)/.test(c)) {
+    return 'اجور وحوافز وعمولات'
+  }
+  if (/(ايجارات|كهرباء|مياه|نظافه)/.test(c)) {
+    return 'تشغيل ومرافق'
+  }
+  if (/(نت|تليفون|ادوات كتابيه|مصاريف تحويل|اكراميات|تعتيق)/.test(c)) {
+    return 'اداري ومالي'
+  }
+  if (/(انتقالات|بدل سفر)/.test(c)) {
+    return 'انتقالات وسفر'
+  }
+  return 'مصروفات اخرى'
+}
+
+function classifyTreasury(
+  sourceCode: string | null,
+  sourceCategory: string | null,
+  description: string | null,
+) {
+  const code = (sourceCode ?? '').trim()
+  const category = (sourceCategory ?? '').trim()
+  const desc = (description ?? '').trim()
+  const nc = normalizeCategory(category)
+  const nd = normalizeCategory(desc)
+
+  if (/^303\d+/.test(code)) {
+    return {
+      entryKind: 'expense' as const,
+      canonicalCategory: category || null,
+      expenseGroup: expenseGroupFor(category),
+      isExpense: true,
+      classificationConfidence: 'exact' as const,
+    }
+  }
+
+  if (nc === 'توريد') {
+    return {
+      entryKind: 'collection' as const,
+      canonicalCategory: 'توريد مندوب',
+      expenseGroup: null,
+      isExpense: false,
+      classificationConfidence: 'exact' as const,
+    }
+  }
+
+  if (/ايداع/.test(nc) || /\bqnb\b/i.test(category) || nc === 'القاهره') {
+    return {
+      entryKind: 'bank_deposit' as const,
+      canonicalCategory: category || 'ايداع بنكي',
+      expenseGroup: null,
+      isExpense: false,
+      classificationConfidence: 'exact' as const,
+    }
+  }
+
+  if ((/تحويل/.test(nc) && /مصنع/.test(nc)) || nc === 'دائنون') {
+    return {
+      entryKind: 'hq_transfer' as const,
+      canonicalCategory: category || 'تحويل للمصنع',
+      expenseGroup: null,
+      isExpense: false,
+      classificationConfidence: 'exact' as const,
+    }
+  }
+
+  if (nc === 'سلفه') {
+    return {
+      entryKind: 'advance' as const,
+      canonicalCategory: 'سلفة',
+      expenseGroup: null,
+      isExpense: false,
+      classificationConfidence: 'exact' as const,
+    }
+  }
+
+  if (nc === 'عهده') {
+    return {
+      entryKind: 'custody' as const,
+      canonicalCategory: 'عهدة',
+      expenseGroup: null,
+      isExpense: false,
+      classificationConfidence: 'exact' as const,
+    }
+  }
+
+  if (/مستحقه فروع/.test(nc)) {
+    return {
+      entryKind: 'interbranch' as const,
+      canonicalCategory: category || 'مستحقات فروع',
+      expenseGroup: null,
+      isExpense: false,
+      classificationConfidence: 'exact' as const,
+    }
+  }
+
+  if (/بخزنه الفرع/.test(nc)) {
+    return {
+      entryKind: 'cash_balance' as const,
+      canonicalCategory: category || 'بخزنة الفرع',
+      expenseGroup: null,
+      isExpense: false,
+      classificationConfidence: 'exact' as const,
+    }
+  }
+
+  if (!category && /مصروف تحويل/.test(nd)) {
+    return {
+      entryKind: 'expense' as const,
+      canonicalCategory: 'مصاريف تحويل',
+      expenseGroup: 'اداري ومالي',
+      isExpense: true,
+      classificationConfidence: 'alias' as const,
+    }
+  }
+
+  if (!category && /تحويل نقدي.*مصنع/.test(nd)) {
+    return {
+      entryKind: 'hq_transfer' as const,
+      canonicalCategory: 'تحويل للمصنع',
+      expenseGroup: null,
+      isExpense: false,
+      classificationConfidence: 'inferred' as const,
+    }
+  }
+
+  return {
+    entryKind: 'other' as const,
+    canonicalCategory: category || null,
+    expenseGroup: null,
+    isExpense: false,
+    classificationConfidence: 'unclassified' as const,
+  }
+}
+
+function extractTreasuryEntries(
+  worksheet: ExcelJS.Worksheet,
+  issues: WorkbookIssue[],
+) {
+  const entries: TreasuryEntry[] = []
+
+  for (let row = 3; row <= worksheet.actualRowCount; row += 1) {
+    const inbound = nullableNumber(worksheet.getCell(row, 5)) ?? 0
+    const outbound = nullableNumber(worksheet.getCell(row, 6)) ?? 0
+    if (inbound === 0 && outbound === 0) continue
+
+    const sourceCodeRaw = cellResult(worksheet.getCell(row, 1))
+    const sourceCode =
+      sourceCodeRaw === null || sourceCodeRaw === undefined || sourceCodeRaw === ''
+        ? null
+        : String(sourceCodeRaw).replace(/\.0$/, '').trim()
+
+    const description = textCell(worksheet.getCell(row, 3)) || null
+    const sourceCategory = textCell(worksheet.getCell(row, 4)) || null
+    const classification = classifyTreasury(sourceCode, sourceCategory, description)
+    const entryDate = dateCell(worksheet.getCell(row, 2))
+    const direction: 'in' | 'out' = outbound > 0 ? 'out' : 'in'
+    const amount = outbound > 0 ? outbound : inbound
+    const runningBalance = nullableNumber(worksheet.getCell(row, 7))
+
+    if (direction === 'out' && classification.classificationConfidence === 'unclassified') {
+      issues.push({
+        sheetName: worksheet.name,
+        rowNumber: row,
+        cellRef: `D${row}`,
+        code: 'UNCLASSIFIED_CASH_OUTFLOW',
+        severity: 'warning',
+        message: `حركة صادرة بدون توجيه واضح: ${description ?? 'بدون بيان'}`,
+        rawValue: {
+          source_code: sourceCode,
+          category: sourceCategory,
+          amount,
+        },
+      })
+    }
+
+    entries.push({
+      entryDate,
+      sourceRow: row,
+      sourceCode,
+      description,
+      sourceCategory,
+      canonicalCategory: classification.canonicalCategory,
+      expenseGroup: classification.expenseGroup,
+      entryKind: classification.entryKind,
+      isExpense: classification.isExpense,
+      classificationConfidence: classification.classificationConfidence,
+      amount,
+      direction,
+      runningBalance,
+      rawPayload: {
+        source_sheet: worksheet.name,
+        code_cell: `A${row}`,
+        date_cell: `B${row}`,
+        description_cell: `C${row}`,
+        category_cell: `D${row}`,
+        inbound_cell: `E${row}`,
+        outbound_cell: `F${row}`,
+        balance_cell: `G${row}`,
+      },
+    })
+  }
+
+  return entries
+}
+
 function extractWarehouseDaily(worksheet: ExcelJS.Worksheet) {
   const rows: WarehouseDailySummary[] = []
 
@@ -549,6 +787,7 @@ export async function parseWorkbook(
   let remittances: RepRemittanceRow[] = []
   let warehouseDaily: WarehouseDailySummary[] = []
   let inventoryCounts: InventoryCountRow[] = []
+  let treasuryEntries: TreasuryEntry[] = []
 
   if (workbook.worksheets.length === 0) {
     issues.push({
@@ -621,6 +860,10 @@ export async function parseWorkbook(
       inventoryCounts = extractInventoryCounts(worksheet, options.periodEnd)
     }
 
+    if (worksheet.name.trim() === 'الخزنة') {
+      treasuryEntries = extractTreasuryEntries(worksheet, issues)
+    }
+
     const businessDate = dateForDailySheet(worksheet.name, options.periodStart)
     if (businessDate) {
       representativeDays.push(extractRepresentativeDay(worksheet, businessDate, issues))
@@ -635,7 +878,8 @@ export async function parseWorkbook(
     remittances,
     warehouseDaily,
     inventoryCounts,
-    schemaVersion: 'ammco-reference-v5-inventory-counts',
+    treasuryEntries,
+    schemaVersion: 'ammco-reference-v6-treasury-expense-analytics',
     stats: {
       sheetCount: sheets.length,
       rawRowCount: sheets.reduce((sum, sheet) => sum + sheet.rows.length, 0),
@@ -647,6 +891,8 @@ export async function parseWorkbook(
       remittanceRowCount: remittances.length,
       warehouseDayCount: warehouseDaily.length,
       inventoryCountRowCount: inventoryCounts.length,
+      treasuryEntryCount: treasuryEntries.length,
+      expenseEntryCount: treasuryEntries.filter((entry) => entry.isExpense).length,
     },
   }
 }
