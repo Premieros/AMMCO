@@ -128,3 +128,26 @@ Reference workbook: `اقفال 5 2026.xlsm`
 - [ ] Final review before any merge
 
 Phase 4 rule: calculations are database-derived from approved batches only; Excel formulas and external links are never a reporting source of truth.
+
+
+### Live AMMCO verification — 2026-09-29
+- [x] Direct access confirmed for Supabase project `yumeijsyiphzdsulsubf`.
+- [x] Real approved Tanta batch reconciled across reporting sources:
+  - gross sales 932,805
+  - discounts 65,460
+  - net sales 867,345
+  - collections 626,892
+  - expenses 114,364
+  - opening receivables 178,433.82
+  - closing receivables 418,886.82
+  - sales quantity 3,274
+  - closing inventory quantity 1,825.6667
+  - closing inventory value 520,315
+- [x] Dashboard corrected so all-branch closing receivables and inventory are summed from each branch's latest balance, not the last returned row.
+- [x] Missing historical-period / representative-expense / product-detail / bank data is displayed as unavailable rather than zero.
+- [ ] Existing operator-import batch is not yet covered by import day snapshots / locked days; historical re-upload protection must be validated on the first normal pipeline import.
+- [ ] Product-level inventory movement is still unavailable: `inventory_daily` is empty and the current workbook parser only normalizes daily warehouse totals.
+- [ ] Bank accounts/movements are not present in the current approved Tanta data.
+- [ ] Reconcile migration history bookkeeping: live schema contains branch-locking/treasury functions and tables although migration history currently stops before those repository migrations.
+
+Do not fabricate product-level movement from aggregate warehouse rows. Product matrices become authoritative only after a real workbook layout is available and the importer persists product-level facts.
