@@ -73,6 +73,7 @@ export async function POST(
       admin.from('import_raw_rows').delete().eq('batch_id', batchId),
       admin.from('sales_rep_daily').delete().eq('batch_id', batchId),
       admin.from('rep_remittance_daily').delete().eq('batch_id', batchId),
+      admin.from('warehouse_daily_summary').delete().eq('batch_id', batchId),
     ])
 
     if (parsed.sheets.length > 0) {
@@ -205,6 +206,42 @@ export async function POST(
       }
     }
 
+    if (parsed.warehouseDaily.length > 0) {
+      const warehouseRows = parsed.warehouseDaily.map((row) => ({
+        batch_id: batchId,
+        branch_id: batch.branch_id,
+        business_date: row.businessDate,
+        opening_qty: row.openingQty,
+        opening_value: row.openingValue,
+        incoming_factory_qty: row.incomingFactoryQty,
+        incoming_factory_value: row.incomingFactoryValue,
+        incoming_branches_qty: row.incomingBranchesQty,
+        incoming_branches_value: row.incomingBranchesValue,
+        sales_qty: row.salesQty,
+        sales_value: row.salesValue,
+        bonus_qty: row.bonusQty,
+        bonus_value: row.bonusValue,
+        gifts_qty: row.giftsQty,
+        gifts_value: row.giftsValue,
+        damages_qty: row.damagesQty,
+        damages_value: row.damagesValue,
+        return_factory_qty: row.returnFactoryQty,
+        return_factory_value: row.returnFactoryValue,
+        outgoing_branches_qty: row.outgoingBranchesQty,
+        outgoing_branches_value: row.outgoingBranchesValue,
+        adjustment_qty: row.adjustmentQty,
+        adjustment_value: row.adjustmentValue,
+        closing_qty: row.closingQty,
+        closing_value: row.closingValue,
+        source_qty_row: row.sourceQtyRow,
+        source_value_row: row.sourceValueRow,
+        raw_payload: row.rawPayload,
+      }))
+
+      const { error } = await admin.from('warehouse_daily_summary').insert(warehouseRows)
+      if (error) throw error
+    }
+
     const hasErrors = parsed.issues.some((issue) => issue.severity === 'error')
     const status = hasErrors ? 'rejected' : 'validated'
 
@@ -231,6 +268,7 @@ export async function POST(
       representatives: parsed.stats.representativeRowCount,
       products: parsed.stats.productCount,
       remittances: parsed.stats.remittanceRowCount,
+      warehouseDays: parsed.stats.warehouseDayCount,
     })
   } catch (error) {
     const message = error instanceof Error ? error.message : 'فشل تحليل ملف Excel'
