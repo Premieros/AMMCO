@@ -142,6 +142,13 @@ export async function POST(
     return NextResponse.json({ error: 'عملية الرفع غير متاحة لهذا المستخدم' }, { status: 403 })
   }
 
+  if (batch.status === 'approved' || batch.status === 'superseded') {
+    return NextResponse.json(
+      { error: 'لا يمكن إعادة تحليل نسخة معتمدة أو مستبدلة. ارفع ملفًا جديدًا لإنشاء نسخة جديدة ومراجعة الفروق التاريخية.' },
+      { status: 409 },
+    )
+  }
+
   if (profile.role === 'analyst') {
     return NextResponse.json({ error: 'صلاحية المحلل للعرض فقط' }, { status: 403 })
   }
