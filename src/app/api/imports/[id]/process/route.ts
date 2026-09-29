@@ -75,6 +75,7 @@ export async function POST(
       admin.from('rep_remittance_daily').delete().eq('batch_id', batchId),
       admin.from('warehouse_daily_summary').delete().eq('batch_id', batchId),
       admin.from('inventory_counts').delete().eq('batch_id', batchId),
+      admin.from('cash_entries').delete().eq('batch_id', batchId),
     ])
 
     if (parsed.sheets.length > 0) {
@@ -267,6 +268,35 @@ export async function POST(
       }
     }
 
+    if (parsed.treasuryEntries.length > 0) {
+      const cashRows = parsed.treasuryEntries.map((entry) => ({
+        batch_id: batchId,
+        branch_id: batch.branch_id,
+        entry_date: entry.entryDate,
+        source_row: entry.sourceRow,
+        source_code: entry.sourceCode,
+        account_code: entry.sourceCode,
+        description: entry.description,
+        category: entry.sourceCategory,
+        canonical_category: entry.canonicalCategory,
+        expense_group: entry.expenseGroup,
+        entry_kind: entry.entryKind,
+        is_expense: entry.isExpense,
+        classification_confidence: entry.classificationConfidence,
+        amount: entry.amount,
+        direction: entry.direction,
+        running_balance: entry.runningBalance,
+        raw_payload: entry.rawPayload,
+      }))
+
+      for (let offset = 0; offset < cashRows.length; offset += 500) {
+        const { error } = await admin
+          .from('cash_entries')
+          .insert(cashRows.slice(offset, offset + 500))
+        if (error) throw error
+      }
+    }
+
     const hasErrors = parsed.issues.some((issue) => issue.severity === 'error')
     const status = hasErrors ? 'rejected' : 'validated'
 
@@ -295,6 +325,8 @@ export async function POST(
       remittances: parsed.stats.remittanceRowCount,
       warehouseDays: parsed.stats.warehouseDayCount,
       inventoryCountRows: parsed.stats.inventoryCountRowCount,
+      treasuryEntries: parsed.stats.treasuryEntryCount,
+      expenseEntries: parsed.stats.expenseEntryCount,
     })
   } catch (error) {
     const message = error instanceof Error ? error.message : 'فشل تحليل ملف Excel'
