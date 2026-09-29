@@ -61,12 +61,11 @@ Each branch uploads its workbook. AMMCO validates, versions, stores, normalizes,
 
 
 ## Deployment target
-- [x] Hosting decision: GitHub Pages only
-- [ ] Convert frontend to static-export-safe architecture
-- [ ] Move server/API workbook processing to Supabase Edge Functions
-- [ ] Remove server-only frontend dependencies from runtime paths
-- [ ] Add GitHub Pages deployment workflow
-- [ ] Verify repository base path /AMMCO
-- [ ] Publish preview from development branch before main deployment
+- [x] Hosting decision: Vercel project `ammco.foods`
+- [x] Vercel project isolated from `premier.os`
+- [ ] Configure AMMCO Supabase environment variables
+- [ ] Publish development-branch preview
+- [ ] Verify preview login, upload, import processing and reports
+- [ ] Production deploy only after explicit approval
 
-Deployment rule: no Vercel for AMMCO.
+Deployment rule: `premier.os` is out of scope for AMMCO.
