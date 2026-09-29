@@ -1191,6 +1191,7 @@ export type Database = {
           collection_rate: number | null
           collections: number
           deposit_amount: number
+          expense_amount: number
           discounts: number
           id: number
           net_after_discount: number
@@ -1210,6 +1211,7 @@ export type Database = {
           collection_rate?: number | null
           collections?: number
           deposit_amount?: number
+          expense_amount?: number
           discounts?: number
           id?: number
           net_after_discount?: number
