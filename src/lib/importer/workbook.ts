@@ -76,6 +76,35 @@ export type RepRemittanceRow = {
   rawPayload: Json
 }
 
+export type WarehouseDailySummary = {
+  businessDate: string
+  sourceQtyRow: number
+  sourceValueRow: number
+  openingQty: number
+  openingValue: number
+  incomingFactoryQty: number
+  incomingFactoryValue: number
+  incomingBranchesQty: number
+  incomingBranchesValue: number
+  salesQty: number
+  salesValue: number
+  bonusQty: number
+  bonusValue: number
+  giftsQty: number
+  giftsValue: number
+  damagesQty: number
+  damagesValue: number
+  returnFactoryQty: number
+  returnFactoryValue: number
+  outgoingBranchesQty: number
+  outgoingBranchesValue: number
+  adjustmentQty: number
+  adjustmentValue: number
+  closingQty: number
+  closingValue: number
+  rawPayload: Json
+}
+
 const REQUIRED_SHEETS = [
   'DATA',
   'Total',
@@ -289,6 +318,54 @@ function extractRemittances(worksheet: ExcelJS.Worksheet) {
   return rows
 }
 
+function extractWarehouseDaily(worksheet: ExcelJS.Worksheet) {
+  const rows: WarehouseDailySummary[] = []
+
+  for (let qtyRow = 3; qtyRow <= worksheet.actualRowCount; qtyRow += 2) {
+    const valueRow = qtyRow + 1
+    const businessDate = dateCell(worksheet.getCell(qtyRow, 1))
+    if (!businessDate || valueRow > worksheet.actualRowCount) continue
+
+    const q = (column: number) => numberCell(worksheet.getCell(qtyRow, column))
+    const v = (column: number) => numberCell(worksheet.getCell(valueRow, column))
+
+    rows.push({
+      businessDate,
+      sourceQtyRow: qtyRow,
+      sourceValueRow: valueRow,
+      openingQty: q(3),
+      openingValue: v(3),
+      incomingFactoryQty: q(4),
+      incomingFactoryValue: v(4),
+      incomingBranchesQty: q(5),
+      incomingBranchesValue: v(5),
+      salesQty: q(6),
+      salesValue: v(6),
+      bonusQty: q(7),
+      bonusValue: v(7),
+      giftsQty: q(8),
+      giftsValue: v(8),
+      damagesQty: q(9),
+      damagesValue: v(9),
+      returnFactoryQty: q(10),
+      returnFactoryValue: v(10),
+      outgoingBranchesQty: q(11),
+      outgoingBranchesValue: v(11),
+      adjustmentQty: q(12),
+      adjustmentValue: v(12),
+      closingQty: q(13),
+      closingValue: v(13),
+      rawPayload: {
+        qty_row: qtyRow,
+        value_row: valueRow,
+        source_sheet: worksheet.name,
+      },
+    })
+  }
+
+  return rows
+}
+
 function dateForDailySheet(sheetName: string, periodStart?: string) {
   if (!periodStart) return null
   const match = sheetName.trim().match(/^(\d{1,2})(-?)$/)
@@ -391,6 +468,7 @@ export async function parseWorkbook(
   const representativeDays: RepresentativeDay[] = []
   let products: ParsedProduct[] = []
   let remittances: RepRemittanceRow[] = []
+  let warehouseDaily: WarehouseDailySummary[] = []
 
   if (workbook.worksheets.length === 0) {
     issues.push({
@@ -455,6 +533,10 @@ export async function parseWorkbook(
       remittances = extractRemittances(worksheet)
     }
 
+    if (worksheet.name.trim() === 'حركة المخزن') {
+      warehouseDaily = extractWarehouseDaily(worksheet)
+    }
+
     const businessDate = dateForDailySheet(worksheet.name, options.periodStart)
     if (businessDate) {
       representativeDays.push(extractRepresentativeDay(worksheet, businessDate, issues))
@@ -467,7 +549,8 @@ export async function parseWorkbook(
     representativeDays,
     products,
     remittances,
-    schemaVersion: 'ammco-reference-v3-products-remittances',
+    warehouseDaily,
+    schemaVersion: 'ammco-reference-v4-warehouse-daily',
     stats: {
       sheetCount: sheets.length,
       rawRowCount: sheets.reduce((sum, sheet) => sum + sheet.rows.length, 0),
@@ -477,6 +560,7 @@ export async function parseWorkbook(
       representativeTemplateSlots: REPRESENTATIVE_COLUMNS.length,
       productCount: products.length,
       remittanceRowCount: remittances.length,
+      warehouseDayCount: warehouseDaily.length,
     },
   }
 }
