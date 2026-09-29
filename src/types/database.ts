@@ -139,39 +139,60 @@ export type Database = {
           amount: number
           batch_id: string
           branch_id: string
+          canonical_category: string | null
           category: string | null
+          classification_confidence: string
           description: string | null
           direction: string
-          entry_date: string
+          entry_date: string | null
+          entry_kind: string
+          expense_group: string | null
           id: number
+          is_expense: boolean
           raw_payload: Json
           running_balance: number | null
+          source_code: string | null
+          source_row: number | null
         }
         Insert: {
           account_code?: string | null
           amount: number
           batch_id: string
           branch_id: string
+          canonical_category?: string | null
           category?: string | null
+          classification_confidence?: string
           description?: string | null
           direction: string
-          entry_date: string
+          entry_date?: string | null
+          entry_kind?: string
+          expense_group?: string | null
           id?: number
+          is_expense?: boolean
           raw_payload?: Json
           running_balance?: number | null
+          source_code?: string | null
+          source_row?: number | null
         }
         Update: {
           account_code?: string | null
           amount?: number
           batch_id?: string
           branch_id?: string
+          canonical_category?: string | null
           category?: string | null
+          classification_confidence?: string
           description?: string | null
           direction?: string
-          entry_date?: string
+          entry_date?: string | null
+          entry_kind?: string
+          expense_group?: string | null
           id?: number
+          is_expense?: boolean
           raw_payload?: Json
           running_balance?: number | null
+          source_code?: string | null
+          source_row?: number | null
         }
         Relationships: [
           {
@@ -1196,6 +1217,39 @@ export type Database = {
           },
           {
             foreignKeyName: "branch_daily_metrics_branch_id_fkey"
+            columns: ["branch_id"]
+            isOneToOne: false
+            referencedRelation: "branches"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      v_expense_analysis: {
+        Row: {
+          account_code: string | null
+          amount: number | null
+          batch_id: string | null
+          branch_id: string | null
+          branch_name: string | null
+          canonical_category: string | null
+          classification_confidence: string | null
+          description: string | null
+          entry_date: string | null
+          expense_group: string | null
+          id: number | null
+          source_category: string | null
+          source_code: string | null
+        }
+        Relationships: [
+          {
+            foreignKeyName: "cash_entries_batch_id_fkey"
+            columns: ["batch_id"]
+            isOneToOne: false
+            referencedRelation: "import_batches"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "cash_entries_branch_id_fkey"
             columns: ["branch_id"]
             isOneToOne: false
             referencedRelation: "branches"
