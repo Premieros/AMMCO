@@ -661,6 +661,8 @@ export type Database = {
       products: {
         Row: {
           barcode: string | null
+          box_count: number | null
+          carton_descriptor: string | null
           carton_price: number | null
           category: string | null
           created_at: string
@@ -674,16 +676,24 @@ export type Database = {
           organization_id: string
           pack_description: string | null
           pack_price: number | null
+          packaging_count: number | null
           packs_per_carton: number | null
+          price_category: string | null
           raw_payload: Json
+          retail_carton_price: number | null
+          retail_pack_price: number | null
           retail_price: number | null
           source_product_key: string
           units_per_pack: number | null
           updated_at: string
+          wholesale_carton_price: number | null
+          wholesale_pack_price: number | null
           wholesale_price: number | null
         }
         Insert: {
           barcode?: string | null
+          box_count?: number | null
+          carton_descriptor?: string | null
           carton_price?: number | null
           category?: string | null
           created_at?: string
@@ -697,16 +707,24 @@ export type Database = {
           organization_id: string
           pack_description?: string | null
           pack_price?: number | null
+          packaging_count?: number | null
           packs_per_carton?: number | null
+          price_category?: string | null
           raw_payload?: Json
+          retail_carton_price?: number | null
+          retail_pack_price?: number | null
           retail_price?: number | null
           source_product_key: string
           units_per_pack?: number | null
           updated_at?: string
+          wholesale_carton_price?: number | null
+          wholesale_pack_price?: number | null
           wholesale_price?: number | null
         }
         Update: {
           barcode?: string | null
+          box_count?: number | null
+          carton_descriptor?: string | null
           carton_price?: number | null
           category?: string | null
           created_at?: string
@@ -720,12 +738,18 @@ export type Database = {
           organization_id?: string
           pack_description?: string | null
           pack_price?: number | null
+          packaging_count?: number | null
           packs_per_carton?: number | null
+          price_category?: string | null
           raw_payload?: Json
+          retail_carton_price?: number | null
+          retail_pack_price?: number | null
           retail_price?: number | null
           source_product_key?: string
           units_per_pack?: number | null
           updated_at?: string
+          wholesale_carton_price?: number | null
+          wholesale_pack_price?: number | null
           wholesale_price?: number | null
         }
         Relationships: [
@@ -783,6 +807,69 @@ export type Database = {
             columns: ["organization_id"]
             isOneToOne: false
             referencedRelation: "organizations"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      rep_remittance_daily: {
+        Row: {
+          batch_id: string
+          branch_id: string
+          business_date: string
+          closing_debt: number
+          deposit_amount: number
+          id: number
+          opening_debt: number
+          raw_payload: Json
+          rep_name: string
+          rep_slot: number
+          sales_amount: number
+          source_row: number | null
+          source_sheet: string
+        }
+        Insert: {
+          batch_id: string
+          branch_id: string
+          business_date: string
+          closing_debt?: number
+          deposit_amount?: number
+          id?: never
+          opening_debt?: number
+          raw_payload?: Json
+          rep_name: string
+          rep_slot: number
+          sales_amount?: number
+          source_row?: number | null
+          source_sheet?: string
+        }
+        Update: {
+          batch_id?: string
+          branch_id?: string
+          business_date?: string
+          closing_debt?: number
+          deposit_amount?: number
+          id?: never
+          opening_debt?: number
+          raw_payload?: Json
+          rep_name?: string
+          rep_slot?: number
+          sales_amount?: number
+          source_row?: number | null
+          source_sheet?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "rep_remittance_daily_batch_id_fkey"
+            columns: ["batch_id"]
+            isOneToOne: false
+            referencedRelation: "import_batches"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "rep_remittance_daily_branch_id_fkey"
+            columns: ["branch_id"]
+            isOneToOne: false
+            referencedRelation: "branches"
             referencedColumns: ["id"]
           },
         ]
