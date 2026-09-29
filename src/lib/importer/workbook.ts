@@ -87,7 +87,7 @@ function isMeaningful(value: Json) {
 
 export async function parseWorkbook(buffer: Buffer) {
   const workbook = new ExcelJS.Workbook()
-  await workbook.xlsx.load(buffer)
+  await workbook.xlsx.load(buffer as unknown as Parameters<typeof workbook.xlsx.load>[0])
 
   const issues: WorkbookIssue[] = []
   const sheets: ParsedSheet[] = []
