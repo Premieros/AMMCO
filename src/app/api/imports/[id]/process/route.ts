@@ -11,6 +11,8 @@ type ParsedWorkbook = Awaited<ReturnType<typeof parseWorkbook>>
 type DayBucket = {
   reps: ParsedWorkbook['representativeDays'][number]['reps']
   remittances: ParsedWorkbook['remittances']
+  inventory: ParsedWorkbook['inventoryDaily']
+  counts: ParsedWorkbook['inventoryCounts']
   warehouse: ParsedWorkbook['warehouseDaily'][number] | null
   treasury: ParsedWorkbook['treasuryEntries']
 }
@@ -32,7 +34,7 @@ function buildDaySnapshots(parsed: ParsedWorkbook) {
   const getDay = (date: string) => {
     const existing = days.get(date)
     if (existing) return existing
-    const next: DayBucket = { reps: [], remittances: [], warehouse: null, treasury: [] }
+    const next: DayBucket = { reps: [], remittances: [], inventory: [], counts: [], warehouse: null, treasury: [] }
     days.set(date, next)
     return next
   }
@@ -43,6 +45,14 @@ function buildDaySnapshots(parsed: ParsedWorkbook) {
 
   for (const row of parsed.remittances) {
     getDay(row.businessDate).remittances.push(row)
+  }
+
+  for (const row of parsed.inventoryDaily) {
+    getDay(row.businessDate).inventory.push(row)
+  }
+
+  for (const row of parsed.inventoryCounts) {
+    getDay(row.countDate).counts.push(row)
   }
 
   for (const row of parsed.warehouseDaily) {
@@ -57,6 +67,8 @@ function buildDaySnapshots(parsed: ParsedWorkbook) {
     .sort(([a], [b]) => a.localeCompare(b))
     .map(([businessDate, bucket]) => {
       bucket.remittances.sort((a, b) => a.repSlot - b.repSlot || a.sourceRow - b.sourceRow)
+      bucket.inventory.sort((a, b) => String(a.barcode ?? a.productName).localeCompare(String(b.barcode ?? b.productName)) || a.sourceRow - b.sourceRow)
+      bucket.counts.sort((a, b) => a.productName.localeCompare(b.productName, 'ar') || a.locationLabel.localeCompare(b.locationLabel, 'ar'))
       bucket.treasury.sort((a, b) => a.sourceRow - b.sourceRow)
       const snapshot = stableValue(bucket) as Json
       const sourceHash = createHash('sha256')
