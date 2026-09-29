@@ -346,6 +346,8 @@ export async function POST(
       if (error) throw error
     }
 
+    const productIdByKey = new Map<string, string>()
+
     if (parsed.products.length > 0) {
       const productRows = parsed.products.map((product) => ({
         organization_id: batch.organization_id,
@@ -376,6 +378,18 @@ export async function POST(
           ignoreDuplicates: false,
         })
       if (error) throw error
+
+      const { data: persistedProducts, error: productLookupError } = await admin
+        .from('products')
+        .select('id,source_product_key,name')
+        .eq('organization_id', batch.organization_id)
+
+      if (productLookupError) throw productLookupError
+
+      for (const product of persistedProducts ?? []) {
+        productIdByKey.set(String(product.source_product_key).trim().toLowerCase(), product.id)
+        productIdByKey.set(String(product.name).replace(/\s+/g, ' ').trim().toLowerCase(), product.id)
+      }
     }
 
     if (parsed.inventoryDaily.length > 0) {
@@ -383,6 +397,7 @@ export async function POST(
         batch_id: batchId,
         branch_id: batch.branch_id,
         business_date: row.businessDate,
+        product_id: productIdByKey.get(String(row.barcode ?? row.productName).trim().toLowerCase()) ?? productIdByKey.get(row.productName.replace(/\s+/g, ' ').trim().toLowerCase()) ?? null,
         product_name: row.productName,
         opening_qty: row.openingQty,
         incoming_factory_qty: row.incomingFactoryQty,
