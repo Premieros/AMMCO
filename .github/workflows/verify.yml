@@ -33,5 +33,8 @@ jobs:
       - name: Typecheck
         run: npm run typecheck
 
+      - name: Verify importer
+        run: npm run verify:importer
+
       - name: Build
         run: npm run build
