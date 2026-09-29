@@ -294,7 +294,7 @@ function extractProducts(worksheet: ExcelJS.Worksheet) {
     const flavor = textCell(worksheet.getCell(`J${row}`)) || null
     const priceCategory = textCell(worksheet.getCell(`K${row}`)) || null
     const barcodeText = textCell(worksheet.getCell(`O${row}`)) || null
-    const displayName = [baseName, model, flavor, priceCategory].filter(Boolean).join(' ')
+    const displayName = textCell(worksheet.getCell(`P${row}`)) || [baseName, model, flavor, priceCategory].filter(Boolean).join(' ')
     const sourceProductKey = barcodeText ?? displayName.replace(/\s+/g, ' ').trim().toLowerCase()
 
     products.push({
