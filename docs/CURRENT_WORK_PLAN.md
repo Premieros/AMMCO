@@ -225,3 +225,10 @@ Do not fabricate product-level movement from aggregate warehouse rows. Product m
 - [x] Production transaction test: unresolved `import_day_changes.resolution_status='detected'` blocks `approve_import_batch` with `HISTORICAL_CHANGES_REQUIRE_REVIEW`.
 - [x] Production transaction test: changing the same historical difference to `accepted` allows approval and writes the expected `branch_day_submissions` lock/hash.
 - [x] Both tests intentionally ended in rollback and left 0 test batches, 0 test changes, 0 test locks, and 0 test snapshots.
+
+
+### Importer regression CI — 2026-09-30
+- [x] Added a generated-workbook regression test to GitHub Actions.
+- [x] Test covers canonical product extraction, barcode identity, product-level daily movement, closing inventory value, representative expense, representative discount and sales-before-discount.
+- [x] The new test exposed and fixed a real ExcelJS boundary bug: row-number scans were using `actualRowCount` instead of `rowCount`, which could skip sparse rows/gaps.
+- [x] Verify #279: Typecheck Green, importer regression Green, Build Green.
