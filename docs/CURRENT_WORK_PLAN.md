@@ -58,3 +58,15 @@ Each branch uploads its workbook. AMMCO validates, versions, stores, normalizes,
 3. Re-uploading does not double count.
 4. Raw imported rows remain traceable to batch/sheet/row.
 5. Reports only use approved, non-superseded data.
+
+
+## Deployment target
+- [x] Hosting decision: GitHub Pages only
+- [ ] Convert frontend to static-export-safe architecture
+- [ ] Move server/API workbook processing to Supabase Edge Functions
+- [ ] Remove server-only frontend dependencies from runtime paths
+- [ ] Add GitHub Pages deployment workflow
+- [ ] Verify repository base path /AMMCO
+- [ ] Publish preview from development branch before main deployment
+
+Deployment rule: no Vercel for AMMCO.
