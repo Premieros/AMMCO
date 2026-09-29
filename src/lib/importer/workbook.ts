@@ -17,10 +17,33 @@ export type ParsedSheet = {
 export type WorkbookIssue = {
   sheetName?: string
   rowNumber?: number
+  cellRef?: string
   code: string
   severity: 'info' | 'warning' | 'error'
   message: string
   rawValue?: Json
+}
+
+export type RepresentativeBlock = {
+  slot: number
+  sourceColumn: string
+  sourceAnchorCell: string
+  repName: string
+  openingBalance: number
+  netAfterDiscount: number
+  depositAmount: number
+  expenseAmount: number
+  extraDiscount: number
+  totalDiscount: number
+  closingBalance: number
+  salesBeforeDiscount: number
+  rawPayload: Json
+}
+
+export type RepresentativeDay = {
+  sheetName: string
+  businessDate: string
+  reps: RepresentativeBlock[]
 }
 
 const REQUIRED_SHEETS = [
@@ -32,6 +55,21 @@ const REQUIRED_SHEETS = [
   'حركة المخزن',
   'ملاحظات',
   'الجرد',
+] as const
+
+const REPRESENTATIVE_COLUMNS = [
+  'J',
+  'L',
+  'N',
+  'P',
+  'R',
+  'T',
+  'V',
+  'X',
+  'Z',
+  'AB',
+  'AD',
+  'AF',
 ] as const
 
 function toJson(value: unknown): Json {
@@ -85,12 +123,136 @@ function isMeaningful(value: Json) {
   return true
 }
 
-export async function parseWorkbook(buffer: Buffer) {
+function cellResult(cell: ExcelJS.Cell): unknown {
+  const value = cell.value
+  if (value && typeof value === 'object' && 'result' in value) {
+    return (value as { result?: unknown }).result
+  }
+  return value
+}
+
+function textCell(cell: ExcelJS.Cell) {
+  const value = cellResult(cell)
+  if (value === null || value === undefined) return ''
+  if (typeof value === 'string') return value.trim()
+  if (typeof value === 'number') return value === 0 ? '' : String(value)
+  if (typeof value === 'object' && 'text' in (value as Record<string, unknown>)) {
+    return String((value as { text?: unknown }).text ?? '').trim()
+  }
+  return ''
+}
+
+function numberCell(cell: ExcelJS.Cell) {
+  const value = cellResult(cell)
+  if (typeof value === 'number' && Number.isFinite(value)) return value
+  if (typeof value === 'string') {
+    const normalized = value.replace(/,/g, '').trim()
+    const parsed = Number(normalized)
+    if (Number.isFinite(parsed)) return parsed
+  }
+  return 0
+}
+
+function dateForDailySheet(sheetName: string, periodStart?: string) {
+  if (!periodStart) return null
+  const match = sheetName.trim().match(/^(\d{1,2})(-?)$/)
+  if (!match) return null
+
+  const day = Number(match[1])
+  if (!Number.isInteger(day) || day < 1 || day > 31) return null
+
+  const base = new Date(`${periodStart}T00:00:00Z`)
+  if (Number.isNaN(base.getTime())) return null
+
+  const year = match[2] ? base.getUTCFullYear() : base.getUTCFullYear()
+  const month = match[2] ? base.getUTCMonth() - 1 : base.getUTCMonth()
+  const date = new Date(Date.UTC(year, month, day))
+
+  if (date.getUTCDate() !== day) return null
+  return date.toISOString().slice(0, 10)
+}
+
+function extractRepresentativeDay(
+  worksheet: ExcelJS.Worksheet,
+  businessDate: string,
+  issues: WorkbookIssue[],
+): RepresentativeDay {
+  const reps: RepresentativeBlock[] = []
+  const seenNames = new Set<string>()
+
+  REPRESENTATIVE_COLUMNS.forEach((column, index) => {
+    const anchor = worksheet.getCell(`${column}9`)
+    const repName = textCell(anchor)
+
+    if (!repName) return
+
+    const normalizedName = repName.replace(/\s+/g, ' ').trim()
+    if (seenNames.has(normalizedName)) {
+      issues.push({
+        sheetName: worksheet.name,
+        rowNumber: 9,
+        cellRef: anchor.address,
+        code: 'DUPLICATE_REP_IN_DAY',
+        severity: 'error',
+        message: `المندوب "${normalizedName}" مكرر في نفس اليوم`,
+        rawValue: normalizedName,
+      })
+      return
+    }
+    seenNames.add(normalizedName)
+
+    const openingBalance = numberCell(worksheet.getCell(`${column}2`))
+    const netAfterDiscount = numberCell(worksheet.getCell(`${column}3`))
+    const depositAmount = numberCell(worksheet.getCell(`${column}4`))
+    const expenseAmount = numberCell(worksheet.getCell(`${column}5`))
+    const extraDiscount = numberCell(worksheet.getCell(`${column}6`))
+    const totalDiscount = numberCell(worksheet.getCell(`${column}7`))
+    const closingBalance = numberCell(worksheet.getCell(`${column}8`))
+    const salesBeforeDiscount = netAfterDiscount + totalDiscount
+
+    reps.push({
+      slot: index + 1,
+      sourceColumn: column,
+      sourceAnchorCell: anchor.address,
+      repName: normalizedName,
+      openingBalance,
+      netAfterDiscount,
+      depositAmount,
+      expenseAmount,
+      extraDiscount,
+      totalDiscount,
+      closingBalance,
+      salesBeforeDiscount,
+      rawPayload: {
+        opening_balance: { cell: `${column}2`, value: openingBalance },
+        net_after_discount: { cell: `${column}3`, value: netAfterDiscount },
+        deposit_amount: { cell: `${column}4`, value: depositAmount },
+        expense_amount: { cell: `${column}5`, value: expenseAmount },
+        extra_discount: { cell: `${column}6`, value: extraDiscount },
+        total_discount: { cell: `${column}7`, value: totalDiscount },
+        closing_balance: { cell: `${column}8`, value: closingBalance },
+        rep_name: { cell: anchor.address, value: normalizedName },
+      },
+    })
+  })
+
+  return {
+    sheetName: worksheet.name,
+    businessDate,
+    reps,
+  }
+}
+
+export async function parseWorkbook(
+  buffer: Buffer,
+  options: { periodStart?: string } = {},
+) {
   const workbook = new ExcelJS.Workbook()
   await workbook.xlsx.load(buffer as unknown as Parameters<typeof workbook.xlsx.load>[0])
 
   const issues: WorkbookIssue[] = []
   const sheets: ParsedSheet[] = []
+  const representativeDays: RepresentativeDay[] = []
 
   if (workbook.worksheets.length === 0) {
     issues.push({
@@ -146,16 +308,25 @@ export async function parseWorkbook(buffer: Buffer) {
       columnCount: worksheet.actualColumnCount,
       rows,
     })
+
+    const businessDate = dateForDailySheet(worksheet.name, options.periodStart)
+    if (businessDate) {
+      representativeDays.push(extractRepresentativeDay(worksheet, businessDate, issues))
+    }
   })
 
   return {
     sheets,
     issues,
-    schemaVersion: 'ammco-reference-v1',
+    representativeDays,
+    schemaVersion: 'ammco-reference-v2-rep12',
     stats: {
       sheetCount: sheets.length,
       rawRowCount: sheets.reduce((sum, sheet) => sum + sheet.rows.length, 0),
       dailySheetCount: dailySheets.length,
+      representativeDayCount: representativeDays.length,
+      representativeRowCount: representativeDays.reduce((sum, day) => sum + day.reps.length, 0),
+      representativeTemplateSlots: REPRESENTATIVE_COLUMNS.length,
     },
   }
 }
