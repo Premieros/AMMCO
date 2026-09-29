@@ -243,6 +243,7 @@ export async function POST(
       admin.from('import_validation_issues').delete().eq('batch_id', batchId),
       admin.from('import_raw_rows').delete().eq('batch_id', batchId),
       admin.from('sales_rep_daily').delete().eq('batch_id', batchId),
+      admin.from('inventory_daily').delete().eq('batch_id', batchId),
       admin.from('rep_remittance_daily').delete().eq('batch_id', batchId),
       admin.from('warehouse_daily_summary').delete().eq('batch_id', batchId),
       admin.from('inventory_counts').delete().eq('batch_id', batchId),
@@ -374,6 +375,39 @@ export async function POST(
           ignoreDuplicates: false,
         })
       if (error) throw error
+    }
+
+    if (parsed.inventoryDaily.length > 0) {
+      const inventoryRows = parsed.inventoryDaily.map((row) => ({
+        batch_id: batchId,
+        branch_id: batch.branch_id,
+        business_date: row.businessDate,
+        product_name: row.productName,
+        opening_qty: row.openingQty,
+        incoming_factory_qty: row.incomingFactoryQty,
+        incoming_branches_qty: row.incomingBranchesQty,
+        sales_qty: row.salesQty,
+        bonus_qty: row.bonusQty,
+        gifts_qty: row.giftsQty,
+        damages_qty: row.damagesQty,
+        return_factory_qty: row.returnFactoryQty,
+        outgoing_branches_qty: row.outgoingBranchesQty,
+        adjustments_qty: row.adjustmentsQty,
+        closing_qty: row.closingQty,
+        unit_value: row.unitValue,
+        closing_value: row.closingValue,
+        raw_payload: {
+          ...row.rawPayload,
+          barcode: row.barcode,
+        },
+      }))
+
+      for (let offset = 0; offset < inventoryRows.length; offset += 500) {
+        const { error } = await admin
+          .from('inventory_daily')
+          .insert(inventoryRows.slice(offset, offset + 500))
+        if (error) throw error
+      }
     }
 
     if (parsed.remittances.length > 0) {
@@ -544,6 +578,7 @@ export async function POST(
       products: parsed.stats.productCount,
       remittances: parsed.stats.remittanceRowCount,
       warehouseDays: parsed.stats.warehouseDayCount,
+      inventoryDailyRows: parsed.stats.inventoryDailyRowCount,
       inventoryCountRows: parsed.stats.inventoryCountRowCount,
       treasuryEntries: parsed.stats.treasuryEntryCount,
       expenseEntries: parsed.stats.expenseEntryCount,
