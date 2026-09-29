@@ -30,6 +30,11 @@ using (
     select 1 from public.profiles p
     where p.user_id=(select auth.uid()) and p.is_active
       and p.organization_id=branch_expense_accrual_settings.organization_id
+      and exists (
+        select 1 from public.branches b
+        where b.id=branch_expense_accrual_settings.branch_id
+          and b.organization_id=branch_expense_accrual_settings.organization_id
+      )
       and (
         p.role='admin'::public.app_role
         or exists (
@@ -50,6 +55,11 @@ using (
     where p.user_id=(select auth.uid()) and p.is_active
       and p.role='admin'::public.app_role
       and p.organization_id=branch_expense_accrual_settings.organization_id
+      and exists (
+        select 1 from public.branches b
+        where b.id=branch_expense_accrual_settings.branch_id
+          and b.organization_id=branch_expense_accrual_settings.organization_id
+      )
   )
 )
 with check (
@@ -58,6 +68,11 @@ with check (
     where p.user_id=(select auth.uid()) and p.is_active
       and p.role='admin'::public.app_role
       and p.organization_id=branch_expense_accrual_settings.organization_id
+      and exists (
+        select 1 from public.branches b
+        where b.id=branch_expense_accrual_settings.branch_id
+          and b.organization_id=branch_expense_accrual_settings.organization_id
+      )
   )
 );
 
