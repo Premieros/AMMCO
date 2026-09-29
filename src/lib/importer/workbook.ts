@@ -387,8 +387,8 @@ function extractInventoryCounts(worksheet: ExcelJS.Worksheet, countDate?: string
   ] as const
 
   for (let row = 4; row <= worksheet.actualRowCount; row += 1) {
-    const productName = textCell(worksheet.getCell(row, 2))
-    if (!productName) continue
+    const productName = textCell(worksheet.getCell(row, 2)).replace(/\s+/g, ' ').trim()
+    if (!productName || productName.replace(/أ|إ|آ/g, 'ا') === 'اجمالي') continue
 
     const unitValue = nullableNumber(worksheet.getCell(row, 3))
     const bookQty = nullableNumber(worksheet.getCell(row, 4))
