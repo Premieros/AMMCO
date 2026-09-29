@@ -71,6 +71,19 @@ create index if not exists treasury_accounts_branch_idx
 create index if not exists cash_entries_treasury_date_idx
   on public.cash_entries(treasury_account_id,entry_date);
 
+create index if not exists branch_day_submissions_current_batch_idx
+  on public.branch_day_submissions(current_batch_id);
+create index if not exists branch_day_submissions_first_uploaded_by_idx
+  on public.branch_day_submissions(first_uploaded_by);
+create index if not exists import_day_changes_previous_batch_idx
+  on public.import_day_changes(previous_batch_id);
+create index if not exists import_day_changes_resolved_by_idx
+  on public.import_day_changes(resolved_by);
+create index if not exists treasury_accounts_organization_idx
+  on public.treasury_accounts(organization_id);
+create index if not exists treasury_accounts_created_by_idx
+  on public.treasury_accounts(created_by);
+
 insert into public.treasury_accounts (organization_id,branch_id,code,name,account_type,is_default)
 select b.organization_id,b.id,'MAIN','الخزنة الرئيسية','cash',true
 from public.branches b
@@ -116,8 +129,22 @@ using (
 );
 
 drop policy if exists treasury_accounts_admin_write on public.treasury_accounts;
-create policy treasury_accounts_admin_write on public.treasury_accounts
-for all to authenticated
+drop policy if exists treasury_accounts_admin_insert on public.treasury_accounts;
+drop policy if exists treasury_accounts_admin_update on public.treasury_accounts;
+
+create policy treasury_accounts_admin_insert on public.treasury_accounts
+for insert to authenticated
+with check (
+  exists (
+    select 1 from public.profiles p
+    where p.user_id=(select auth.uid()) and p.is_active
+      and p.role='admin'::public.app_role
+      and p.organization_id=treasury_accounts.organization_id
+  )
+);
+
+create policy treasury_accounts_admin_update on public.treasury_accounts
+for update to authenticated
 using (
   exists (
     select 1 from public.profiles p
@@ -207,8 +234,23 @@ with check (
 );
 
 drop policy if exists branch_day_submissions_admin_write on public.branch_day_submissions;
-create policy branch_day_submissions_admin_write on public.branch_day_submissions
-for all to authenticated
+drop policy if exists branch_day_submissions_admin_insert on public.branch_day_submissions;
+drop policy if exists branch_day_submissions_admin_update on public.branch_day_submissions;
+
+create policy branch_day_submissions_admin_insert on public.branch_day_submissions
+for insert to authenticated
+with check (
+  exists (
+    select 1 from public.profiles p
+    join public.branches b on b.organization_id=p.organization_id
+    where p.user_id=(select auth.uid()) and p.is_active
+      and p.role='admin'::public.app_role
+      and b.id=branch_day_submissions.branch_id
+  )
+);
+
+create policy branch_day_submissions_admin_update on public.branch_day_submissions
+for update to authenticated
 using (
   exists (
     select 1 from public.profiles p
@@ -365,6 +407,15 @@ alter table public.cash_entry_correction_log
   add column if not exists new_description text,
   add column if not exists old_treasury_account_id uuid references public.treasury_accounts(id) on delete set null,
   add column if not exists new_treasury_account_id uuid references public.treasury_accounts(id) on delete set null;
+
+create index if not exists cash_entry_correction_log_branch_idx
+  on public.cash_entry_correction_log(branch_id);
+create index if not exists cash_entry_correction_log_changed_by_idx
+  on public.cash_entry_correction_log(changed_by);
+create index if not exists cash_entry_correction_log_old_treasury_idx
+  on public.cash_entry_correction_log(old_treasury_account_id);
+create index if not exists cash_entry_correction_log_new_treasury_idx
+  on public.cash_entry_correction_log(new_treasury_account_id);
 
 create or replace function public.audit_cash_entry_correction()
 returns trigger
