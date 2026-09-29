@@ -1,4 +1,4 @@
-name: One-time AMMCO production promote
+name: One-time AMMCO production alias
 
 on:
   push:
@@ -9,14 +9,20 @@ permissions:
   contents: read
 
 jobs:
-  promote:
+  alias:
     runs-on: ubuntu-latest
-    timeout-minutes: 10
+    timeout-minutes: 5
     steps:
-      - name: Promote verified preview to production
+      - name: Point production aliases to verified deployment
+        env:
+          VERCEL_TOKEN: ${{ secrets.VERCEL_TOKEN }}
         run: |
-          if [ -z "${{ secrets.VERCEL_TOKEN }}" ]; then
+          set -euo pipefail
+          if [ -z "$VERCEL_TOKEN" ]; then
             echo "VERCEL_TOKEN secret is not configured"
             exit 2
           fi
-          npx --yes vercel@latest promote https://ammcofoods-6g3hp82e5-premieros-3817.vercel.app --token="${{ secrets.VERCEL_TOKEN }}" --scope="premieros-3817" --yes
+          for alias in ammcofoods.vercel.app ammcofoods-premieros-3817.vercel.app ammcofoods-git-main-premieros-3817.vercel.app; do
+            curl --fail-with-body --silent --show-error               -X POST "https://api.vercel.com/v2/deployments/dpl_6mxXJSxozV8fbwAk4SqFjWfssp9o/aliases?teamId=team_spQBjgWpl9p2ekmTMo1Wm3AI"               -H "Authorization: Bearer $VERCEL_TOKEN"               -H "Content-Type: application/json"               --data "{\"alias\":\"$alias\",\"redirect\":null}"
+            echo
+          done
