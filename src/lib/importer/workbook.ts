@@ -46,6 +46,28 @@ export type RepresentativeDay = {
   reps: RepresentativeBlock[]
 }
 
+export type InventoryDailyRow = {
+  businessDate: string
+  sourceSheet: string
+  sourceRow: number
+  barcode: string | null
+  productName: string
+  unitValue: number | null
+  openingQty: number
+  incomingFactoryQty: number
+  incomingBranchesQty: number
+  salesQty: number
+  bonusQty: number
+  giftsQty: number
+  damagesQty: number
+  returnFactoryQty: number
+  outgoingBranchesQty: number
+  adjustmentsQty: number
+  closingQty: number
+  closingValue: number | null
+  rawPayload: Json
+}
+
 export type ParsedProduct = {
   sourceProductKey: string
   name: string
@@ -702,6 +724,68 @@ function dateForDailySheet(sheetName: string, periodStart?: string) {
   return date.toISOString().slice(0, 10)
 }
 
+function extractInventoryDaily(
+  worksheet: ExcelJS.Worksheet,
+  businessDate: string,
+): InventoryDailyRow[] {
+  const rows: InventoryDailyRow[] = []
+
+  let headerRow = 0
+  for (let row = 1; row <= Math.min(worksheet.actualRowCount, 30); row += 1) {
+    const barcodeHeader = textCell(worksheet.getCell(`AX${row}`))
+    const closingHeader = textCell(worksheet.getCell(`BI${row}`))
+    if (barcodeHeader.includes('باركود') && closingHeader.includes('رصيد اخر')) {
+      headerRow = row
+      break
+    }
+  }
+
+  if (!headerRow) return rows
+
+  for (let row = headerRow + 1; row <= worksheet.actualRowCount; row += 1) {
+    const productName = textCell(worksheet.getCell(`D${row}`)).replace(/\s+/g, ' ').trim()
+    const barcodeText = textCell(worksheet.getCell(`AX${row}`))
+    const barcodeNumber = numberCell(worksheet.getCell(`AX${row}`))
+    const normalizedProductName = productName.replace(/[\s*]+/g, '')
+
+    if (!normalizedProductName || (!barcodeText && barcodeNumber === 0)) continue
+
+    const unitValue = nullableNumber(worksheet.getCell(`E${row}`))
+    const closingQty = numberCell(worksheet.getCell(`BI${row}`))
+
+    rows.push({
+      businessDate,
+      sourceSheet: worksheet.name,
+      sourceRow: row,
+      barcode: barcodeText || (barcodeNumber ? String(barcodeNumber) : null),
+      productName,
+      unitValue,
+      openingQty: numberCell(worksheet.getCell(`AY${row}`)),
+      incomingFactoryQty: numberCell(worksheet.getCell(`AZ${row}`)),
+      incomingBranchesQty: numberCell(worksheet.getCell(`BA${row}`)),
+      salesQty: numberCell(worksheet.getCell(`BB${row}`)),
+      bonusQty: numberCell(worksheet.getCell(`BC${row}`)),
+      giftsQty: numberCell(worksheet.getCell(`BD${row}`)),
+      damagesQty: numberCell(worksheet.getCell(`BE${row}`)),
+      returnFactoryQty: numberCell(worksheet.getCell(`BF${row}`)),
+      outgoingBranchesQty: numberCell(worksheet.getCell(`BG${row}`)),
+      adjustmentsQty: numberCell(worksheet.getCell(`BH${row}`)),
+      closingQty,
+      closingValue: unitValue === null ? null : closingQty * unitValue,
+      rawPayload: {
+        source_sheet: worksheet.name,
+        source_row: row,
+        barcode_cell: `AX${row}`,
+        product_name_cell: `D${row}`,
+        unit_value_cell: `E${row}`,
+        movement_columns: 'AY:BI',
+      },
+    })
+  }
+
+  return rows
+}
+
 function extractRepresentativeDay(
   worksheet: ExcelJS.Worksheet,
   businessDate: string,
@@ -783,6 +867,7 @@ export async function parseWorkbook(
   const issues: WorkbookIssue[] = []
   const sheets: ParsedSheet[] = []
   const representativeDays: RepresentativeDay[] = []
+  const inventoryDaily: InventoryDailyRow[] = []
   let products: ParsedProduct[] = []
   let remittances: RepRemittanceRow[] = []
   let warehouseDaily: WarehouseDailySummary[] = []
@@ -867,6 +952,7 @@ export async function parseWorkbook(
     const businessDate = dateForDailySheet(worksheet.name, options.periodStart)
     if (businessDate) {
       representativeDays.push(extractRepresentativeDay(worksheet, businessDate, issues))
+      inventoryDaily.push(...extractInventoryDaily(worksheet, businessDate))
     }
   })
 
@@ -874,12 +960,13 @@ export async function parseWorkbook(
     sheets,
     issues,
     representativeDays,
+    inventoryDaily,
     products,
     remittances,
     warehouseDaily,
     inventoryCounts,
     treasuryEntries,
-    schemaVersion: 'ammco-reference-v6-treasury-expense-analytics',
+    schemaVersion: 'ammco-reference-v7-product-inventory-daily',
     stats: {
       sheetCount: sheets.length,
       rawRowCount: sheets.reduce((sum, sheet) => sum + sheet.rows.length, 0),
@@ -887,6 +974,7 @@ export async function parseWorkbook(
       representativeDayCount: representativeDays.length,
       representativeRowCount: representativeDays.reduce((sum, day) => sum + day.reps.length, 0),
       representativeTemplateSlots: REPRESENTATIVE_COLUMNS.length,
+      inventoryDailyRowCount: inventoryDaily.length,
       productCount: products.length,
       remittanceRowCount: remittances.length,
       warehouseDayCount: warehouseDaily.length,
