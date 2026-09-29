@@ -13,23 +13,43 @@ function pct(value: number) {
   return `${new Intl.NumberFormat('en-US', { maximumFractionDigits: 1 }).format(value * 100)}%`
 }
 
-export default async function SalesPage() {
+export default async function SalesPage({
+  searchParams,
+}: {
+  searchParams: Promise<{ from?: string; to?: string }>
+}) {
+  const filters = await searchParams
+  const from = filters.from ?? ''
+  const to = filters.to ?? ''
   const supabase = await createClient()
   const { data: auth } = await supabase.auth.getClaims()
   if (!auth?.claims?.sub) redirect('/login')
 
+  let dailyQuery = supabase
+    .from('v_branch_daily_kpis')
+    .select('*')
+    .order('business_date', { ascending: false })
+    .limit(5000)
+
+  let warehouseQuery = supabase
+    .from('warehouse_daily_summary')
+    .select('branch_id,business_date,sales_qty,sales_value,closing_qty,closing_value,import_batches!inner(status)')
+    .eq('import_batches.status', 'approved')
+    .order('business_date', { ascending: false })
+    .limit(5000)
+
+  if (from) {
+    dailyQuery = dailyQuery.gte('business_date', from)
+    warehouseQuery = warehouseQuery.gte('business_date', from)
+  }
+  if (to) {
+    dailyQuery = dailyQuery.lte('business_date', to)
+    warehouseQuery = warehouseQuery.lte('business_date', to)
+  }
+
   const [{ data: daily }, { data: warehouse }] = await Promise.all([
-    supabase
-      .from('v_branch_daily_kpis')
-      .select('*')
-      .order('business_date', { ascending: false })
-      .limit(5000),
-    supabase
-      .from('warehouse_daily_summary')
-      .select('branch_id,business_date,sales_qty,sales_value,closing_qty,closing_value,import_batches!inner(status)')
-      .eq('import_batches.status', 'approved')
-      .order('business_date', { ascending: false })
-      .limit(5000),
+    dailyQuery,
+    warehouseQuery,
   ])
 
   const warehouseByKey = new Map(
@@ -69,6 +89,12 @@ export default async function SalesPage() {
       subtitle="حركة تراكمية مع فلاتر متعددة الفروع وبحث واختيار أعمدة مثل Excel"
       breadcrumbs={[{ label: 'لوحة الإدارة', href: '/' }, { label: 'المبيعات' }]}
     >
+      <form className="card filters" method="get" style={{ marginBottom: 16 }}>
+        <div className="field"><label>من</label><input name="from" type="date" defaultValue={from} /></div>
+        <div className="field"><label>إلى</label><input name="to" type="date" defaultValue={to} /></div>
+        <div className="field filter-action"><label>&nbsp;</label><button className="btn" type="submit">تطبيق الفترة</button></div>
+      </form>
+
       <section className="grid portal-kpis" style={{ marginBottom: 16 }}>
         <div className="card"><div className="kpi-label">صافي المبيعات</div><div className="kpi-value">{money(totalNet)}</div></div>
         <div className="card"><div className="kpi-label">البيع قبل الخصم</div><div className="kpi-value">{money(totalGross)}</div></div>
