@@ -1,3 +1,4 @@
+import Link from 'next/link'
 import { redirect } from 'next/navigation'
 import { AppShell } from '@/components/app-shell'
 import { createClient } from '@/lib/supabase/server'
@@ -268,14 +269,14 @@ export default async function DashboardPage({
       </form>
 
       <section className="grid portal-kpis">
-        <div className="card"><div className="kpi-label">صافي المبيعات</div><div className="kpi-value">{money(totals.net)}</div></div>
-        <div className="card"><div className="kpi-label">البيع قبل الخصم</div><div className="kpi-value">{money(totals.gross)}</div></div>
-        <div className="card"><div className="kpi-label">الخصومات</div><div className="kpi-value">{money(totals.discount)}</div><div className="muted">{pct(discountRate)}</div></div>
-        <div className="card"><div className="kpi-label">كمية البيع</div><div className="kpi-value">{number(salesQty, 2)}</div></div>
-        <div className="card"><div className="kpi-label">التحصيلات</div><div className="kpi-value">{money(totals.collections)}</div></div>
-        <div className="card"><div className="kpi-label">رصيد المديونية</div><div className="kpi-value">{money(Number(latestDaily?.closing_receivables ?? 0))}</div></div>
-        <div className="card"><div className="kpi-label">رصيد المخزون</div><div className="kpi-value">{money(Number(latestWarehouse?.closing_value ?? 0))}</div><div className="muted">{number(Number(latestWarehouse?.closing_qty ?? 0), 2)} وحدة</div></div>
-        <div className="card"><div className="kpi-label">المصروفات</div><div className="kpi-value">{money(totals.expenses)}</div><div className="muted">{pct(expenseRate)} من صافي البيع</div></div>
+        <Link className="card click-card" href={`/drilldown/sales?branch=${filters.branch ?? ''}&from=${from}&to=${to}`}><div className="kpi-label">صافي المبيعات</div><div className="kpi-value">{money(totals.net)}</div></Link>
+        <Link className="card click-card" href={`/drilldown/gross?branch=${filters.branch ?? ''}&from=${from}&to=${to}`}><div className="kpi-label">البيع قبل الخصم</div><div className="kpi-value">{money(totals.gross)}</div></Link>
+        <Link className="card click-card" href={`/drilldown/discounts?branch=${filters.branch ?? ''}&from=${from}&to=${to}`}><div className="kpi-label">الخصومات</div><div className="kpi-value">{money(totals.discount)}</div><div className="muted">{pct(discountRate)}</div></Link>
+        <Link className="card click-card" href={`/drilldown/quantity?branch=${filters.branch ?? ''}&from=${from}&to=${to}`}><div className="kpi-label">كمية البيع</div><div className="kpi-value">{number(salesQty, 2)}</div></Link>
+        <Link className="card click-card" href={`/drilldown/collections?branch=${filters.branch ?? ''}&from=${from}&to=${to}`}><div className="kpi-label">التحصيلات</div><div className="kpi-value">{money(totals.collections)}</div></Link>
+        <Link className="card click-card" href={`/drilldown/receivables?branch=${filters.branch ?? ''}&from=${from}&to=${to}`}><div className="kpi-label">رصيد المديونية</div><div className="kpi-value">{money(Number(latestDaily?.closing_receivables ?? 0))}</div></Link>
+        <Link className="card click-card" href={`/drilldown/inventory?branch=${filters.branch ?? ''}&from=${from}&to=${to}`}><div className="kpi-label">رصيد المخزون</div><div className="kpi-value">{money(Number(latestWarehouse?.closing_value ?? 0))}</div><div className="muted">{number(Number(latestWarehouse?.closing_qty ?? 0), 2)} وحدة</div></Link>
+        <Link className="card click-card" href={`/expenses?branch=${filters.branch ?? ''}&from=${from}&to=${to}`}><div className="kpi-label">المصروفات</div><div className="kpi-value">{money(totals.expenses)}</div><div className="muted">{pct(expenseRate)} من صافي البيع</div></Link>
       </section>
 
       <section className="grid analytics-grid portal-charts">
@@ -325,8 +326,8 @@ export default async function DashboardPage({
               return (
                 <div className="rep-row" key={`${rep.branch_id}-${rep.rep_name}`}>
                   <div className="rep-title">
-                    <strong>{rep.rep_name}</strong>
-                    <span>{money(net)}</span>
+                    <Link className="row-link" href={`/drilldown/reps?branch=${rep.branch_id}&rep=${encodeURIComponent(rep.rep_name)}&from=${from}&to=${to}`}>{rep.rep_name}</Link>
+                    <Link className="row-link" href={`/drilldown/reps?branch=${rep.branch_id}&rep=${encodeURIComponent(rep.rep_name)}&from=${from}&to=${to}`}>{money(net)}</Link>
                   </div>
                   <div className="progress"><span style={{ width: `${Math.max(0, Math.abs(net) / repMax * 100)}%` }} /></div>
                   <div className="rep-meta">
@@ -366,8 +367,8 @@ export default async function DashboardPage({
                 const discount = Number(row.discounts ?? 0)
                 return (
                   <tr key={row.business_date ?? ''}>
-                    <td>{row.business_date}</td>
-                    <td>{money(Number(row.net_sales ?? 0))}</td>
+                    <td><Link className="row-link" href={`/drilldown/sales?branch=${row.branch_id ?? ''}&date=${row.business_date ?? ''}&from=${from}&to=${to}`}>{row.business_date}</Link></td>
+                    <td><Link className="row-link" href={`/drilldown/sales?branch=${row.branch_id ?? ''}&date=${row.business_date ?? ''}&from=${from}&to=${to}`}>{money(Number(row.net_sales ?? 0))}</Link></td>
                     <td>{number(Number(wh?.sales_qty ?? 0),2)}</td>
                     <td>{money(discount)}</td>
                     <td>{pct(gross ? discount/gross : 0)}</td>
