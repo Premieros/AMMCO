@@ -89,8 +89,8 @@ export default async function TreasuryEntryPage({
             <div className="grid analytics-grid">
               <div className="field">
                 <label>الخزنة / البنك</label>
-                <select name="treasury_account_id" defaultValue={entry.treasury_account_id ?? ''}>
-                  <option value="">بدون تحديد</option>
+                <select name="treasury_account_id" defaultValue={entry.treasury_account_id ?? ''} required>
+                  <option value="" disabled>اختر الخزنة</option>
                   {(accounts ?? []).map((account) => (
                     <option key={account.id} value={account.id}>{account.name}</option>
                   ))}
