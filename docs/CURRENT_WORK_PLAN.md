@@ -169,3 +169,29 @@ Do not fabricate product-level movement from aggregate warehouse rows. Product m
   - Reference commission rate is 3% of sales.
 - [x] Added branch monthly accrual settings model and Accrued vs Cash UI on development branch.
 - [ ] Apply new migrations only after final verification and explicit approval.
+
+
+### Integrity and migration closure — 2026-09-29
+- [x] Approved and superseded import batches are immutable through the process endpoint; changes require a new upload/version.
+- [x] Historical day hashes now include product-level inventory movement and inventory counts, not only branch totals.
+- [x] Real Tanta treasury parser reads transaction rows A:G only; side summary tables are not reporting source-of-truth.
+- [x] Transfer fees with blank category but description `مصروف تحويل` are classified from the real transaction row instead of relying on the workbook summary table.
+- [x] Accrued-vs-cash model separates actual cash paid from analytical expense and prevents double-counting wages/rent/commissions.
+- [x] Reference workbook formula independently confirmed:
+  - working days use `NETWORKDAYS.INTL(...,"0000100")` = Friday excluded only;
+  - accrued-to-date = monthly fixed / 26 × elapsed workdays + carried expenses;
+  - estimated commission = 3% × sales.
+- [x] Repository foundation migration versions aligned with the versions already recorded in AMMCO Supabase:
+  - 20260929162541 foundation
+  - 20260929162625 performance indexes
+  - 20260929163449 profiles RLS fix
+- [x] Pending locking/treasury migration hardened for replay: FK indexes added and overlapping SELECT/write RLS policies removed.
+- [x] Supabase security advisor: no schema/RLS critical finding; only Auth leaked-password protection warning remains.
+- [ ] Apply/record pending migrations only after final approval:
+  - 20260929193000 cash entry correction audit (schema already present; replay-safe reconciliation)
+  - 20260929222500 branch/day locking + treasury (schema already present; replay-safe reconciliation plus index/RLS cleanup)
+  - 20260929231000 representative expense amount
+  - 20260929232000 monthly accrual settings
+- [ ] After migrations: upload the real Tanta workbook through the normal pipeline, verify 1,872 product movement rows / 52 products / zero daily reconciliation differences, then approve.
+- [ ] Re-upload a changed historical day and confirm `HISTORICAL_DAY_CHANGED` blocks approval until explicit resolution.
+- [ ] Final advisor sweep and PR verification before requesting merge approval.
