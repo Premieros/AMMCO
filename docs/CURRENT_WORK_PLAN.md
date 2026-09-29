@@ -219,3 +219,9 @@ Do not fabricate product-level movement from aggregate warehouse rows. Product m
   - closing inventory value 520,315
 - [x] Repository HEAD after migration-history alignment verified Green in GitHub Actions.
 - [ ] Final live UI upload test is blocked only by Vercel deployment authentication in the available automation environment; complete it from an authenticated AMMCO session.
+
+
+### Historical approval rollback tests — 2026-09-30
+- [x] Production transaction test: unresolved `import_day_changes.resolution_status='detected'` blocks `approve_import_batch` with `HISTORICAL_CHANGES_REQUIRE_REVIEW`.
+- [x] Production transaction test: changing the same historical difference to `accepted` allows approval and writes the expected `branch_day_submissions` lock/hash.
+- [x] Both tests intentionally ended in rollback and left 0 test batches, 0 test changes, 0 test locks, and 0 test snapshots.
