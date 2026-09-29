@@ -491,6 +491,7 @@ export async function POST(
         batch_id: batchId,
         branch_id: batch.branch_id,
         count_date: row.countDate,
+        product_id: productIdByKey.get(row.productName.replace(/\s+/g, ' ').trim().toLowerCase()) ?? null,
         product_name: row.productName,
         location_type: row.locationType,
         location_label: row.locationLabel,
