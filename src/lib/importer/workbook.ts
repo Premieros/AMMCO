@@ -399,7 +399,7 @@ function extractInventoryCounts(worksheet: ExcelJS.Worksheet, countDate?: string
     rows.push({
       countDate,
       productName,
-      locationType: 'total',
+      locationType: 'branch_total',
       locationLabel: 'إجمالي',
       bookQty,
       actualQty,
