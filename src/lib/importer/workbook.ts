@@ -286,7 +286,7 @@ function nullableNumber(cell: ExcelJS.Cell) {
 function extractProducts(worksheet: ExcelJS.Worksheet) {
   const products: ParsedProduct[] = []
 
-  for (let row = 4; row <= worksheet.actualRowCount; row += 1) {
+  for (let row = 4; row <= worksheet.rowCount; row += 1) {
     const baseName = textCell(worksheet.getCell(`H${row}`))
     if (!baseName) continue
 
@@ -340,7 +340,7 @@ function extractRemittances(worksheet: ExcelJS.Worksheet) {
 
     const openingDebt = numberCell(worksheet.getCell(1, startColumn))
 
-    for (let row = 6; row <= worksheet.actualRowCount; row += 1) {
+    for (let row = 6; row <= worksheet.rowCount; row += 1) {
       const businessDate = dateCell(worksheet.getCell(row, 1))
       if (!businessDate) continue
 
@@ -386,7 +386,7 @@ function extractInventoryCounts(worksheet: ExcelJS.Worksheet, countDate?: string
     { column: 17, type: 'vehicle', label: 'سيارة 5' },
   ] as const
 
-  for (let row = 4; row <= worksheet.actualRowCount; row += 1) {
+  for (let row = 4; row <= worksheet.rowCount; row += 1) {
     const productName = textCell(worksheet.getCell(row, 2)).replace(/\s+/g, ' ').trim()
     if (!productName || productName.replace(/أ|إ|آ/g, 'ا') === 'اجمالي') continue
 
@@ -592,7 +592,7 @@ function extractTreasuryEntries(
 ) {
   const entries: TreasuryEntry[] = []
 
-  for (let row = 3; row <= worksheet.actualRowCount; row += 1) {
+  for (let row = 3; row <= worksheet.rowCount; row += 1) {
     const inbound = nullableNumber(worksheet.getCell(row, 5)) ?? 0
     const outbound = nullableNumber(worksheet.getCell(row, 6)) ?? 0
     if (inbound === 0 && outbound === 0) continue
@@ -660,10 +660,10 @@ function extractTreasuryEntries(
 function extractWarehouseDaily(worksheet: ExcelJS.Worksheet) {
   const rows: WarehouseDailySummary[] = []
 
-  for (let qtyRow = 3; qtyRow <= worksheet.actualRowCount; qtyRow += 2) {
+  for (let qtyRow = 3; qtyRow <= worksheet.rowCount; qtyRow += 2) {
     const valueRow = qtyRow + 1
     const businessDate = dateCell(worksheet.getCell(qtyRow, 1))
-    if (!businessDate || valueRow > worksheet.actualRowCount) continue
+    if (!businessDate || valueRow > worksheet.rowCount) continue
 
     const q = (column: number) => numberCell(worksheet.getCell(qtyRow, column))
     const v = (column: number) => numberCell(worksheet.getCell(valueRow, column))
@@ -731,7 +731,7 @@ function extractInventoryDaily(
   const rows: InventoryDailyRow[] = []
 
   let headerRow = 0
-  for (let row = 1; row <= Math.min(worksheet.actualRowCount, 30); row += 1) {
+  for (let row = 1; row <= Math.min(worksheet.rowCount, 30); row += 1) {
     const barcodeHeader = textCell(worksheet.getCell(`AX${row}`))
     const closingHeader = textCell(worksheet.getCell(`BI${row}`))
     if (barcodeHeader.includes('باركود') && closingHeader.includes('رصيد اخر')) {
@@ -742,7 +742,7 @@ function extractInventoryDaily(
 
   if (!headerRow) return rows
 
-  for (let row = headerRow + 1; row <= worksheet.actualRowCount; row += 1) {
+  for (let row = headerRow + 1; row <= worksheet.rowCount; row += 1) {
     const productName = textCell(worksheet.getCell(`D${row}`)).replace(/\s+/g, ' ').trim()
     const barcodeText = textCell(worksheet.getCell(`AX${row}`))
     const barcodeNumber = numberCell(worksheet.getCell(`AX${row}`))
