@@ -187,12 +187,35 @@ Do not fabricate product-level movement from aggregate warehouse rows. Product m
   - 20260929163449 profiles RLS fix
 - [x] Pending locking/treasury migration hardened for replay: FK indexes added and overlapping SELECT/write RLS policies removed.
 - [x] Supabase security advisor: no schema/RLS critical finding; only Auth leaked-password protection warning remains.
-- [ ] Apply/record pending migrations only after final approval:
-  - 20260929193000 cash entry correction audit (schema already present; replay-safe reconciliation)
-  - 20260929222500 branch/day locking + treasury (schema already present; replay-safe reconciliation plus index/RLS cleanup)
-  - 20260929231000 representative expense amount
-  - 20260929232000 monthly accrual settings
+- [x] Applied/recorded pending migrations to AMMCO production successfully and aligned repository filenames with Supabase migration history:
+  - 20260929215814 cash entry correction audit
+  - 20260929215824 branch/day locking + treasury
+  - 20260929215826 representative expense amount
+  - 20260929215829 monthly accrual settings
 - [x] Legacy guard dry validation against the real Tanta workbook: 30 days × 15 metrics compared with the current approved operator-import batch, with 0 differences above the 0.02 tolerance.
 - [ ] After migrations: upload the real Tanta workbook through the normal pipeline, verify 1,872 product movement rows / 52 products / zero daily reconciliation differences, then approve.
 - [ ] Re-upload a changed historical day and confirm `HISTORICAL_DAY_CHANGED` blocks approval until explicit resolution.
 - [ ] Final advisor sweep and PR verification before requesting merge approval.
+
+
+### Production migration verification — 2026-09-30
+- [x] Post-migration schema checks:
+  - `sales_rep_daily.expense_amount` exists.
+  - `branch_expense_accrual_settings` exists with RLS and updater index.
+  - locking/treasury FK indexes exist.
+- [x] Supabase performance advisor no longer reports missing-FK-index or overlapping-permissive-policy warnings from the locking/accrual work.
+- [x] Remaining performance notices are unused-index informational findings only; no index was removed because the project is new and usage history is not representative.
+- [x] Security advisor has no schema/RLS critical finding; remaining warning is Auth leaked-password protection disabled.
+- [x] Regression after migrations: current approved Tanta totals remain unchanged:
+  - gross 932,805
+  - net 867,345
+  - discounts 65,460
+  - collections 626,892
+  - expenses 114,364
+  - opening receivables 178,433.82
+  - closing receivables 418,886.82
+  - sales qty 3,274
+  - closing inventory qty 1,825.6667
+  - closing inventory value 520,315
+- [x] Repository HEAD after migration-history alignment verified Green in GitHub Actions.
+- [ ] Final live UI upload test is blocked only by Vercel deployment authentication in the available automation environment; complete it from an authenticated AMMCO session.
