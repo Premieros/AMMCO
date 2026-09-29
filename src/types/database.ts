@@ -1051,6 +1051,117 @@ export type Database = {
           },
         ]
       }
+      warehouse_daily_summary: {
+        Row: {
+          adjustment_qty: number
+          adjustment_value: number
+          batch_id: string
+          bonus_qty: number
+          bonus_value: number
+          branch_id: string
+          business_date: string
+          closing_qty: number
+          closing_value: number
+          damages_qty: number
+          damages_value: number
+          gifts_qty: number
+          gifts_value: number
+          id: number
+          incoming_branches_qty: number
+          incoming_branches_value: number
+          incoming_factory_qty: number
+          incoming_factory_value: number
+          opening_qty: number
+          opening_value: number
+          outgoing_branches_qty: number
+          outgoing_branches_value: number
+          raw_payload: Json
+          return_factory_qty: number
+          return_factory_value: number
+          sales_qty: number
+          sales_value: number
+          source_qty_row: number
+          source_value_row: number
+        }
+        Insert: {
+          adjustment_qty?: number
+          adjustment_value?: number
+          batch_id: string
+          bonus_qty?: number
+          bonus_value?: number
+          branch_id: string
+          business_date: string
+          closing_qty?: number
+          closing_value?: number
+          damages_qty?: number
+          damages_value?: number
+          gifts_qty?: number
+          gifts_value?: number
+          id?: never
+          incoming_branches_qty?: number
+          incoming_branches_value?: number
+          incoming_factory_qty?: number
+          incoming_factory_value?: number
+          opening_qty?: number
+          opening_value?: number
+          outgoing_branches_qty?: number
+          outgoing_branches_value?: number
+          raw_payload?: Json
+          return_factory_qty?: number
+          return_factory_value?: number
+          sales_qty?: number
+          sales_value?: number
+          source_qty_row: number
+          source_value_row: number
+        }
+        Update: {
+          adjustment_qty?: number
+          adjustment_value?: number
+          batch_id?: string
+          bonus_qty?: number
+          bonus_value?: number
+          branch_id?: string
+          business_date?: string
+          closing_qty?: number
+          closing_value?: number
+          damages_qty?: number
+          damages_value?: number
+          gifts_qty?: number
+          gifts_value?: number
+          id?: never
+          incoming_branches_qty?: number
+          incoming_branches_value?: number
+          incoming_factory_qty?: number
+          incoming_factory_value?: number
+          opening_qty?: number
+          opening_value?: number
+          outgoing_branches_qty?: number
+          outgoing_branches_value?: number
+          raw_payload?: Json
+          return_factory_qty?: number
+          return_factory_value?: number
+          sales_qty?: number
+          sales_value?: number
+          source_qty_row?: number
+          source_value_row?: number
+        }
+        Relationships: [
+          {
+            foreignKeyName: "warehouse_daily_summary_batch_id_fkey"
+            columns: ["batch_id"]
+            isOneToOne: false
+            referencedRelation: "import_batches"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "warehouse_daily_summary_branch_id_fkey"
+            columns: ["branch_id"]
+            isOneToOne: false
+            referencedRelation: "branches"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
     }
     Views: {
       v_branch_daily_kpis: {
