@@ -6,7 +6,7 @@ import { createClient } from '@/lib/supabase/server'
 export const dynamic = 'force-dynamic'
 
 function money(value: number) {
-  return new Intl.NumberFormat('ar-EG', {
+  return new Intl.NumberFormat('en-US', {
     style: 'currency',
     currency: 'EGP',
     maximumFractionDigits: 0,
@@ -14,7 +14,7 @@ function money(value: number) {
 }
 
 function number(value: number, digits = 0) {
-  return new Intl.NumberFormat('ar-EG', { maximumFractionDigits: digits }).format(value)
+  return new Intl.NumberFormat('en-US', { maximumFractionDigits: digits }).format(value)
 }
 
 function pct(value: number) {
