@@ -76,6 +76,19 @@ export type RepRemittanceRow = {
   rawPayload: Json
 }
 
+export type InventoryCountRow = {
+  countDate: string
+  productName: string
+  locationType: string
+  locationLabel: string
+  bookQty: number | null
+  actualQty: number | null
+  varianceQty: number | null
+  unitValue: number | null
+  varianceValue: number | null
+  rawPayload: Json
+}
+
 export type WarehouseDailySummary = {
   businessDate: string
   sourceQtyRow: number
@@ -318,6 +331,72 @@ function extractRemittances(worksheet: ExcelJS.Worksheet) {
   return rows
 }
 
+function extractInventoryCounts(worksheet: ExcelJS.Worksheet, countDate?: string) {
+  const rows: InventoryCountRow[] = []
+  if (!countDate) return rows
+
+  const locations = [
+    { column: 9, type: 'warehouse', label: 'م 1' },
+    { column: 10, type: 'warehouse', label: 'م 2' },
+    { column: 11, type: 'warehouse', label: 'م 3' },
+    { column: 12, type: 'warehouse', label: 'م 4' },
+    { column: 13, type: 'vehicle', label: 'سيارة 1' },
+    { column: 14, type: 'vehicle', label: 'سيارة 2' },
+    { column: 15, type: 'vehicle', label: 'سيارة 3' },
+    { column: 16, type: 'vehicle', label: 'سيارة 4' },
+    { column: 17, type: 'vehicle', label: 'سيارة 5' },
+  ] as const
+
+  for (let row = 4; row <= worksheet.actualRowCount; row += 1) {
+    const productName = textCell(worksheet.getCell(row, 2))
+    if (!productName) continue
+
+    const unitValue = nullableNumber(worksheet.getCell(row, 3))
+    const bookQty = nullableNumber(worksheet.getCell(row, 4))
+    const actualQty = nullableNumber(worksheet.getCell(row, 5))
+    const varianceQty = nullableNumber(worksheet.getCell(row, 6))
+    const varianceValue = nullableNumber(worksheet.getCell(row, 7))
+
+    rows.push({
+      countDate,
+      productName,
+      locationType: 'total',
+      locationLabel: 'إجمالي',
+      bookQty,
+      actualQty,
+      varianceQty,
+      unitValue,
+      varianceValue,
+      rawPayload: { source_sheet: worksheet.name, source_row: row },
+    })
+
+    for (const location of locations) {
+      const raw = cellResult(worksheet.getCell(row, location.column))
+      if (raw === null || raw === undefined || raw === '') continue
+      const qty = numberCell(worksheet.getCell(row, location.column))
+
+      rows.push({
+        countDate,
+        productName,
+        locationType: location.type,
+        locationLabel: location.label,
+        bookQty: null,
+        actualQty: qty,
+        varianceQty: null,
+        unitValue,
+        varianceValue: null,
+        rawPayload: {
+          source_sheet: worksheet.name,
+          source_row: row,
+          source_cell: worksheet.getCell(row, location.column).address,
+        },
+      })
+    }
+  }
+
+  return rows
+}
+
 function extractWarehouseDaily(worksheet: ExcelJS.Worksheet) {
   const rows: WarehouseDailySummary[] = []
 
@@ -458,7 +537,7 @@ function extractRepresentativeDay(
 
 export async function parseWorkbook(
   buffer: Buffer,
-  options: { periodStart?: string } = {},
+  options: { periodStart?: string; periodEnd?: string } = {},
 ) {
   const workbook = new ExcelJS.Workbook()
   await workbook.xlsx.load(buffer as unknown as Parameters<typeof workbook.xlsx.load>[0])
@@ -469,6 +548,7 @@ export async function parseWorkbook(
   let products: ParsedProduct[] = []
   let remittances: RepRemittanceRow[] = []
   let warehouseDaily: WarehouseDailySummary[] = []
+  let inventoryCounts: InventoryCountRow[] = []
 
   if (workbook.worksheets.length === 0) {
     issues.push({
@@ -537,6 +617,10 @@ export async function parseWorkbook(
       warehouseDaily = extractWarehouseDaily(worksheet)
     }
 
+    if (worksheet.name.trim() === 'الجرد') {
+      inventoryCounts = extractInventoryCounts(worksheet, options.periodEnd)
+    }
+
     const businessDate = dateForDailySheet(worksheet.name, options.periodStart)
     if (businessDate) {
       representativeDays.push(extractRepresentativeDay(worksheet, businessDate, issues))
@@ -550,7 +634,8 @@ export async function parseWorkbook(
     products,
     remittances,
     warehouseDaily,
-    schemaVersion: 'ammco-reference-v4-warehouse-daily',
+    inventoryCounts,
+    schemaVersion: 'ammco-reference-v5-inventory-counts',
     stats: {
       sheetCount: sheets.length,
       rawRowCount: sheets.reduce((sum, sheet) => sum + sheet.rows.length, 0),
@@ -561,6 +646,7 @@ export async function parseWorkbook(
       productCount: products.length,
       remittanceRowCount: remittances.length,
       warehouseDayCount: warehouseDaily.length,
+      inventoryCountRowCount: inventoryCounts.length,
     },
   }
 }
