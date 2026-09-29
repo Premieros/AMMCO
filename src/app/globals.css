@@ -177,3 +177,9 @@ html,body { background:var(--ui-page); color:var(--ui-text); font-family:'Cairo'
   .page-content { padding:18px; }
   .sheet-grid { grid-template-columns:120px 1fr; }
 }
+
+
+/* Numeric display policy: Arabic UI with Western 0-9 digits */
+body, input, select, button, table {
+  font-variant-numeric: tabular-nums;
+}
