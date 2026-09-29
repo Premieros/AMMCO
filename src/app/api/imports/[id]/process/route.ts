@@ -148,6 +148,17 @@ export async function POST(
 
   const admin = createAdminClient()
 
+  const { data: defaultTreasury, error: defaultTreasuryError } = await admin
+    .from('treasury_accounts')
+    .select('id')
+    .eq('branch_id', batch.branch_id)
+    .eq('is_default', true)
+    .maybeSingle()
+
+  if (defaultTreasuryError) {
+    return NextResponse.json({ error: 'تعذر تحديد خزنة الفرع الافتراضية' }, { status: 500 })
+  }
+
   await admin
     .from('import_batches')
     .update({ status: 'processing', failure_message: null })
@@ -466,6 +477,7 @@ export async function POST(
         amount: entry.amount,
         direction: entry.direction,
         running_balance: entry.runningBalance,
+        treasury_account_id: defaultTreasury?.id ?? null,
         raw_payload: entry.rawPayload,
       }))
 
