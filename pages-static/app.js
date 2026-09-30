@@ -517,7 +517,7 @@ async function renderExecutive(){
   previous_debt:money(x.opening),
   sales:money(x.net),
   collections:money(x.coll),
-  month_debt:money(x.closingDebt),
+  month_debt:money(x.net-x.coll),
   cumulative_debt:money(x.closingDebt),
   discount7:money(x.last7Discount),
   discount:money(x.disc),
@@ -540,7 +540,7 @@ async function renderExecutive(){
  },{opening:0,last7Sales:0,last7Collections:0,last7Returns:0,net:0,coll:0,closingDebt:0,last7Discount:0,disc:0,gross:0,equivCartons:0,fuel:0,petro:0,maintenance:0,inventoryQty:0,inventoryValue:0,closingCash:0,expenses:0})
  const totalRow='<tr class="total">'+
   '<th>الإجمالي</th><th class="num">'+money(totals.opening)+'</th><th class="num">'+money(totals.last7Sales)+'</th><th class="num">'+money(totals.last7Collections)+'</th><th class="num">'+money(totals.last7Returns)+'</th>'+
-  '<th>—</th><th class="num">'+money(totals.opening)+'</th><th class="num">'+money(totals.net)+'</th><th class="num">'+money(totals.coll)+'</th><th class="num">'+money(totals.closingDebt)+'</th><th class="num">'+money(totals.closingDebt)+'</th>'+
+  '<th>—</th><th class="num">'+money(totals.opening)+'</th><th class="num">'+money(totals.net)+'</th><th class="num">'+money(totals.coll)+'</th><th class="num">'+money(totals.net-totals.coll)+'</th><th class="num">'+money(totals.closingDebt)+'</th>'+
   '<th class="num">'+money(totals.last7Discount)+'</th><th class="num">'+money(totals.disc)+'</th><th>'+pct(totals.gross?totals.disc/totals.gross:0)+'</th><th class="num">'+qty(totals.equivCartons)+'</th><th class="num">'+money(totals.equivCartons?totals.net/totals.equivCartons:0)+'</th>'+
   '<th class="num">'+money(totals.fuel)+'</th><th class="num">'+money(totals.petro)+'</th><th class="num">'+money(totals.maintenance)+'</th>'+
   '<th class="num">'+qty(totals.inventoryQty)+'</th><th class="num">'+money(totals.inventoryValue)+'</th><th class="num">'+money(totals.closingCash)+'</th><th>'+pct(totals.net?totals.expenses/totals.net:0)+'</th><th>—</th></tr>'
@@ -918,17 +918,32 @@ async function renderReceivables(){
 }
 
 async function renderMonthly(){
- const p=qs();const year=p.get('year')||String(new Date().getFullYear());const branch=p.get('branch')||''
- let q=supabase.from('v_branch_daily_kpis').select('branch_id,branch_name,business_date,gross_sales,net_sales,discounts,collections,expenses,closing_receivables,inventory_value').gte('business_date',`${year}-01-01`).lte('business_date',`${year}-12-31`).order('business_date')
- if(branch)q=q.eq('branch_id',branch)
- const {data,error}=await q;if(error)throw error
- const by=new Map()
- ;(data||[]).forEach(r=>{const m=r.business_date.slice(0,7);const x=by.get(m)||{month:m,gross:0,net:0,disc:0,coll:0,exp:0,debt:0,inv:0};x.gross+=+r.gross_sales||0;x.net+=+r.net_sales||0;x.disc+=+r.discounts||0;x.coll+=+r.collections||0;x.exp+=+r.expenses||0;x.debt=+r.closing_receivables||x.debt;x.inv=+r.inventory_value||x.inv;by.set(m,x)})
+ const p=qs(),year=p.get('year')||String(new Date().getFullYear()),branch=p.get('branch')||'',from=year+'-01-01',to=year+'-12-31',ids=await approvedIds()
+ let dailyQ=supabase.from('v_branch_daily_kpis').select('branch_id,branch_name,business_date,gross_sales,net_sales,discounts,collections,closing_receivables').gte('business_date',from).lte('business_date',to).order('business_date')
+ let whQ=supabase.from('warehouse_daily_summary').select('branch_id,business_date,closing_value').in('batch_id',ids.length?ids:['00000000-0000-0000-0000-000000000000']).gte('business_date',from).lte('business_date',to).order('business_date')
+ let expQ=supabase.from('v_expense_analysis').select('branch_id,entry_date,amount').gte('entry_date',from).lte('entry_date',to)
+ if(branch){dailyQ=dailyQ.eq('branch_id',branch);whQ=whQ.eq('branch_id',branch);expQ=expQ.eq('branch_id',branch)}
+ const all=await Promise.all([dailyQ,whQ,expQ]),daily=all[0].data||[],warehouse=all[1].data||[],expenses=all[2].data||[]
+ if(all[0].error||all[1].error||all[2].error)throw all[0].error||all[1].error||all[2].error
+ const byMonth=new Map(),lastDebt=new Map(),lastInv=new Map()
+ daily.forEach(r=>{
+  const m=r.business_date.slice(0,7),x=byMonth.get(m)||{month:m,gross:0,net:0,disc:0,coll:0,exp:0,debt:0,inv:0}
+  x.gross+=Number(r.gross_sales||0);x.net+=Number(r.net_sales||0);x.disc+=Number(r.discounts||0);x.coll+=Number(r.collections||0);byMonth.set(m,x)
+  const key=m+'|'+r.branch_id,prev=lastDebt.get(key)
+  if(!prev||r.business_date>=prev.date)lastDebt.set(key,{date:r.business_date,value:Number(r.closing_receivables||0)})
+ })
+ warehouse.forEach(r=>{
+  const m=r.business_date.slice(0,7),key=m+'|'+r.branch_id,prev=lastInv.get(key)
+  if(!prev||r.business_date>=prev.date)lastInv.set(key,{date:r.business_date,value:Number(r.closing_value||0)})
+ })
+ expenses.forEach(r=>{const m=r.entry_date.slice(0,7),x=byMonth.get(m)||{month:m,gross:0,net:0,disc:0,coll:0,exp:0,debt:0,inv:0};x.exp+=Number(r.amount||0);byMonth.set(m,x)})
+ lastDebt.forEach((v,key)=>{const m=key.slice(0,7),x=byMonth.get(m);if(x)x.debt+=v.value})
+ lastInv.forEach((v,key)=>{const m=key.slice(0,7),x=byMonth.get(m);if(x)x.inv+=v.value})
  let ytd=0
- const rows=[...by.values()].sort((a,b)=>a.month.localeCompare(b.month)).map(x=>{ytd+=x.net;return{month:x.month,gross:money(x.gross),disc:money(x.disc),net:money(x.net),coll:money(x.coll),exp:money(x.exp),debt:money(x.debt),inv:money(x.inv),ytd:money(ytd)}})
- const form=`<form id="year-filter" class="filters"><div class="field"><label>الفرع</label><select name="branch">${branchOptions(branch)}</select></div><div class="field"><label>السنة</label><input name="year" value="${year}"></div><div></div><div class="field"><label>&nbsp;</label><button class="btn">تطبيق</button></div></form>`
- shell('التحليل الشهري وYTD','مقارنة الشهور والتراكم السنوي',form+table('Monthly / YTD',[{key:'month',label:'الشهر'},{key:'gross',label:'قبل الخصم',num:1},{key:'disc',label:'الخصم',num:1},{key:'net',label:'صافي البيع',num:1},{key:'coll',label:'التحصيل',num:1},{key:'exp',label:'المصروفات',num:1},{key:'debt',label:'مديونية آخر',num:1},{key:'inv',label:'مخزون آخر',num:1},{key:'ytd',label:'YTD مبيعات',num:1}],rows))
- document.getElementById('year-filter')?.addEventListener('submit',e=>{e.preventDefault();const fd=new FormData(e.currentTarget);location.hash=`#/monthly?branch=${fd.get('branch')||''}&year=${fd.get('year')}`})
+ const rows=[...byMonth.values()].sort((a,b)=>a.month.localeCompare(b.month)).map(x=>{ytd+=x.net;return{month:x.month,gross:money(x.gross),disc:money(x.disc),net:money(x.net),coll:money(x.coll),exp:money(x.exp),debt:money(x.debt),inv:money(x.inv),ytd:money(ytd)}})
+ const form='<form id="year-filter" class="filters"><div class="field"><label>الفرع</label><select name="branch">'+branchOptions(branch)+'</select></div><div class="field"><label>السنة</label><input name="year" value="'+year+'"></div><div></div><div class="field"><label>&nbsp;</label><button class="btn">تطبيق</button></div></form>'
+ shell('التحليل الشهري وYTD','مقارنة الشهور والتراكم السنوي من المصادر المعتمدة',form+table('Monthly / YTD',[{key:'month',label:'الشهر'},{key:'gross',label:'قبل الخصم',num:1},{key:'disc',label:'الخصم',num:1},{key:'net',label:'صافي المبيعات',num:1},{key:'coll',label:'التحصيل',num:1},{key:'exp',label:'المصروفات الفعلية',num:1},{key:'debt',label:'مديونية آخر الشهر',num:1},{key:'inv',label:'قيمة مخزون آخر الشهر',num:1},{key:'ytd',label:'YTD صافي المبيعات',num:1}],rows))
+ document.getElementById('year-filter')?.addEventListener('submit',e=>{e.preventDefault();const fd=new FormData(e.currentTarget);location.hash='#/monthly?branch='+(fd.get('branch')||'')+'&year='+fd.get('year')})
 }
 
 async function renderBanks(){
@@ -946,7 +961,7 @@ async function renderBanks(){
  document.getElementById('bank-filter')?.addEventListener('submit',e=>{e.preventDefault();const fd=new FormData(e.currentTarget);location.hash=`#/banks?branch=${fd.get('branch')||''}&to=${fd.get('to')}`})
 }
 
-async function renderReps(){const {branch,from,to}=currentFilters();const ids=await approvedIds();let q=supabase.from('sales_rep_daily').select('branch_id,business_date,rep_name,sales_before_discount,net_after_discount,discounts,deposit_amount,closing_balance').in('batch_id',ids.length?ids:['00000000-0000-0000-0000-000000000000']).gte('business_date',from).lte('business_date',to);if(branch)q=q.eq('branch_id',branch);const {data,error}=await q;if(error)throw error;const names=new Map(branches.map(b=>[b.id,b.name]));const by=new Map();(data||[]).forEach(r=>{const k=`${r.branch_id}:${r.rep_name}`;const x=by.get(k)||{branch_name:names.get(r.branch_id),rep_name:r.rep_name,gross:0,net:0,disc:0,deposit:0,closing:0};x.gross+=+r.sales_before_discount||0;x.net+=+r.net_after_discount||0;x.disc+=+r.discounts||0;x.deposit+=+r.deposit_amount||0;x.closing=+r.closing_balance||x.closing;by.set(k,x)});const rows=[...by.values()].map(x=>({...x,gross:money(x.gross),net:money(x.net),disc:money(x.disc),deposit:money(x.deposit),closing:money(x.closing)}));shell('أداء المناديب','المندوب × الفرع',filters(from,to,branch)+scope(from,to,branch)+table('أداء المناديب',[{key:'branch_name',label:'الفرع'},{key:'rep_name',label:'المندوب'},{key:'gross',label:'قبل الخصم',num:1},{key:'disc',label:'الخصم',num:1},{key:'net',label:'صافي البيع',num:1},{key:'deposit',label:'التوريد',num:1},{key:'closing',label:'الرصيد',num:1}],rows));bindFilters('reps')}
+async function renderReps(){const {branch,from,to}=currentFilters();const ids=await approvedIds();let q=supabase.from('sales_rep_daily').select('branch_id,business_date,rep_name,sales_before_discount,net_after_discount,discounts,deposit_amount,closing_balance').in('batch_id',ids.length?ids:['00000000-0000-0000-0000-000000000000']).gte('business_date',from).lte('business_date',to).order('business_date',{ascending:true});if(branch)q=q.eq('branch_id',branch);const {data,error}=await q;if(error)throw error;const names=new Map(branches.map(b=>[b.id,b.name]));const by=new Map();(data||[]).forEach(r=>{const k=`${r.branch_id}:${r.rep_name}`;const x=by.get(k)||{branch_name:names.get(r.branch_id),rep_name:r.rep_name,gross:0,net:0,disc:0,deposit:0,closing:0};x.gross+=+r.sales_before_discount||0;x.net+=+r.net_after_discount||0;x.disc+=+r.discounts||0;x.deposit+=+r.deposit_amount||0;x.closing=+r.closing_balance||x.closing;by.set(k,x)});const rows=[...by.values()].map(x=>({...x,gross:money(x.gross),net:money(x.net),disc:money(x.disc),deposit:money(x.deposit),closing:money(x.closing)}));shell('أداء المناديب','المندوب × الفرع',filters(from,to,branch)+scope(from,to,branch)+table('أداء المناديب',[{key:'branch_name',label:'الفرع'},{key:'rep_name',label:'المندوب'},{key:'gross',label:'قبل الخصم',num:1},{key:'disc',label:'الخصم',num:1},{key:'net',label:'صافي البيع',num:1},{key:'deposit',label:'التوريد',num:1},{key:'closing',label:'الرصيد',num:1}],rows));bindFilters('reps')}
 async function renderInventory(){
  const cfg=currentFilters(),branch=cfg.branch,from=cfg.from,to=cfg.to,ids=await approvedIds()
  let q=supabase.from('warehouse_daily_summary').select('*').in('batch_id',ids.length?ids:['00000000-0000-0000-0000-000000000000']).gte('business_date',from).lte('business_date',to).order('business_date')
