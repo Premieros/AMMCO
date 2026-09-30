@@ -142,6 +142,7 @@ Deno.serve(async (req: Request) => {
 
   const payload = await req.json().catch(() => ({}))
   const batchId = String(payload?.batchId ?? '')
+  const browserParsed = payload?.parsed ?? null
   if (!/^[0-9a-f-]{36}$/i.test(batchId)) return json({ error: 'نسخة رفع غير صالحة' }, { status: 400 })
 
   const url = Deno.env.get('SUPABASE_URL')!
@@ -213,18 +214,22 @@ Deno.serve(async (req: Request) => {
     .eq('id', batchId)
 
   try {
-    const { data: fileBlob, error: downloadError } = await admin.storage
-      .from('branch-workbooks')
-      .download(batch.storage_path)
+    const parsed = browserParsed
+      ? browserParsed
+      : await (async () => {
+          const { data: fileBlob, error: downloadError } = await admin.storage
+            .from('branch-workbooks')
+            .download(batch.storage_path)
 
-    if (downloadError || !fileBlob) {
-      throw new Error('تعذر تنزيل ملف Excel من التخزين')
-    }
+          if (downloadError || !fileBlob) {
+            throw new Error('تعذر تنزيل ملف Excel من التخزين')
+          }
 
-    const parsed = await parseWorkbook(
-      Buffer.from(await fileBlob.arrayBuffer()),
-      { periodStart: batch.period_start, periodEnd: batch.period_end },
-    )
+          return parseWorkbook(
+            Buffer.from(await fileBlob.arrayBuffer()),
+            { periodStart: batch.period_start, periodEnd: batch.period_end },
+          )
+        })()
 
     const daySnapshots = buildDaySnapshots(parsed)
     const businessDates = daySnapshots.map((day) => day.businessDate)
