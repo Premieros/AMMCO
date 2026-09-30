@@ -36,6 +36,11 @@ jobs:
       - name: Verify importer
         run: npm run verify:importer
 
+      - name: Static portal syntax
+        run: |
+          node --check pages-static/app.js
+          node --check pages-static/workbook-parser.js
+
       - name: Build
         run: npm run build
 
