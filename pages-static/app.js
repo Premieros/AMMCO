@@ -42,37 +42,31 @@ const sheetSectionForRoute=r=>{
  return 'الإدارة المالية'
 }
 
+const REPORT_GROUPS=[
+ {label:'الإدارة المالية',items:[['executive','التقرير التنفيذي'],['monthly','التحليل الشهري وYTD']]},
+ {label:'المبيعات والعملاء',items:[['sales','المبيعات'],['receivables','المديونيات والتحصيل'],['reps','أداء المناديب']]},
+ {label:'المصروفات والتكاليف',items:[['expense-matrix','تحليلي المصروفات'],['expenses','تقرير المصروفات']]},
+ {label:'المخزون والأصناف',items:[['inventory','حركة المخزون'],['products','أرصدة ومصفوفة الأصناف']]},
+ {label:'النقدية والبنوك',items:[['treasury','الخزينة والبنوك'],['banks','البنوك وYTD']]}
+]
+const selectedReport=()=>qs().get('report')||'executive'
+function reportsHubNav(){
+ const selected=selectedReport()
+ return '<section class="reports-hub-nav">'+REPORT_GROUPS.map(g=>
+  '<div class="report-group"><div class="report-group-title">'+g.label+'</div><div class="report-group-links">'+
+  g.items.map(item=>'<a class="report-chip '+(selected===item[0]?'active':'')+'" href="#/reports?report='+item[0]+'">'+item[1]+'</a>').join('')+
+  '</div></div>'
+ ).join('')+'</section>'
+}
 function shell(title,subtitle,body){
  const r=route().split('?')[0],sheetSection=sheetSectionForRoute(r)
  app.innerHTML=`<div class="shell">
  <aside class="sidebar">
   <div class="brand"><div class="logo">A</div><div><b>AMMCO</b><small>Management Intelligence</small></div></div>
 
-  <div class="nav-title">الإدارة المالية</div><nav class="nav">
+  <div class="nav-title">العمل المالي</div><nav class="nav">
    <a class="${r==='dashboard'?'active':''}" href="#/dashboard">لوحة الإدارة</a>
-   <a class="${r==='executive'?'active':''}" href="#/executive">التقرير التنفيذي</a>
-   <a class="${r==='monthly'?'active':''}" href="#/monthly">التحليل الشهري وYTD</a>
-  </nav>
-
-  <div class="nav-title">المبيعات والعملاء</div><nav class="nav">
-   <a class="${r==='sales'?'active':''}" href="#/sales">المبيعات</a>
-   <a class="${r==='receivables'?'active':''}" href="#/receivables">المديونيات والتحصيل</a>
-   <a class="${r==='reps'?'active':''}" href="#/reps">أداء المناديب</a>
-  </nav>
-
-  <div class="nav-title">المصروفات والتكاليف</div><nav class="nav">
-   <a class="${r==='expense-matrix'?'active':''}" href="#/expense-matrix">تحليلي المصروفات</a>
-   <a class="${r==='expenses'?'active':''}" href="#/expenses">تقرير المصروفات</a>
-  </nav>
-
-  <div class="nav-title">المخزون والأصناف</div><nav class="nav">
-   <a class="${r==='inventory'?'active':''}" href="#/inventory">حركة المخزون</a>
-   <a class="${r==='products'?'active':''}" href="#/products">أرصدة ومصفوفة الأصناف</a>
-  </nav>
-
-  <div class="nav-title">النقدية والبنوك</div><nav class="nav">
-   <a class="${r==='treasury'?'active':''}" href="#/treasury">الخزينة والبنوك</a>
-   <a class="${r==='banks'?'active':''}" href="#/banks">البنوك وYTD</a>
+   <a class="${r==='reports'?'active':''}" href="#/reports?report=executive">التقارير</a>
   </nav>
 
   <div class="nav-title system-nav-title">إدارة النظام</div><nav class="nav">
@@ -100,6 +94,7 @@ function shell(title,subtitle,body){
      <div class="muted">${subtitle||''}</div>
     </div>
    </div>
+   ${r==='reports'?reportsHubNav():''}
    ${body}
   </section>
  </main>
@@ -113,7 +108,7 @@ function filters(from,to,branch){return `<form id="filters" class="filters compa
  <div class="field"><label>إلى</label><input type="date" name="to" value="${to}"></div>
  <div class="filter-buttons"><button class="btn" type="submit">تطبيق</button><button class="btn secondary" type="button" onclick="resetReportFilters()">مسح</button></div>
 </form>`}
-function bindFilters(path){document.getElementById('filters')?.addEventListener('submit',e=>{e.preventDefault();const f=new FormData(e.currentTarget);location.hash=`#/${path}?branch=${f.get('branch')||''}&from=${f.get('from')}&to=${f.get('to')}`})}
+function bindFilters(path){document.getElementById('filters')?.addEventListener('submit',e=>{e.preventDefault();const f=new FormData(e.currentTarget);const current=route().split('?')[0];if(current==='reports'){location.hash=`#/reports?report=${selectedReport()}&branch=${f.get('branch')||''}&from=${f.get('from')}&to=${f.get('to')}`;return}location.hash=`#/${path}?branch=${f.get('branch')||''}&from=${f.get('from')}&to=${f.get('to')}`})}
 function scope(from,to,branch){return `<div class="scope report-meta"><span><b>${branches.find(b=>b.id===branch)?.name||'كل الفروع'}</b></span><span>${from} → ${to}</span><span>Approved</span></div>`}
 const escapeHtml=v=>String(v??'').replace(/[&<>"']/g,m=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[m]))
 const escapeAttr=v=>escapeHtml(v)
@@ -182,7 +177,7 @@ window.clearTableFilters=button=>{
  const card=button.closest('.table-card');card.querySelector('.search').value='';window.__tableFilters.delete(card)
  card.querySelectorAll('.excel-filter-btn').forEach(b=>b.classList.remove('active'));applyTableFilters(card.querySelector('.search'))
 }
-window.resetReportFilters=()=>{const r=route().split('?')[0];location.hash='#/'+r}
+window.resetReportFilters=()=>{const r=route().split('?')[0];location.hash=r==='reports'?'#/reports?report='+selectedReport():'#/'+r}
 
 window.enableTableDragScroll=()=>{
  document.querySelectorAll('.table-wrap').forEach(wrap=>{
@@ -244,6 +239,20 @@ async function render(){
  if(!profile?.is_active) return shell('AMMCO','الحساب غير مهيأ أو غير نشط','<div class="notice">راجع مدير النظام لربط الحساب بالمؤسسة.</div>')
  const r=route().split('?')[0]
  try{
+  if(r==='reports'){
+   const report=selectedReport()
+   if(report==='sales')return renderSales()
+   if(report==='expenses')return renderExpenses()
+   if(report==='expense-matrix')return renderExpenseMatrix()
+   if(report==='receivables')return renderReceivables()
+   if(report==='reps')return renderReps()
+   if(report==='inventory')return renderInventory()
+   if(report==='products')return renderProducts()
+   if(report==='monthly')return renderMonthly()
+   if(report==='banks')return renderBanks()
+   if(report==='treasury')return renderTreasury()
+   return renderExecutive()
+  }
   if(r==='branches')return renderBranches()
   if(r==='users')return renderUsers()
   if(r==='treasury')return renderTreasury()
