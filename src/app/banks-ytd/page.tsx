@@ -11,9 +11,10 @@ function money(v:number){return new Intl.NumberFormat('en-US',{style:'currency',
 function bankGroup(name:string){const x=name.toLowerCase();if(x.includes('cib'))return 'CIB';if(x.includes('qnb'))return 'QNB';if(x.includes('أهلي')||x.includes('اهلي'))return 'الأهلي';if(x.includes('مصر'))return 'مصر';if(x.includes('قاهرة')||x.includes('القاهرة'))return 'القاهرة';return 'غيرها'}
 export default async function BanksYtd({searchParams}:{searchParams:Promise<{to?:string}>}){
  const f=await searchParams,to=f.to??'2026-09-30',from=`${to.slice(0,4)}-01-01`;const supabase=await createClient();const {data:auth}=await supabase.auth.getClaims();if(!auth?.claims?.sub)redirect('/login')
+ const {data:approvedBatches}=await supabase.from('import_batches').select('id').eq('status','approved');const approvedIds=(approvedBatches??[]).map(b=>b.id);const approvedFilter=approvedIds.length?approvedIds:['00000000-0000-0000-0000-000000000000']
  const [{data:accountsData},{data:entriesData},{data:dailyData},{data:branchesData}]=await Promise.all([
   supabase.from('treasury_accounts').select('id,branch_id,name,code,account_type').eq('is_active',true),
-  supabase.from('cash_entries').select('branch_id,treasury_account_id,entry_date,direction,amount,entry_kind,description').gte('entry_date',from).lte('entry_date',to),
+  supabase.from('cash_entries').select('branch_id,treasury_account_id,entry_date,direction,amount,entry_kind,description').in('batch_id',approvedFilter).gte('entry_date',from).lte('entry_date',to),
   supabase.from('v_branch_daily_kpis').select('branch_id,branch_name,business_date,net_sales,collections,discounts,expenses,closing_receivables').gte('business_date',from).lte('business_date',to).order('business_date'),
   supabase.from('branches').select('id,name').eq('is_active',true)
  ])
