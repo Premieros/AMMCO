@@ -20,17 +20,42 @@ const defaultFrom=`${today.getFullYear()}-${String(today.getMonth()+1).padStart(
 let branches=[]
 let session=null
 let profile=null
+let bootstrappedUserId=null
+const pageViewCache=new Map()
+let currentRenderedKey=null
+let bootPromise=null
 
-async function boot(){
- const {data}=await supabase.auth.getSession(); session=data.session
- if(session){
-   const {data:p}=await supabase.from('profiles').select('full_name,role,is_active').eq('user_id',session.user.id).maybeSingle(); profile=p
-   const {data:b}=await supabase.from('branches').select('id,name,code,is_active').eq('is_active',true).order('name'); branches=b||[]
- }
- await render()
+const pageCacheKey=()=>location.hash||'#/dashboard'
+function clearPageCache(){
+ pageViewCache.clear()
+ currentRenderedKey=null
 }
-window.addEventListener('hashchange',render)
-supabase.auth.onAuthStateChange((_e,s)=>{session=s;setTimeout(boot,0)})
+async function boot(forceMeta=false){
+ if(bootPromise)return bootPromise
+ bootPromise=(async()=>{
+  if(!session){const {data}=await supabase.auth.getSession();session=data.session}
+  if(session&&(forceMeta||bootstrappedUserId!==session.user.id||!profile)){
+   const [{data:p},{data:b}]=await Promise.all([
+    supabase.from('profiles').select('full_name,role,is_active').eq('user_id',session.user.id).maybeSingle(),
+    supabase.from('branches').select('id,name,code,is_active').eq('is_active',true).order('name')
+   ])
+   profile=p;branches=b||[];bootstrappedUserId=session.user.id
+  }
+  await render({force:forceMeta})
+ })()
+ try{await bootPromise}finally{bootPromise=null}
+}
+window.addEventListener('hashchange',()=>render())
+supabase.auth.onAuthStateChange((event,s)=>{
+ const prevUser=session?.user?.id
+ session=s
+ if(event==='SIGNED_OUT'){
+  clearPageCache();branches=[];profile=null;bootstrappedUserId=null
+  renderLogin();return
+ }
+ if(event==='SIGNED_IN'&&s?.user?.id!==prevUser)setTimeout(()=>boot(true),0)
+ // TOKEN_REFRESHED / USER_UPDATED do not reload reports.
+})
 
 const sheetSectionForRoute=r=>{
  if(r==='reports'){
@@ -103,7 +128,7 @@ function shell(title,subtitle,body){
      <button class="btn secondary" type="button" onclick="toggleSidebar()" title="إخفاء أو إظهار القائمة"><svg viewBox="0 0 24 24" width="16" height="16" fill="none" stroke="currentColor" stroke-width="2"><line x1="3" y1="6" x2="21" y2="6"></line><line x1="3" y1="12" x2="21" y2="12"></line><line x1="3" y1="18" x2="21" y2="18"></line></svg><span>القائمة</span></button>
      <div class="topbar-context"><b>${title}</b><span>${subtitle||''}</span></div>
     </div>
-    <div class="actions"><span class="chip">${profile?.full_name||session?.user?.email||'مدير النظام'}</span><button class="btn secondary" id="logout">خروج</button></div>
+    <div class="actions"><span class="chip">${profile?.full_name||session?.user?.email||'مدير النظام'}</span><button class="btn secondary data-refresh-btn" type="button" onclick="refreshAllData(this)" title="جلب أحدث البيانات من قاعدة البيانات">↻ تحديث البيانات</button><button class="btn secondary" id="logout">خروج</button></div>
    </header>
    <section class="content executive-content">
     ${r==='reports'?reportsHubNav():''}
@@ -118,6 +143,15 @@ window.toggleSidebar=()=>{
  const el=document.querySelector('.shell');if(!el)return
  const collapsed=el.classList.toggle('sidebar-collapsed')
  localStorage.setItem('ammco.sidebar.collapsed',collapsed?'1':'0')
+}
+window.refreshAllData=async btn=>{
+ if(btn){btn.disabled=true;btn.textContent='جاري التحديث…'}
+ clearPageCache()
+ try{await boot(true)}
+ finally{
+  const live=document.querySelector('.data-refresh-btn')
+  if(live){live.disabled=false;live.textContent='↻ تحديث البيانات'}
+ }
 }
 
 function branchOptions(selected=''){return `<option value="">كل الفروع</option>${branches.map(b=>`<option value="${b.id}" ${selected===b.id?'selected':''}>${b.name}</option>`).join('')}`}
@@ -253,7 +287,7 @@ window.printReportOnly=button=>{
 }
 const tableDragObserver=new MutationObserver(()=>enableTableDragScroll())
 tableDragObserver.observe(app,{childList:true,subtree:true})
-async function render(){
+async function renderFresh(){
  if(!session) return renderLogin()
  if(!profile?.is_active) return shell('AMMCO','الحساب غير مهيأ أو غير نشط','<div class="notice">راجع مدير النظام لربط الحساب بالمؤسسة.</div>')
  const r=route().split('?')[0]
@@ -292,6 +326,26 @@ async function render(){
   if(r==='executive')return renderExecutive()
   return renderDashboard()
  }catch(e){shell('حدث خطأ','',`<div class="error">${e.message||e}</div>`)}
+}
+
+async function render(options={}){
+ const force=!!options.force
+ const targetKey=pageCacheKey()
+
+ // Preserve the already rendered page as a live DOM node; event listeners stay attached.
+ if(currentRenderedKey&&currentRenderedKey!==targetKey&&app.firstElementChild){
+  pageViewCache.set(currentRenderedKey,app.firstElementChild)
+ }
+ if(!force&&pageViewCache.has(targetKey)){
+  const cached=pageViewCache.get(targetKey)
+  app.replaceChildren(cached)
+  currentRenderedKey=targetKey
+  return
+ }
+
+ await renderFresh()
+ currentRenderedKey=targetKey
+ if(app.firstElementChild)pageViewCache.set(targetKey,app.firstElementChild)
 }
 
 function renderLogin(){
