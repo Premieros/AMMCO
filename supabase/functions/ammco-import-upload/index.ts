@@ -7,7 +7,6 @@ const cors = {
   'Access-Control-Allow-Methods': 'POST, OPTIONS',
 }
 const json = (body: unknown, status = 200) => new Response(JSON.stringify(body), { status, headers: { ...cors, 'Content-Type': 'application/json' } })
-const cleanFileName = (name: string) => name.replace(/[^\p{L}\p{N}._ -]+/gu, '_').slice(0, 140)
 
 async function sha256Hex(buffer: ArrayBuffer) {
   const digest = await crypto.subtle.digest('SHA-256', buffer)
@@ -63,8 +62,7 @@ Deno.serve(async (req: Request) => {
 
   const { data: latest } = await admin.from('import_batches').select('version').eq('branch_id', branchId).eq('period_start', periodStart).order('version', { ascending: false }).limit(1).maybeSingle()
   const version = (latest?.version ?? 0) + 1
-  const safeName = cleanFileName(file.name)
-  const storagePath = `${branchId}/${periodStart.slice(0,7)}/v${version}-${sha256.slice(0,12)}-${safeName}`
+  const storagePath = `${branchId}/${periodStart.slice(0,7)}/v${version}-${sha256.slice(0,20)}.xlsx`
 
   const { error: uploadError } = await admin.storage.from('branch-workbooks').upload(storagePath, buffer, {
     contentType: 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet',
