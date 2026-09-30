@@ -406,7 +406,7 @@ async function renderDashboard(){
  })
  const raw=[...by.entries()].map(([id,x])=>{
   const wh=whLatest.get(id)||{},verifiedLegacy=wh.raw_payload?.closing_qty_source==='daily_product_closing_verified'
-  const inv=inventoryByBranch.get(id)||(verifiedLegacy?{qty:Number(wh.closing_qty||0),value:Number(wh.closing_value||0)}:{qty:0,value:0})
+  const inv=verifiedLegacy?{qty:Number(wh.closing_qty||0),value:Number(wh.closing_value||0)}:(inventoryByBranch.get(id)||{qty:0,value:0})
   const verifiedEquiv=Number(wh.raw_payload?.equivalent_cartons_month||0)
   const detailedEquiv=Number(equivCartonsBy.get(id)||0)
   const equivCartons=verifiedEquiv||detailedEquiv
@@ -499,7 +499,7 @@ async function renderExecutive(){
  })
  const raw=[...by.entries()].map(([id,x])=>{
   const wh=whLatest.get(id)||{},verifiedLegacy=wh.raw_payload?.closing_qty_source==='daily_product_closing_verified'
-  const inv=inventoryByBranch.get(id)||(verifiedLegacy?{qty:Number(wh.closing_qty||0),value:Number(wh.closing_value||0)}:{qty:0,value:0})
+  const inv=verifiedLegacy?{qty:Number(wh.closing_qty||0),value:Number(wh.closing_value||0)}:(inventoryByBranch.get(id)||{qty:0,value:0})
   const verifiedEquiv=Number(wh.raw_payload?.equivalent_cartons_month||0)
   const detailedEquiv=Number(equivCartonsBy.get(id)||0)
   const equivCartons=verifiedEquiv||detailedEquiv
