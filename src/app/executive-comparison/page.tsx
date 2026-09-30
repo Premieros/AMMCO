@@ -137,6 +137,43 @@ export default async function ExecutiveBranchComparison({
       <div className="card"><div className="kpi-label">قيمة المخزون</div><div className="kpi-value">{money(total.stock)}</div></div>
     </section>
 
+    <section className="report-sheet">
+      <div className="report-sheet-head"><h2>الملخص التنفيذي المقارن</h2><span>تقسيم الأعمدة بنفس منطق شيت الإدارة</span></div>
+      <div className="table-wrap"><table>
+        <thead>
+          <tr>
+            <th rowSpan={2} className="group-slate">الفرع</th>
+            <th colSpan={4} className="group-blue">المبيعات</th>
+            <th colSpan={3} className="group-green">التحصيل والمديونية</th>
+            <th colSpan={3} className="group-orange">المصروفات والمقارنة</th>
+            <th colSpan={2} className="group-gold">المخزون</th>
+          </tr>
+          <tr>
+            <th>قبل الخصم</th><th>الخصم</th><th>% الخصم</th><th>صافي البيع</th>
+            <th>التحصيل</th><th>مديونية أول</th><th>مديونية آخر</th>
+            <th>المصروفات</th><th>% المصروف</th><th>التغير</th>
+            <th>كمية</th><th>قيمة</th>
+          </tr>
+        </thead>
+        <tbody>
+          {[...rows.entries()].map(([id,r])=><tr key={id}>
+            <td className="row-label">{r.name}</td>
+            <td className="num">{money(r.gross)}</td><td className="num">{money(r.discounts)}</td><td className="num">{pct(r.gross?r.discounts/r.gross:0)}</td><td className="num"><strong>{money(r.net)}</strong></td>
+            <td className="num">{money(r.collections)}</td><td className="num">{money(r.openingDebt)}</td><td className="num">{money(r.closingDebt)}</td>
+            <td className="num">{money(r.expenses)}</td><td className="num">{pct(r.net?r.expenses/r.net:0)}</td><td className="num">{r.hasPrev&&r.prevNet!==0?pct((r.net-r.prevNet)/Math.abs(r.prevNet)):'—'}</td>
+            <td className="num">{num(r.stockQty,2)}</td><td className="num">{money(r.stockValue)}</td>
+          </tr>)}
+          <tr className="total-row">
+            <th>إجمالي الشركة</th>
+            <th>{money(total.gross)}</th><th>{money(total.discounts)}</th><th>{pct(total.gross?total.discounts/total.gross:0)}</th><th>{money(total.net)}</th>
+            <th>{money(total.collections)}</th><th>-</th><th>-</th>
+            <th>{money(total.expenses)}</th><th>{pct(total.net?total.expenses/total.net:0)}</th><th>-</th>
+            <th>-</th><th>{money(total.stock)}</th>
+          </tr>
+        </tbody>
+      </table></div>
+    </section>
+
     <div style={{marginTop:16}}>
       <SmartTable
         title="مقارنة الفروع"
