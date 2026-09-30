@@ -1922,6 +1922,7 @@ function renderUploads(){
    fd.set('period_start',periodStart)
    fd.set('period_end',periodEnd)
    fd.set('file',file)
+   fd.set('parsed_cache',new File([JSON.stringify(parsed)],'parsed-cache.json',{type:'application/json'}))
 
    const uploadRes=await fetch(`${SUPABASE_URL}/functions/v1/ammco-import-upload`,{
     method:'POST',

@@ -260,6 +260,40 @@ Deno.serve(async (req: Request) => {
     return null
   }
 
+  if (historyMode === 'append_only') {
+    const expectedDays = Math.floor(
+      (Date.parse(`${batch.period_end}T00:00:00Z`) - Date.parse(`${batch.period_start}T00:00:00Z`)) / 86400000,
+    ) + 1
+    const { data: coveredDays, error: coveredDaysError } = await admin
+      .from('branch_day_submissions')
+      .select('business_date')
+      .eq('branch_id', batch.branch_id)
+      .gte('business_date', batch.period_start)
+      .lte('business_date', batch.period_end)
+
+    if (coveredDaysError) return json({ error: 'تعذر التحقق من الأيام المعتمدة السابقة' }, { status: 500 })
+
+    const coveredCount = new Set((coveredDays ?? []).map((row) => row.business_date)).size
+    if (expectedDays > 0 && coveredCount >= expectedDays) {
+      const { error: coveredUpdateError } = await admin
+        .from('import_batches')
+        .update({
+          status: 'rejected',
+          validated_at: new Date().toISOString(),
+          failure_message: null,
+          metadata: {
+            ...(batch.metadata && typeof batch.metadata === 'object' ? batch.metadata : {}),
+            history_mode: 'append_only',
+            no_new_days: true,
+            fully_covered_period: true,
+          },
+        })
+        .eq('id', batchId)
+      if (coveredUpdateError) return json({ error: coveredUpdateError.message }, { status: 500 })
+      return json({ status: 'rejected', issues: 0, noNewDays: true, importedNewDays: 0 })
+    }
+  }
+
   await admin
     .from('import_batches')
     .update({ status: 'processing', failure_message: null })
@@ -269,6 +303,19 @@ Deno.serve(async (req: Request) => {
     const parsed = browserParsed
       ? browserParsed
       : await (async () => {
+          const cachePath = `${batch.storage_path}.parsed.json`
+          const { data: cacheBlob } = await admin.storage
+            .from('branch-workbooks')
+            .download(cachePath)
+
+          if (cacheBlob) {
+            try {
+              return JSON.parse(await cacheBlob.text()) as ParsedWorkbook
+            } catch {
+              // Fall back to the original workbook for legacy uploads with a bad or missing cache.
+            }
+          }
+
           const { data: fileBlob, error: downloadError } = await admin.storage
             .from('branch-workbooks')
             .download(batch.storage_path)
