@@ -40,19 +40,20 @@ export default async function BranchesPage({
 
   return (
     <AppShell
-      title="الفروع"
-      subtitle="إدارة الفروع والخزنة الرئيسية الافتراضية لكل فرع"
-      breadcrumbs={[{ label: 'لوحة الإدارة', href: '/' }, { label: 'الفروع' }]}
+      title="إدارة الفروع"
+      subtitle="إضافة الفروع وإدارة الخزائن الأساسية ومتابعة حالة كل فرع"
+      breadcrumbs={[{ label: 'لوحة الإدارة', href: '/' }, { label: 'إدارة الفروع' }]}
+      actions={<a className="btn" href="#add-branch">+ إضافة فرع جديد</a>}
     >
       {messages.error ? <div className="error">{messages.error}</div> : null}
       {messages.success ? <div className="success">{messages.success}</div> : null}
 
       {profile?.role === 'admin' ? (
-        <section className="card" style={{ marginBottom: 16 }}>
+        <section id="add-branch" className="card branch-create-card" style={{ marginBottom: 16 }}>
           <div className="section-head">
             <div>
-              <h2>إضافة فرع جديد</h2>
-              <p className="muted">يتم إنشاء خزنة رئيسية للفرع تلقائيًا.</p>
+              <h2>+ إضافة فرع جديد</h2>
+              <p className="muted">أدخل اسم الفرع والكود فقط. النظام ينشئ الخزنة الرئيسية تلقائيًا ويظهر الفرع فورًا في كل التقارير والفلاتر.</p>
             </div>
           </div>
 
@@ -67,7 +68,7 @@ export default async function BranchesPage({
                 <input id="code" name="code" required placeholder="tanta" dir="ltr" />
               </div>
             </div>
-            <button className="btn" type="submit">إضافة الفرع</button>
+            <div className="actions"><button className="btn" type="submit">إنشاء الفرع والخزنة الرئيسية</button><span className="scope-chip">يظهر تلقائيًا في فلاتر التقارير</span></div>
           </form>
         </section>
       ) : null}
