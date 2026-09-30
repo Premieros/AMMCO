@@ -2,1569 +2,1240 @@ import { createClient } from 'https://cdn.jsdelivr.net/npm/@supabase/supabase-js
 import { parseWorkbookBrowser } from './workbook-parser.js'
 import * as XLSX from 'https://cdn.jsdelivr.net/npm/xlsx@0.18.5/+esm'
 
-// AMMCO Strict Supabase Configuration
-const SUPABASE_URL = 'https://yumeijsyiphzdsulsubf.supabase.co'
-const SUPABASE_KEY = 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6Inl1bWVpanN5aXBoemRzdWxzdWJmIiwicm9sZSI6ImFub24iLCJpYXQiOjE3OTA2ODk1ODAsImV4cCI6MjEwNjI2NTU4MH0.Hpy2VZpttnQGdrx6_6Y1c9w4iHG2HhopvFdrohk3BBE'
-const supabase = createClient(SUPABASE_URL, SUPABASE_KEY, {
-  auth: { persistSession: true, autoRefreshToken: true, detectSessionInUrl: true }
-})
+const SUPABASE_URL='https://yumeijsyiphzdsulsubf.supabase.co'
+const SUPABASE_KEY='eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6Inl1bWVpanN5aXBoemRzdWxzdWJmIiwicm9sZSI6ImFub24iLCJpYXQiOjE3OTA2ODk1ODAsImV4cCI6MjEwNjI2NTU4MH0.Hpy2VZpttnQGdrx6_6Y1c9w4iHG2HhopvFdrohk3BBE'
+const supabase=createClient(SUPABASE_URL,SUPABASE_KEY,{auth:{persistSession:true,autoRefreshToken:true,detectSessionInUrl:true}})
+const app=document.getElementById('app')
+const fmt=new Intl.NumberFormat('en-US',{maximumFractionDigits:0})
+const money=v=>fmt.format(Math.round(Number(v||0)))
+const qtyFmt=new Intl.NumberFormat('en-US',{maximumFractionDigits:2})
+const qty=v=>qtyFmt.format(Number(v||0))
+const pct=v=>`${new Intl.NumberFormat('en-US',{maximumFractionDigits:1}).format(Number(v||0)*100)}%`
+const route=()=>location.hash.replace(/^#\/?/,'')||'dashboard'
+const qs=()=>new URLSearchParams(location.hash.includes('?')?location.hash.split('?')[1]:'')
+const today=new Date()
+const defaultTo=`${today.getFullYear()}-${String(today.getMonth()+1).padStart(2,'0')}-30`
+const defaultFrom=`${today.getFullYear()}-${String(today.getMonth()+1).padStart(2,'0')}-01`
 
-const app = document.getElementById('app')
+let branches=[]
+let session=null
+let profile=null
 
-// Formatting Utilities (One Source = One Number)
-const numFmt = new Intl.NumberFormat('en-US', { maximumFractionDigits: 0 })
-const money = v => `${numFmt.format(Math.round(Number(v || 0)))} EGP`
-const qtyFmt = new Intl.NumberFormat('en-US', { maximumFractionDigits: 2 })
-const qty = v => qtyFmt.format(Number(v || 0))
-const pct = v => `${new Intl.NumberFormat('en-US', { maximumFractionDigits: 1 }).format(Number(v || 0) * 100)}%`
-const escapeHtml = v => String(v ?? '').replace(/[&<>"']/g, m => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[m]))
-const escapeAttr = v => escapeHtml(v)
-
-// State
-let branches = []
-let session = null
-let profile = null
-
-// Date Defaults
-function getDefaultDates() {
-  const now = new Date()
-  const y = now.getFullYear(), m = String(now.getMonth() + 1).padStart(2, '0')
-  return {
-    from: `${y}-${m}-01`,
-    to: `${y}-${m}-30`
-  }
+async function boot(){
+ const {data}=await supabase.auth.getSession(); session=data.session
+ if(session){
+   const {data:p}=await supabase.from('profiles').select('full_name,role,is_active').eq('user_id',session.user.id).maybeSingle(); profile=p
+   const {data:b}=await supabase.from('branches').select('id,name,code,is_active').eq('is_active',true).order('name'); branches=b||[]
+ }
+ await render()
 }
-const defaultDates = getDefaultDates()
+window.addEventListener('hashchange',render)
+supabase.auth.onAuthStateChange((_e,s)=>{session=s;setTimeout(boot,0)})
 
-// Routing
-const route = () => location.hash.replace(/^#\/?/, '').split('?')[0] || 'dashboard'
-const qs = () => new URLSearchParams(location.hash.includes('?') ? location.hash.split('?')[1] : '')
-
-function currentFilters() {
-  const p = qs()
-  return {
-    branch: p.get('branch') || '',
-    branches: p.get('branches') ? p.get('branches').split(',').filter(Boolean) : (p.get('branch') ? [p.get('branch')] : []),
-    from: p.get('from') || defaultDates.from,
-    to: p.get('to') || defaultDates.to,
-    category: p.get('category') || '',
-    product: p.get('product') || '',
-    compare: p.get('compare') === '1'
-  }
+const sheetSectionForRoute=r=>{
+ if(r==='reports'){
+  const report=selectedReport()
+  if(['executive','monthly'].includes(report))return 'الإدارة المالية'
+  if(['sales','receivables','reps'].includes(report))return 'المبيعات والعملاء'
+  if(['expense-matrix','expenses'].includes(report))return 'المصروفات والتكاليف'
+  if(['inventory','products'].includes(report))return 'المخزون والأصناف'
+  if(['treasury','banks'].includes(report))return 'النقدية والبنوك'
+ }
+ if(['dashboard','executive','monthly'].includes(r))return 'الإدارة المالية'
+ if(['sales','receivables','reps'].includes(r))return 'المبيعات والعملاء'
+ if(['expense-matrix','expenses'].includes(r))return 'المصروفات والتكاليف'
+ if(['inventory','products'].includes(r))return 'المخزون والأصناف'
+ if(['treasury','banks','accounting-inputs'].includes(r))return 'النقدية والبنوك'
+ if(['branches','users','imports','uploads'].includes(r))return 'إدارة النظام'
+ return 'الإدارة المالية'
 }
 
-// Canonical Expense Normalization
-function normalizeCategory(raw) {
-  const s = String(raw || '').toLowerCase()
-  if (/مرتب|رواتب|أجور|salary|wage/.test(s)) return 'مرتبات'
-  if (/سولار|وقود|بترو|نقل|مشال|شحن|fuel|transport|car|سيار/.test(s)) return 'نقل'
-  if (/صيان|قطع غيار|تصليح|repair|maintenance/.test(s)) return 'صيانة'
-  if (/إيجار|ايجار|rent/.test(s)) return 'إيجارات'
-  if (/تسويق|دعاية|إعلان|advertising|marketing/.test(s)) return 'تسويق'
-  if (/كهرباء|مياه|غاز|أدوات|ضيافة|نظافة|تشغيل|operat/.test(s)) return 'تشغيل'
-  if (/إدار|مطبوعات|انترنت|هاتف|admin/.test(s)) return 'إدارية'
-  return 'أخرى'
-}
-
-// Strict Double Definition: Packing = 12 AND Price = 570
-function evaluateDoubleProduct(params) {
-  const packing = params.boxCount ?? params.packagingCount ?? null
-  const price = params.wholesalePrice ?? params.retailPrice ?? params.unitPrice ?? null
-  const name = String(params.productName || '').trim()
-  const nameHasDouble = /دبل|double|مزدوج|2x/i.test(name)
-
-  if (packing == null || price == null) {
-    if (nameHasDouble || Number(packing) === 12 || Math.round(Number(price || 0)) === 570) {
-      return {
-        isDouble: false,
-        auditStatus: 'Needs Review',
-        reason: `بيانات غير مكتملة (تعبئة: ${packing ?? 'مفقودة'}، سعر: ${price ?? 'مفقود'})`,
-        packing,
-        price,
-      }
-    }
-    return {
-      isDouble: false,
-      auditStatus: 'Regular Item',
-      reason: 'صنف عادي',
-      packing,
-      price,
-    }
-  }
-
-  const isPacking12 = Number(packing) === 12
-  const isPrice570 = Math.round(Number(price)) === 570
-
-  // Condition: Must meet BOTH Packing = 12 AND Price = 570
-  if (isPacking12 && isPrice570) {
-    return {
-      isDouble: true,
-      auditStatus: 'Correct Double',
-      reason: 'تعبئة 12 عبوة وسعر 570 EGP (مطابق تماماً للقاعدة)',
-      packing,
-      price,
-    }
-  }
-
-  if (nameHasDouble || isPacking12 || isPrice570) {
-    const issues = []
-    if (!isPacking12) issues.push(`التعبئة ${packing} عبوة (ليست 12)`)
-    if (!isPrice570) issues.push(`السعر ${price} EGP (ليس 570)`)
-    return {
-      isDouble: false,
-      auditStatus: 'False Double',
-      reason: issues.join(' و '),
-      packing,
-      price,
-    }
-  }
-
-  return {
-    isDouble: false,
-    auditStatus: 'Regular Item',
-    reason: 'صنف عادي',
-    packing,
-    price,
-  }
-}
-
-function isDoubleProduct(name, boxCount, price) {
-  return evaluateDoubleProduct({ productName: name, boxCount, unitPrice: price }).isDouble
-}
-
-// -------------------------------------------------------------------
-// DATA LAYER: One Number = One Source
-// -------------------------------------------------------------------
-async function loadIntelligenceData(filters) {
-  const { branch, branches: branchList, from, to } = filters
-  const activeBranchList = branchList.length ? branchList : (branch ? [branch] : [])
-
-  // 1. Approved batches
-  const { data: batches } = await supabase.from('import_batches').select('id, created_at').eq('status', 'approved').order('created_at', { ascending: false })
-  const approvedIds = (batches || []).map(b => b.id)
-  const lastUpdate = batches && batches.length ? new Date(batches[0].created_at).toLocaleDateString('ar-EG', { month: 'short', day: 'numeric', hour: '2-digit', minute: '2-digit' }) : 'لا توجد دفعات'
-
-  // 2. Query KPIs & Sales
-  let kpiQ = supabase.from('v_branch_daily_kpis').select('*').gte('business_date', from).lte('business_date', to).order('business_date')
-  if (activeBranchList.length === 1) kpiQ = kpiQ.eq('branch_id', activeBranchList[0])
-  else if (activeBranchList.length > 1) kpiQ = kpiQ.in('branch_id', activeBranchList)
-  const { data: kpiRows } = await kpiQ
-
-  // 3. Products
-  const { data: products } = await supabase.from('products').select('*').eq('is_active', true)
-  const productMap = new Map((products || []).map(p => [p.id, p]))
-
-  // 4. Warehouse & Inventory
-  let invQ = supabase.from('inventory_daily').select('id, branch_id, business_date, product_id, product_name, sales_qty, closing_qty, closing_value, batch_id')
-    .gte('business_date', from).lte('business_date', to)
-  if (approvedIds.length) invQ = invQ.in('batch_id', approvedIds)
-  if (activeBranchList.length === 1) invQ = invQ.eq('branch_id', activeBranchList[0])
-  else if (activeBranchList.length > 1) invQ = invQ.in('branch_id', activeBranchList)
-  const { data: invRows } = await invQ
-
-  // 5. Expenses
-  let expQ = supabase.from('v_expense_analysis').select('id, branch_id, canonical_category, expense_group, amount, entry_date, description, expense_type')
-    .gte('entry_date', from).lte('entry_date', to)
-  if (activeBranchList.length === 1) expQ = expQ.eq('branch_id', activeBranchList[0])
-  else if (activeBranchList.length > 1) expQ = expQ.in('branch_id', activeBranchList)
-  const { data: expRows } = await expQ
-
-  // Compute Core Metrics
-  let netSales = 0, grossSales = 0, discounts = 0, collections = 0, totalExpenses = 0
-  const branchAgg = new Map()
-  const dailyTimeline = new Map()
-
-  // Initialize branches in branchAgg
-  branches.forEach(b => {
-    if (!activeBranchList.length || activeBranchList.includes(b.id)) {
-      branchAgg.set(b.id, {
-        id: b.id,
-        name: b.name,
-        code: b.code,
-        sales: 0,
-        qty: 0,
-        equivQty: 0,
-        expenses: 0,
-        collections: 0,
-        discounts: 0,
-        hasData: false
-      })
-    }
-  })
-
-  ;(kpiRows || []).forEach(r => {
-    const s = Number(r.net_sales || 0)
-    netSales += s
-    grossSales += Number(r.gross_sales || 0)
-    discounts += Number(r.discount_amount || 0)
-    collections += Number(r.collections || 0)
-
-    const b = branchAgg.get(r.branch_id)
-    if (b) {
-      b.sales += s
-      b.collections += Number(r.collections || 0)
-      b.discounts += Number(r.discount_amount || 0)
-      b.hasData = true
-    }
-
-    const d = r.business_date
-    if (!dailyTimeline.has(d)) dailyTimeline.set(d, { date: d, sales: 0, expenses: 0, qty: 0, equivQty: 0 })
-    dailyTimeline.get(d).sales += s
-  })
-
-  // Calculate Equiv Quantity (Double = 2x)
-  let equivSalesQty = 0, rawSalesQty = 0
-  ;(invRows || []).forEach(r => {
-    const p = productMap.get(r.product_id)
-    const packing = p?.box_count ?? p?.packaging_count ?? null
-    const price = p?.wholesale_carton_price ?? p?.retail_carton_price ?? p?.carton_price ?? r.unit_value ?? null
-    const factor = isDoubleProduct(r.product_name, packing, price) ? 2 : 1
-    const q = Number(r.sales_qty || 0)
-    rawSalesQty += q
-    equivSalesQty += (q * factor)
-
-    const b = branchAgg.get(r.branch_id)
-    if (b) {
-      b.qty += q
-      b.equivQty += (q * factor)
-      b.hasData = true
-    }
-
-    const d = r.business_date
-    if (dailyTimeline.has(d)) {
-      dailyTimeline.get(d).qty += q
-      dailyTimeline.get(d).equivQty += (q * factor)
-    }
-  })
-
-  // Normalize Expenses
-  const expensesByCategory = {
-    'تشغيل': 0, 'نقل': 0, 'مرتبات': 0, 'صيانة': 0, 'إيجارات': 0, 'تسويق': 0, 'إدارية': 0, 'أخرى': 0
-  }
-  ;(expRows || []).forEach(r => {
-    const amt = Number(r.amount || 0)
-    totalExpenses += amt
-    const cat = normalizeCategory(r.canonical_category || r.expense_group)
-    expensesByCategory[cat] = (expensesByCategory[cat] || 0) + amt
-
-    const b = branchAgg.get(r.branch_id)
-    if (b) {
-      b.expenses += amt
-      b.hasData = true
-    }
-
-    const d = r.entry_date
-    if (dailyTimeline.has(d)) dailyTimeline.get(d).expenses += amt
-    else dailyTimeline.set(d, { date: d, sales: 0, expenses: amt, qty: 0, equivQty: 0 })
-  })
-
-  // Previous Period Calculation (Same duration)
-  const curStart = new Date(from), curEnd = new Date(to)
-  const durationMs = curEnd.getTime() - curStart.getTime()
-  const prevEnd = new Date(curStart.getTime() - (24 * 3600 * 1000))
-  const prevStart = new Date(prevEnd.getTime() - durationMs)
-  const prevFrom = prevStart.toISOString().split('T')[0]
-  const prevTo = prevEnd.toISOString().split('T')[0]
-
-  let prevNetSales = 0, prevTotalExpenses = 0, prevEquivQty = 0
-  if (filters.compare) {
-    let pKpiQ = supabase.from('v_branch_daily_kpis').select('net_sales').gte('business_date', prevFrom).lte('business_date', prevTo)
-    if (activeBranchList.length === 1) pKpiQ = pKpiQ.eq('branch_id', activeBranchList[0])
-    const { data: pKpis } = await pKpiQ
-    ;(pKpis || []).forEach(r => { prevNetSales += Number(r.net_sales || 0) })
-
-    let pExpQ = supabase.from('v_expense_analysis').select('amount').gte('entry_date', prevFrom).lte('entry_date', prevTo)
-    if (activeBranchList.length === 1) pExpQ = pExpQ.eq('branch_id', activeBranchList[0])
-    const { data: pExps } = await pExpQ
-    ;(pExps || []).forEach(r => { prevTotalExpenses += Number(r.amount || 0) })
-
-    let pInvQ = supabase.from('inventory_daily').select('sales_qty, product_id, product_name').gte('business_date', prevFrom).lte('business_date', prevTo)
-    if (activeBranchList.length === 1) pInvQ = pInvQ.eq('branch_id', activeBranchList[0])
-    const { data: pInvs } = await pInvQ
-    ;(pInvs || []).forEach(r => {
-      const p = productMap.get(r.product_id)
-      const packing = p?.box_count ?? p?.packaging_count ?? null
-      const price = p?.wholesale_carton_price ?? p?.retail_carton_price ?? p?.carton_price ?? r.unit_value ?? null
-      const factor = isDoubleProduct(r.product_name, packing, price) ? 2 : 1
-      prevEquivQty += (Number(r.sales_qty || 0) * factor)
-    })
-  }
-
-  const avgCartonPrice = rawSalesQty > 0 ? (netSales / rawSalesQty) : 0
-  const avgStandardPrice = equivSalesQty > 0 ? (netSales / equivSalesQty) : 0
-  const prevAvgPrice = prevEquivQty > 0 ? (prevNetSales / prevEquivQty) : 0
-  const netResult = netSales - totalExpenses
-  const prevNetResult = prevNetSales - prevTotalExpenses
-  const expenseRatio = netSales > 0 ? (totalExpenses / netSales) : 0
-  const prevExpenseRatio = prevNetSales > 0 ? (prevTotalExpenses / prevNetSales) : 0
-
-  const reportingBranches = [...branchAgg.values()].filter(b => b.hasData).length
-  const totalBranchesCount = branches.length
-
-  // Sort daily points
-  const timelinePoints = [...dailyTimeline.values()].sort((a, b) => a.date.localeCompare(b.date))
-  timelinePoints.forEach(p => {
-    p.avgPrice = p.qty > 0 ? (p.sales / p.qty) : (p.equivQty > 0 ? (p.sales / p.equivQty) : 0)
-  })
-
-  // Branch Performance rows
-  const branchListResult = [...branchAgg.values()].map(b => ({
-    ...b,
-    sharePct: netSales > 0 ? (b.sales / netSales) : 0,
-    avgPrice: b.qty > 0 ? (b.sales / b.qty) : (b.equivQty > 0 ? (b.sales / b.equivQty) : 0),
-    avgCartonPrice: b.qty > 0 ? (b.sales / b.qty) : 0,
-    avgStandardPrice: b.equivQty > 0 ? (b.sales / b.equivQty) : 0,
-    expenseRatio: b.sales > 0 ? (b.expenses / b.sales) : 0
-  })).sort((a, b) => b.sales - a.sales)
-
-  return {
-    kpis: {
-      netSales,
-      prevNetSales,
-      rawSalesQty,
-      equivSalesQty,
-      prevEquivQty,
-      avgCartonPrice,
-      avgStandardPrice,
-      prevAvgPrice,
-      totalExpenses,
-      prevTotalExpenses,
-      netResult,
-      prevNetResult,
-      expenseRatio,
-      prevExpenseRatio,
-      reportingBranches,
-      totalBranchesCount,
-      lastUpdate
-    },
-    timelinePoints,
-    branchList: branchListResult,
-    expensesByCategory,
-    discounts,
-    grossSales,
-    collections,
-    rawExpenses: expRows || [],
-    rawInventory: invRows || [],
-    products: products || [],
-    productMap
-  }
-}
-
-// -------------------------------------------------------------------
-// LAYOUT & APP SHELL (Collapsible, 10 sections)
-// -------------------------------------------------------------------
-const NAV_SECTIONS = [
-  { id: 'dashboard', label: 'لوحة الإدارة', icon: '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="3" y="3" width="7" height="9"></rect><rect x="14" y="3" width="7" height="5"></rect><rect x="14" y="12" width="7" height="9"></rect><rect x="3" y="16" width="7" height="5"></rect></svg>' },
-  { id: 'sales', label: 'المبيعات', icon: '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polyline points="23 6 13.5 15.5 8.5 10.5 1 18"></polyline><polyline points="17 6 23 6 23 12"></polyline></svg>' },
-  { id: 'expenses', label: 'المصروفات', icon: '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="2" y="4" width="20" height="16" rx="2"></rect><line x1="2" y1="10" x2="22" y2="10"></line></svg>' },
-  { id: 'branches', label: 'الفروع', icon: '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M3 9l9-7 9 7v11a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2z"></path><polyline points="9 22 9 12 15 12 15 22"></polyline></svg>' },
-  { id: 'products', label: 'الأصناف', icon: '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><line x1="16.5" y1="9.4" x2="7.5" y2="4.21"></line><path d="M21 16V8a2 2 0 0 0-1-1.73l-7-4a2 2 0 0 0-2 0l-7 4A2 2 0 0 0 3 8v8a2 2 0 0 0 1 1.73l7 4a2 2 0 0 0 2 0l7-4A2 2 0 0 0 21 16z"></path><polyline points="3.27 6.96 12 12.01 20.73 6.96"></polyline><line x1="12" y1="22.08" x2="12" y2="12"></line></svg>' },
-  { id: 'treasury', label: 'الخزينة', icon: '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="2" y="6" width="20" height="12" rx="2"></rect><circle cx="12" cy="12" r="2"></circle><path d="M6 12h.01M18 12h.01"></path></svg>' },
-  { id: 'analytics', label: 'التحليلات', icon: '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><line x1="18" y1="20" x2="18" y2="10"></line><line x1="12" y1="20" x2="12" y2="4"></line><line x1="6" y1="20" x2="6" y2="14"></line></svg>' },
-  { id: 'reports', label: 'التقارير', icon: '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"></path><polyline points="14 2 14 8 20 8"></polyline><line x1="16" y1="13" x2="8" y2="13"></line><line x1="16" y1="17" x2="8" y2="17"></line><polyline points="10 9 9 9 8 9"></polyline></svg>' },
-  { id: 'imports', label: 'مراجعة البيانات', icon: '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"></path><polyline points="7 10 12 15 17 10"></polyline><line x1="12" y1="15" x2="12" y2="3"></line></svg>' },
-  { id: 'settings', label: 'الإعدادات', icon: '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="3"></circle><path d="M19.4 15a1.65 1.65 0 0 0 .33 1.82l.06.06a2 2 0 0 1 0 2.83 2 2 0 0 1-2.83 0l-.06-.06a1.65 1.65 0 0 0-1.82-.33 1.65 1.65 0 0 0-1 1.51V21a2 2 0 0 1-2 2 2 2 0 0 1-2-2v-.09A1.65 1.65 0 0 0 9 19.4a1.65 1.65 0 0 0-1.82.33l-.06.06a2 2 0 0 1-2.83 0 2 2 0 0 1 0-2.83l.06-.06a1.65 1.65 0 0 0 .33-1.82 1.65 1.65 0 0 0-1.51-1H3a2 2 0 0 1-2-2 2 2 0 0 1 2-2h.09A1.65 1.65 0 0 0 4.6 9a1.65 1.65 0 0 0-.33-1.82l-.06-.06a2 2 0 0 1 0-2.83 2 2 0 0 1 2.83 0l.06.06a1.65 1.65 0 0 0 1.82.33H9a1.65 1.65 0 0 0 1-1.51V3a2 2 0 0 1 2-2 2 2 0 0 1 2 2v.09a1.65 1.65 0 0 0 1 1.51 1.65 1.65 0 0 0 1.82-.33l.06-.06a2 2 0 0 1 2.83 0 2 2 0 0 1 0 2.83l-.06.06a1.65 1.65 0 0 0-.33 1.82V9a1.65 1.65 0 0 0 1.51 1H21a2 2 0 0 1 2 2 2 2 0 0 1-2 2h-.09a1.65 1.65 0 0 0-1.51 1z"></path></svg>' }
+const REPORT_GROUPS=[
+ {label:'الإدارة المالية',items:[['executive','التقرير التنفيذي'],['monthly','التحليل الشهري وYTD']]},
+ {label:'المبيعات والعملاء',items:[['sales','المبيعات'],['receivables','المديونيات والتحصيل'],['reps','أداء المناديب']]},
+ {label:'المصروفات والتكاليف',items:[['expense-matrix','تحليلي المصروفات'],['expenses','تقرير المصروفات']]},
+ {label:'المخزون والأصناف',items:[['inventory','حركة المخزون'],['products','أرصدة ومصفوفة الأصناف']]},
+ {label:'النقدية والبنوك',items:[['treasury','الخزينة والبنوك'],['banks','البنوك وYTD']]}
 ]
+const selectedReport=()=>qs().get('report')||'executive'
+function reportsHubNav(){
+ const selected=selectedReport(),p=qs(),branch=p.get('branch')||'',from=p.get('from')||defaultFrom,to=p.get('to')||defaultTo
+ const options=REPORT_GROUPS.map(g=>'<optgroup label="'+g.label+'">'+g.items.map(item=>'<option value="'+item[0]+'" '+(selected===item[0]?'selected':'')+'>'+item[1]+'</option>').join('')+'</optgroup>').join('')
+ return '<section class="reports-list-bar"><div class="field reports-select-field"><label>التقرير</label><select id="report-picker">'+options+'</select></div></section>'
+}
+window.changeUnifiedReport=select=>{
+ const p=qs(),branch=p.get('branch')||'',from=p.get('from')||defaultFrom,to=p.get('to')||defaultTo
+ location.hash='#/reports?report='+encodeURIComponent(select.value)+'&branch='+encodeURIComponent(branch)+'&from='+encodeURIComponent(from)+'&to='+encodeURIComponent(to)
+}
 
-function renderShell(title, subtitle, bodyHtml) {
-  const currentRoute = route()
-  const isCollapsed = localStorage.getItem('ammco.sidebar.collapsed') === '1'
+function shell(title,subtitle,body){
+ const r=route().split('?')[0],sheetSection=sheetSectionForRoute(r)
+ const sidebarCollapsed=localStorage.getItem('ammco.sidebar.collapsed')==='1'
+ app.innerHTML=`<div class="shell ${sidebarCollapsed?'sidebar-collapsed':''}">
+ <aside class="sidebar">
+  <div class="brand"><div class="logo">A</div><div><b>AMMCO</b><small>Management Intelligence</small></div></div>
 
-  const navHtml = NAV_SECTIONS.map(s => `
-    <a href="#/${s.id}" class="sidebar-nav-item ${currentRoute === s.id ? 'active' : ''}">
-      ${s.icon}
-      <span>${s.label}</span>
-    </a>
-  `).join('')
+  <div class="nav-title">العمل المالي</div><nav class="nav">
+   <a class="${r==='dashboard'?'active':''}" href="#/dashboard">لوحة الإدارة</a>
+   <a class="${r==='reports'?'active':''}" href="#/reports?report=executive">التقارير</a>
+  </nav>
 
-  app.innerHTML = `
-    <div class="shell ${isCollapsed ? 'sidebar-collapsed' : ''}">
-      <aside class="sidebar">
-        <div class="brand">
-          <div class="logo">A</div>
-          <div>
-            <b>AMMCO</b>
-            <small>Management Intelligence</small>
-          </div>
-        </div>
+  <div class="nav-title system-nav-title">إدارة النظام</div><nav class="nav">
+   <a class="${r==='branches'?'active':''}" href="#/branches">إدارة الفروع</a>
+   ${profile?.role==='admin'?`<a class="${r==='users'?'active':''}" href="#/users">المستخدمون والصلاحيات</a>`:''}
+   <a class="${r==='imports'?'active':''}" href="#/imports">سجل الرفع</a>
+   <a class="${r==='uploads'?'active':''}" href="#/uploads">رفع شيتات الفروع</a>
+  </nav>
+ </aside>
 
-        <div class="nav-title">مركز العمليات والتحليل</div>
-        <nav class="nav-list" style="display:flex; flex-direction:column;">
-          ${navHtml}
-        </nav>
-
-        <div style="margin-top:auto; padding-top:15px; border-top:1px solid #e2e8f0;">
-          <a href="#/uploads" class="sidebar-nav-item ${currentRoute === 'uploads' ? 'active' : ''}" style="color:#0284c7;">
-            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"></path><polyline points="17 8 12 3 7 8"></polyline><line x1="12" y1="3" x2="12" y2="15"></line></svg>
-            <span>رفع شيت فرع</span>
-          </a>
-        </div>
-      </aside>
-
-      <main class="main">
-        <header class="topbar">
-          <div style="display:flex; align-items:center; gap:10px;">
-            <button class="btn secondary" type="button" onclick="window.toggleAmmcoSidebar()" title="إخفاء أو إظهار القائمة">
-              <svg viewBox="0 0 24 24" width="16" height="16" fill="none" stroke="currentColor" stroke-width="2"><line x1="3" y1="12" x2="21" y2="12"></line><line x1="3" y1="6" x2="21" y2="6"></line><line x1="3" y1="18" x2="21" y2="18"></line></svg>
-              <span>القائمة</span>
-            </button>
-            <div style="font-size:12px; font-weight:800; color:#17324d;">${title}</div>
-          </div>
-
-          <div class="actions">
-            <span class="chip" style="background:#f1f5f9; font-weight:700;">${profile?.full_name || 'مدير النظام'}</span>
-            <button class="btn secondary" type="button" id="logout-btn">خروج</button>
-          </div>
-        </header>
-
-        <section class="content" style="padding:16px 20px;">
-          ${bodyHtml}
-        </section>
-      </main>
+ <main class="main">
+  <header class="topbar">
+   <div class="topbar-context"><span>تقرير الإدارة</span><b>${sheetSection}</b></div>
+   <div class="actions">
+    <button class="btn secondary sidebar-toggle" type="button" onclick="toggleSidebar()" title="إخفاء أو إظهار القائمة">☰ القائمة</button>
+    <button class="btn secondary" onclick="location.hash='#/branches'">+ فرع</button>
+    <button class="btn" onclick="location.hash='#/uploads'">رفع شيت</button>
+    <button class="btn secondary" id="logout">خروج</button>
+   </div>
+  </header>
+  <section class="content">
+   <div class="pagehead">
+    <div>
+     <div class="sheet-context">ورقة الإدارة / ${sheetSection}</div>
+     <h1>${title}</h1>
+     <div class="muted">${subtitle||''}</div>
     </div>
-  `
+   </div>
+   ${r==='reports'?reportsHubNav():''}
+   ${body}
+  </section>
+ </main>
+ </div>`
+ document.getElementById('logout')?.addEventListener('click',async()=>{await supabase.auth.signOut();location.hash='';})
+ document.getElementById('report-picker')?.addEventListener('change',e=>changeUnifiedReport(e.currentTarget))
+}
+window.toggleSidebar=()=>{
+ const shell=document.querySelector('.shell');if(!shell)return
+ const collapsed=shell.classList.toggle('sidebar-collapsed')
+ localStorage.setItem('ammco.sidebar.collapsed',collapsed?'1':'0')
+}
+function branchOptions(selected=''){return `<option value="">كل الفروع</option>${branches.map(b=>`<option value="${b.id}" ${selected===b.id?'selected':''}>${b.name}</option>`).join('')}`}
+function filters(from,to,branch){return `<form id="filters" class="filters compact-filters">
+ <div class="field filter-branch"><label>الفرع</label><select name="branch">${branchOptions(branch)}</select></div>
+ <div class="field"><label>من</label><input type="date" name="from" value="${from}"></div>
+ <div class="field"><label>إلى</label><input type="date" name="to" value="${to}"></div>
+ <div class="filter-buttons"><button class="btn" type="submit">تطبيق</button><button class="btn secondary" type="button" onclick="resetReportFilters()">مسح</button></div>
+</form>`}
+function bindFilters(path){document.getElementById('filters')?.addEventListener('submit',e=>{e.preventDefault();const f=new FormData(e.currentTarget);const current=route().split('?')[0];if(current==='reports'){location.hash=`#/reports?report=${selectedReport()}&branch=${f.get('branch')||''}&from=${f.get('from')}&to=${f.get('to')}`;return}location.hash=`#/${path}?branch=${f.get('branch')||''}&from=${f.get('from')}&to=${f.get('to')}`})}
+function scope(from,to,branch){return `<div class="scope report-meta"><span><b>${branches.find(b=>b.id===branch)?.name||'كل الفروع'}</b></span><span>${from} → ${to}</span><span>Approved</span></div>`}
+const escapeHtml=v=>String(v??'').replace(/[&<>"']/g,m=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[m]))
+const escapeAttr=v=>escapeHtml(v)
+function table(title,cols,rows,totalRow=''){
+ const headers=cols.map((col,index)=>{
+  if(col.filter===false)return '<th>'+col.label+'</th>'
+  const values=[...new Set(rows.map(r=>String(r[col.key]??'').replace(/<[^>]*>/g,'').trim()).filter(Boolean))].sort((a,b)=>a.localeCompare(b,'ar',{numeric:true}))
+  const encoded=encodeURIComponent(JSON.stringify(values))
+  return '<th><div class="th-filter-wrap"><span>'+col.label+'</span><button class="excel-filter-btn" type="button" data-col="'+index+'" data-values="'+encoded+'" onclick="openExcelFilter(this)" title="فلتر العمود">⌄</button></div></th>'
+ }).join('')
+ return '<section class="table-card" data-report-title="'+escapeAttr(title)+'">'+
+  '<div class="table-head"><div><h2>'+title+'</h2><small>'+rows.length+' صف</small></div>'+
+  '<div class="table-tools"><input class="search" placeholder="بحث…" oninput="applyTableFilters(this)">'+
+  '<button class="tool-btn" type="button" onclick="clearTableFilters(this)">مسح الفلاتر</button>'+
+  '<button class="tool-btn" type="button" onclick="exportVisibleTableXlsx(this)">Excel</button>'+
+  '<button class="tool-btn" type="button" onclick="printReportOnly(this)">طباعة</button></div></div>'+
+  '<div class="table-wrap"><table><thead><tr>'+headers+'</tr></thead><tbody>'+
+  rows.map(r=>'<tr>'+cols.map(col=>'<td class="'+(col.num?'num ':'')+(col.key==='branch_name'?'row-label':'')+'">'+(r[col.key]??'-')+'</td>').join('')+'</tr>').join('')+
+  totalRow+'</tbody></table></div></section>'
+}
+window.__tableFilters=new WeakMap()
+window.openExcelFilter=button=>{
+ document.getElementById('excel-filter-popover')?.remove()
+ const card=button.closest('.table-card'),col=Number(button.dataset.col||0)
+ const allValues=JSON.parse(decodeURIComponent(button.dataset.values||'%5B%5D'))
+ const state=window.__tableFilters.get(card)||{}
+ const selected=new Set(state[col]||allValues)
+ const rect=button.getBoundingClientRect()
+ const options=allValues.map(v=>'<label class="excel-filter-option"><input type="checkbox" value="'+escapeAttr(v)+'" '+(selected.has(v)?'checked':'')+'><span>'+escapeHtml(v)+'</span></label>').join('')
+ const html='<div class="excel-filter-popover" id="excel-filter-popover" style="top:'+(rect.bottom+6+window.scrollY)+'px;left:'+Math.max(8,rect.left-225+window.scrollX)+'px">'+
+  '<div class="excel-filter-search"><input placeholder="بحث في القيم…" oninput="filterExcelChoices(this)"></div>'+
+  '<div class="excel-filter-actions"><button type="button" onclick="toggleExcelChoices(true)">تحديد الكل</button><button type="button" onclick="toggleExcelChoices(false)">إلغاء الكل</button></div>'+
+  '<div class="excel-filter-list">'+options+'</div>'+
+  '<div class="excel-filter-footer"><button class="btn secondary" type="button" onclick="document.getElementById(\'excel-filter-popover\').remove()">إلغاء</button><button class="btn" type="button" onclick="applyExcelChoiceFilter()">تطبيق</button></div></div>'
+ document.body.insertAdjacentHTML('beforeend',html)
+ const pop=document.getElementById('excel-filter-popover');pop.dataset.col=String(col);pop.__card=card
+}
+window.filterExcelChoices=input=>{
+ const q=input.value.trim().toLowerCase()
+ input.closest('.excel-filter-popover').querySelectorAll('.excel-filter-option').forEach(label=>label.style.display=label.innerText.toLowerCase().includes(q)?'flex':'none')
+}
+window.toggleExcelChoices=checked=>{
+ document.querySelectorAll('#excel-filter-popover .excel-filter-option').forEach(label=>{if(label.style.display!=='none')label.querySelector('input').checked=checked})
+}
+window.applyExcelChoiceFilter=()=>{
+ const pop=document.getElementById('excel-filter-popover');if(!pop)return
+ const card=pop.__card,col=Number(pop.dataset.col)
+ const picked=[...pop.querySelectorAll('.excel-filter-option input:checked')].map(x=>x.value)
+ const state=window.__tableFilters.get(card)||{};state[col]=picked;window.__tableFilters.set(card,state)
+ const btn=card.querySelector('.excel-filter-btn[data-col="'+col+'"]')
+ if(btn){const all=JSON.parse(decodeURIComponent(btn.dataset.values||'%5B%5D'));btn.classList.toggle('active',picked.length!==all.length)}
+ pop.remove();applyTableFilters(card.querySelector('.search'))
+}
+window.applyTableFilters=source=>{
+ const card=source.closest('.table-card'),q=(card.querySelector('.search')?.value||'').trim().toLowerCase(),state=window.__tableFilters.get(card)||{}
+ const rows=[...card.querySelectorAll('tbody tr:not(.total)')]
+ rows.forEach(row=>{
+  const cells=[...row.children]
+  const globalOk=!q||row.innerText.toLowerCase().includes(q)
+  const colsOk=Object.entries(state).every(([key,selected])=>Array.isArray(selected)&&selected.length>0&&selected.includes((cells[Number(key)]?.innerText||'').trim()))
+  row.style.display=globalOk&&colsOk?'':'none'
+ })
+}
+window.filterTable=input=>window.applyTableFilters(input)
+window.clearTableFilters=button=>{
+ const card=button.closest('.table-card');card.querySelector('.search').value='';window.__tableFilters.delete(card)
+ card.querySelectorAll('.excel-filter-btn').forEach(b=>b.classList.remove('active'));applyTableFilters(card.querySelector('.search'))
+}
+window.resetReportFilters=()=>{const r=route().split('?')[0];location.hash=r==='reports'?'#/reports?report='+selectedReport():'#/'+r}
 
-  document.getElementById('logout-btn')?.addEventListener('click', async () => {
-    await supabase.auth.signOut()
-    location.hash = ''
-    location.reload()
+window.enableTableDragScroll=()=>{
+ document.querySelectorAll('.table-wrap').forEach(wrap=>{
+  if(wrap.dataset.dragScroll==='1')return
+  wrap.dataset.dragScroll='1'
+  let down=false,startX=0,startLeft=0,moved=false
+  const interactive='button,input,select,textarea,a,label'
+  wrap.addEventListener('mousedown',e=>{
+   if(e.button!==0||e.target.closest(interactive))return
+   down=true;moved=false;startX=e.clientX;startLeft=wrap.scrollLeft
+   wrap.classList.add('dragging')
+   e.preventDefault()
   })
-}
-
-window.toggleAmmcoSidebar = () => {
-  const shell = document.querySelector('.shell')
-  if (!shell) return
-  const collapsed = shell.classList.toggle('sidebar-collapsed')
-  localStorage.setItem('ammco.sidebar.collapsed', collapsed ? '1' : '0')
-}
-
-// -------------------------------------------------------------------
-// UNIFIED FILTER BAR COMPONENT
-// -------------------------------------------------------------------
-function renderUnifiedFilterBar(filters) {
-  const branchOpts = branches.map(b => `
-    <option value="${b.id}" ${filters.branch === b.id ? 'selected' : ''}>${b.name}</option>
-  `).join('')
-
-  return `
-    <div class="unified-bar">
-      <div class="unified-bar-row">
-        <div class="presets-wrap">
-          <button class="preset-btn" type="button" onclick="window.applyPreset('this_month')">هذا الشهر</button>
-          <button class="preset-btn" type="button" onclick="window.applyPreset('prev_month')">الشهر السابق</button>
-          <button class="preset-btn" type="button" onclick="window.applyPreset('ytd')">السنة الحالية</button>
-          <button class="preset-btn" type="button" onclick="window.applyPreset('last_7')">آخر 7 أيام</button>
-        </div>
-
-        <form id="filter-form" style="display:flex; align-items:center; gap:8px; flex-wrap:wrap; margin-right:auto;">
-          <div class="field" style="width:135px;">
-            <label>من</label>
-            <input type="date" name="from" value="${filters.from}" required>
-          </div>
-
-          <div class="field" style="width:135px;">
-            <label>إلى</label>
-            <input type="date" name="to" value="${filters.to}" required>
-          </div>
-
-          <div class="field" style="width:170px;">
-            <label>الفرع</label>
-            <select name="branch">
-              <option value="">كل الفروع (${branches.length})</option>
-              ${branchOpts}
-            </select>
-          </div>
-
-          <label class="compare-toggle">
-            <input type="checkbox" name="compare" ${filters.compare ? 'checked' : ''} onchange="document.getElementById('filter-form').requestSubmit()">
-            <span>مقارنة بالفترة السابقة</span>
-          </label>
-
-          <button class="btn" type="submit" style="padding:6px 14px;">تطبيق</button>
-          <button class="btn secondary" type="button" onclick="window.resetAmmcoFilters()" style="padding:6px 10px;">إعادة ضبط</button>
-        </form>
-
-        <button class="btn secondary" type="button" onclick="window.exportCurrentReportExcel()" style="padding:6px 12px; gap:4px; display:inline-flex; align-items:center;">
-          <svg viewBox="0 0 24 24" width="14" height="14" fill="none" stroke="currentColor" stroke-width="2"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"></path><polyline points="7 10 12 15 17 10"></polyline><line x1="12" y1="15" x2="12" y2="3"></line></svg>
-          <span>تصدير Excel</span>
-        </button>
-      </div>
-    </div>
-  `
-}
-
-window.bindFilterForm = () => {
-  const form = document.getElementById('filter-form')
-  if (!form) return
-  form.addEventListener('submit', e => {
-    e.preventDefault()
-    const fd = new FormData(form)
-    const p = new URLSearchParams()
-    if (fd.get('branch')) p.set('branch', fd.get('branch'))
-    if (fd.get('from')) p.set('from', fd.get('from'))
-    if (fd.get('to')) p.set('to', fd.get('to'))
-    if (fd.get('compare') === 'on') p.set('compare', '1')
-    location.hash = `#/${route()}?${p.toString()}`
+  window.addEventListener('mousemove',e=>{
+   if(!down)return
+   const dx=e.clientX-startX
+   if(Math.abs(dx)>3)moved=true
+   wrap.scrollLeft=startLeft-dx
   })
-}
-
-window.applyPreset = type => {
-  const now = new Date()
-  let f = '', t = ''
-  if (type === 'this_month') {
-    const y = now.getFullYear(), m = String(now.getMonth() + 1).padStart(2, '0')
-    f = `${y}-${m}-01`; t = `${y}-${m}-30`
-  } else if (type === 'prev_month') {
-    const d = new Date(now.getFullYear(), now.getMonth() - 1, 1)
-    const y = d.getFullYear(), m = String(d.getMonth() + 1).padStart(2, '0')
-    f = `${y}-${m}-01`; t = `${y}-${m}-30`
-  } else if (type === 'ytd') {
-    const y = now.getFullYear()
-    f = `${y}-01-01`; t = `${y}-12-31`
-  } else if (type === 'last_7') {
-    const d = new Date(now.getTime() - (7 * 24 * 3600 * 1000))
-    f = d.toISOString().split('T')[0]
-    t = now.toISOString().split('T')[0]
-  }
-  const cur = currentFilters()
-  const p = new URLSearchParams(location.hash.includes('?') ? location.hash.split('?')[1] : '')
-  p.set('from', f); p.set('to', t)
-  location.hash = `#/${route()}?${p.toString()}`
-}
-
-window.resetAmmcoFilters = () => {
-  location.hash = `#/${route()}`
-}
-
-// -------------------------------------------------------------------
-// 8 CORE KPI CARDS COMPONENT
-// -------------------------------------------------------------------
-function renderKPICard(title, cur, prev, format = 'currency', invert = false, subInfo = '') {
-  let valStr = ''
-  if (format === 'currency') valStr = `${money(cur)} ج.م`
-  else if (format === 'percent') valStr = pct(cur)
-  else if (format === 'qty') valStr = `${qty(cur)} كرتونة`
-  else valStr = String(cur)
-
-  let deltaHtml = ''
-  if (prev !== undefined && prev !== null && prev > 0) {
-    const delta = ((cur - prev) / prev) * 100
-    const isUp = delta > 0.05
-    const isDown = delta < -0.05
-    let sentiment = 'neutral'
-    if (isUp) sentiment = invert ? 'negative' : 'positive'
-    if (isDown) sentiment = invert ? 'positive' : 'negative'
-
-    const sign = delta > 0 ? '+' : ''
-    const arrow = delta > 0 ? '▲' : (delta < 0 ? '▼' : '—')
-    deltaHtml = `<span class="delta-badge ${sentiment}">${arrow} ${sign}${delta.toFixed(1)}%</span>`
-  } else {
-    deltaHtml = `<span class="delta-badge neutral">—</span>`
-  }
-
-  return `
-    <div class="kpi-card-rich">
-      <div class="kpi-head">
-        <span class="kpi-title">${title}</span>
-        ${deltaHtml}
-      </div>
-      <div class="kpi-val">${valStr}</div>
-      <div class="kpi-sub">
-        <span>${subInfo || (prev ? `السابق: ${format === 'currency' ? money(prev) : qty(prev)}` : 'فترة حالية')}</span>
-      </div>
-    </div>
-  `
-}
-
-function render8KPIGrid(kpis, compare) {
-  return `
-    <div class="kpis-8-grid">
-      ${renderKPICard('إجمالي المبيعات (صافي)', kpis.netSales, compare ? kpis.prevNetSales : null, 'currency', false, 'صافي الإيرادات بعد الخصم')}
-      ${renderKPICard('كمية المبيعات (المكافئة)', kpis.equivSalesQty, compare ? kpis.prevEquivQty : null, 'qty', false, 'مع احتساب دبل × 2')}
-      ${renderKPICard('متوسط سعر الكرتونة', kpis.avgCartonPrice, compare ? kpis.prevAvgPrice : null, 'currency', false, 'المبيعات ÷ الكمية المكافئة')}
-      ${renderKPICard('إجمالي المصروفات', kpis.totalExpenses, compare ? kpis.prevTotalExpenses : null, 'currency', true, 'المنصرف الفعلي من الخزائن')}
-      ${renderKPICard('صافي النتيجة (المبيعات - المصروفات)', kpis.netResult, compare ? kpis.prevNetResult : null, 'currency', false, 'الأرباح التشغيلية المحققة')}
-      ${renderKPICard('نسبة المصروفات للمبيعات', kpis.expenseRatio, compare ? kpis.prevExpenseRatio : null, 'percent', true, 'الحد المعياري المستهدف < 15%')}
-      ${renderKPICard('الفروع الملتزمة بالرفع', `${kpis.reportingBranches} / ${kpis.totalBranchesCount}`, null, 'text', false, `نسبة الالتزام ${pct(kpis.totalBranchesCount ? kpis.reportingBranches / kpis.totalBranchesCount : 0)}`)}
-      ${renderKPICard('آخر تحديث للبيانات', kpis.lastUpdate, null, 'text', false, 'حالة البيانات: معتمدة ومطابقة')}
-    </div>
-  `
-}
-
-// -------------------------------------------------------------------
-// INTERACTIVE SVG TIMELINE CHART
-// -------------------------------------------------------------------
-let chartActiveSeries = { sales: true, expenses: true, qty: false, price: false }
-let chartViewMode = 'day'
-
-window.toggleChartSeries = series => {
-  chartActiveSeries[series] = !chartActiveSeries[series]
-  window.drawTimelineSVG()
-}
-
-window.setChartMode = mode => {
-  chartViewMode = mode
-  document.querySelectorAll('.chart-mode-btn').forEach(b => b.classList.toggle('active', b.dataset.mode === mode))
-  window.drawTimelineSVG()
-}
-
-function renderTimelineChartSection() {
-  return `
-    <div class="chart-card">
-      <div class="chart-controls">
-        <div style="font-size:12px; font-weight:800; color:#17324d;">المبيعات والمصروفات عبر الزمن</div>
-
-        <div class="chart-series-toggles">
-          <label class="series-checkbox">
-            <input type="checkbox" ${chartActiveSeries.sales ? 'checked' : ''} onchange="window.toggleChartSeries('sales')">
-            <span class="series-dot sales"></span>
-            <span>المبيعات</span>
-          </label>
-
-          <label class="series-checkbox">
-            <input type="checkbox" ${chartActiveSeries.expenses ? 'checked' : ''} onchange="window.toggleChartSeries('expenses')">
-            <span class="series-dot expenses"></span>
-            <span>المصروفات</span>
-          </label>
-
-          <label class="series-checkbox">
-            <input type="checkbox" ${chartActiveSeries.qty ? 'checked' : ''} onchange="window.toggleChartSeries('qty')">
-            <span class="series-dot qty"></span>
-            <span>الكمية المكافئة</span>
-          </label>
-
-          <label class="series-checkbox">
-            <input type="checkbox" ${chartActiveSeries.price ? 'checked' : ''} onchange="window.toggleChartSeries('price')">
-            <span class="series-dot price"></span>
-            <span>متوسط السعر</span>
-          </label>
-        </div>
-
-        <div class="chart-modes">
-          <button class="chart-mode-btn ${chartViewMode === 'day' ? 'active' : ''}" data-mode="day" onclick="window.setChartMode('day')">يومي</button>
-          <button class="chart-mode-btn ${chartViewMode === 'week' ? 'active' : ''}" data-mode="week" onclick="window.setChartMode('week')">أسبوعي</button>
-          <button class="chart-mode-btn ${chartViewMode === 'month' ? 'active' : ''}" data-mode="month" onclick="window.setChartMode('month')">شهري</button>
-        </div>
-      </div>
-
-      <div class="svg-chart-container" id="chart-container">
-        <svg class="svg-chart" id="timeline-svg" preserveAspectRatio="none" viewBox="0 0 800 240"></svg>
-        <div class="chart-tooltip" id="chart-tooltip"></div>
-      </div>
-    </div>
-  `
-}
-
-window.cachedPoints = []
-window.drawTimelineSVG = () => {
-  const svg = document.getElementById('timeline-svg')
-  const tooltip = document.getElementById('chart-tooltip')
-  if (!svg || !window.cachedPoints || !window.cachedPoints.length) return
-
-  // Grouping by mode
-  let raw = window.cachedPoints
-  if (chartViewMode === 'week') {
-    const weeks = new Map()
-    raw.forEach(p => {
-      const d = new Date(p.date)
-      const w = `${d.getFullYear()}-W${Math.ceil((d.getDate() + 6) / 7)}`
-      if (!weeks.has(w)) weeks.set(w, { date: w, sales: 0, expenses: 0, equivQty: 0 })
-      const itm = weeks.get(w)
-      itm.sales += p.sales; itm.expenses += p.expenses; itm.equivQty += p.equivQty
-    })
-    raw = [...weeks.values()]
-  } else if (chartViewMode === 'month') {
-    const months = new Map()
-    raw.forEach(p => {
-      const m = p.date.substring(0, 7)
-      if (!months.has(m)) months.set(m, { date: m, sales: 0, expenses: 0, equivQty: 0 })
-      const itm = months.get(m)
-      itm.sales += p.sales; itm.expenses += p.expenses; itm.equivQty += p.equivQty
-    })
-    raw = [...months.values()]
-  }
-
-  const W = 800, H = 240, padX = 40, padY = 30
-  const plotW = W - (padX * 2), plotH = H - (padY * 2)
-
-  let maxVal = 1000
-  raw.forEach(p => {
-    if (chartActiveSeries.sales && p.sales > maxVal) maxVal = p.sales
-    if (chartActiveSeries.expenses && p.expenses > maxVal) maxVal = p.expenses
+  window.addEventListener('mouseup',()=>{
+   if(!down)return
+   down=false
+   wrap.classList.remove('dragging')
   })
-
-  const getX = i => padX + (i / Math.max(1, raw.length - 1)) * plotW
-  const getY = val => H - padY - (val / maxVal) * plotH
-
-  // Build grid lines
-  let gridLines = ''
-  for (let i = 0; i <= 4; i++) {
-    const yVal = (maxVal / 4) * i
-    const yPos = getY(yVal)
-    gridLines += `
-      <line x1="${padX}" y1="${yPos}" x2="${W - padX}" y2="${yPos}" stroke="#f1f5f9" stroke-width="1" />
-      <text x="${W - padX + 5}" y="${yPos + 4}" fill="#94a3b8" font-size="9" text-anchor="start">${money(yVal)}</text>
-    `
-  }
-
-  // Polylines
-  const makeLine = (key, color) => {
-    const pts = raw.map((p, i) => `${getX(i)},${getY(p[key] || 0)}`).join(' ')
-    return `<polyline fill="none" stroke="${color}" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round" points="${pts}" />`
-  }
-
-  let linesHtml = ''
-  if (chartActiveSeries.sales) linesHtml += makeLine('sales', '#2563eb')
-  if (chartActiveSeries.expenses) linesHtml += makeLine('expenses', '#e11d48')
-
-  // Interactive points
-  let pointsHtml = ''
-  raw.forEach((p, i) => {
-    const x = getX(i)
-    if (chartActiveSeries.sales) {
-      const y = getY(p.sales || 0)
-      pointsHtml += `<circle cx="${x}" cy="${y}" r="3.5" fill="#2563eb" stroke="#fff" stroke-width="1.5" class="chart-pt" data-idx="${i}" />`
-    }
-    if (chartActiveSeries.expenses) {
-      const y = getY(p.expenses || 0)
-      pointsHtml += `<circle cx="${x}" cy="${y}" r="3.5" fill="#e11d48" stroke="#fff" stroke-width="1.5" class="chart-pt" data-idx="${i}" />`
-    }
+  wrap.addEventListener('mouseleave',()=>{
+   if(!down)return
+   wrap.classList.remove('dragging')
   })
-
-  svg.innerHTML = gridLines + linesHtml + pointsHtml
-
-  // Attach hover events
-  svg.querySelectorAll('.chart-pt').forEach(pt => {
-    pt.addEventListener('mouseenter', e => {
-      const idx = Number(e.target.dataset.idx)
-      const item = raw[idx]
-      const rect = svg.getBoundingClientRect()
-      const ptRect = e.target.getBoundingClientRect()
-      tooltip.style.display = 'block'
-      tooltip.style.left = `${ptRect.left - rect.left - 50}px`
-      tooltip.style.top = `${ptRect.top - rect.top - 50}px`
-      tooltip.innerHTML = `
-        <div style="font-weight:bold; color:#cbd5e1; margin-bottom:2px;">${item.date}</div>
-        <div>المبيعات: <b style="color:#60a5fa;">${money(item.sales)} ج.م</b></div>
-        <div>المصروفات: <b style="color:#f87171;">${money(item.expenses)} ج.م</b></div>
-      `
-    })
-    pt.addEventListener('mouseleave', () => {
-      tooltip.style.display = 'none'
-    })
-  })
+  wrap.addEventListener('click',e=>{
+   if(moved&&!e.target.closest(interactive)){e.preventDefault();e.stopPropagation();moved=false}
+  },true)
+ })
 }
 
-// -------------------------------------------------------------------
-// BRANCH HORIZONTAL BARS COMPARISON
-// -------------------------------------------------------------------
-function renderBranchBarsSection(branches) {
-  const maxSales = Math.max(1, ...branches.map(b => b.sales))
-
-  const rowsHtml = branches.map((b, idx) => {
-    const w = (b.sales / maxSales) * 100
-    return `
-      <div class="branch-bar-row" onclick="window.drillDownBranch('${b.id}')" title="انقر لتصفية باقي الصفحة على ${escapeAttr(b.name)}">
-        <div class="branch-info">
-          <span class="branch-rank">${idx + 1}</span>
-          <b style="font-size:11px; color:#17324d;">${escapeHtml(b.name)}</b>
-        </div>
-
-        <div class="branch-bar-track">
-          <div class="branch-bar-fill" style="width:${w}%;"></div>
-        </div>
-
-        <div style="text-align:right;">
-          <b style="font-size:11px;">${money(b.sales)} ج.م</b>
-          <div style="font-size:9px; color:#64748b;">حصة: ${pct(b.sharePct)}</div>
-        </div>
-
-        <div style="text-align:right;">
-          <span style="font-size:10.5px; font-weight:700;">${qty(b.equivQty)}</span>
-          <div style="font-size:9px; color:#64748b;">كرتونة مكافئة</div>
-        </div>
-
-        <div style="text-align:right;">
-          <span style="font-size:10.5px; font-weight:700; color:${b.expenseRatio > 0.18 ? '#b91c1c' : '#15803d'};">${pct(b.expenseRatio)}</span>
-          <div style="font-size:9px; color:#64748b;">مصروف/مبيعات</div>
-        </div>
-      </div>
-    `
-  }).join('')
-
-  return `
-    <div class="branch-bars-card">
-      <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:10px;">
-        <div>
-          <b style="font-size:12px; color:#17324d;">مقارنة أداء الفروع (Drill-down تفاعلي)</b>
-          <small style="color:#64748b; margin-right:8px;">اضغط على أي فرع لتصفية التحليلات فوراً</small>
-        </div>
-        <span class="chip" style="font-size:9.5px;">${branches.length} فرع</span>
-      </div>
-
-      <div style="display:grid; grid-template-columns:140px 1fr 140px 120px 80px; gap:12px; font-size:9.5px; font-weight:800; color:#64748b; padding:0 8px 6px; border-bottom:1px solid #e2e8f0;">
-        <span>الفرع</span>
-        <span>المبيعات والحصة السوقية</span>
-        <span style="text-align:right;">قيمة المبيعات</span>
-        <span style="text-align:right;">الكمية المكافئة</span>
-        <span style="text-align:right;">نسبة المصروفات</span>
-      </div>
-
-      <div style="display:flex; flex-direction:column; gap:2px; margin-top:4px;">
-        ${rowsHtml}
-      </div>
-    </div>
-  `
+window.exportVisibleTableXlsx=button=>{
+ const card=button.closest('.table-card'),tableEl=card.querySelector('table')
+ const visibleRows=[...tableEl.querySelectorAll('tr')].filter(r=>r.style.display!=='none')
+ const matrix=visibleRows.map(r=>[...r.children].map(cell=>cell.innerText.trim()))
+ const ws=XLSX.utils.aoa_to_sheet(matrix)
+ ws['!cols']=(matrix[0]||[]).map((_,i)=>({wch:Math.min(40,Math.max(10,...matrix.map(r=>String(r[i]||'').length+2)))}))
+ const wb=XLSX.utils.book_new();XLSX.utils.book_append_sheet(wb,ws,'Report')
+ const title=(card.dataset.reportTitle||'AMMCO-report').replace(/[\\/:*?"<>|]/g,'-')
+ XLSX.writeFile(wb,title+'.xlsx',{compression:true})
 }
-
-window.drillDownBranch = branchId => {
-  const p = new URLSearchParams(location.hash.includes('?') ? location.hash.split('?')[1] : '')
-  p.set('branch', branchId)
-  location.hash = `#/${route()}?${p.toString()}`
+window.printReportOnly=button=>{
+ const card=button.closest('.table-card'),title=card.dataset.reportTitle||'تقرير AMMCO',meta=document.querySelector('.report-meta')?.innerText||''
+ const table=card.querySelector('table').cloneNode(true)
+ ;[...table.querySelectorAll('tbody tr')].forEach(r=>{if(r.style.display==='none')r.remove()})
+ table.querySelectorAll('.excel-filter-btn').forEach(x=>x.remove())
+ const win=window.open('','_blank','width=1100,height=760');if(!win)return
+ win.document.write('<!doctype html><html lang="ar" dir="rtl"><head><meta charset="utf-8"><title>'+escapeHtml(title)+'</title><style>'+
+ 'body{font-family:"IBM Plex Sans Arabic","Segoe UI",Tahoma,Arial,sans-serif;margin:18px;color:#172033}h1{font-size:18px;margin:0 0 4px}.meta{font-size:11px;color:#64748b;margin-bottom:12px}table{width:100%;border-collapse:collapse;font-size:11px}th{background:#dce9f4;font-weight:700}th,td{border:1px solid #d9e1ea;padding:6px 8px;text-align:right}td.num{direction:ltr;text-align:right;font-weight:600}tr:nth-child(even) td{background:#fafbfd}.total th,.total td{background:#e4eef6;font-weight:700}@page{size:landscape;margin:10mm}</style></head><body><h1>'+escapeHtml(title)+'</h1><div class="meta">'+escapeHtml(meta)+'</div>'+table.outerHTML+'<script>window.onload=function(){window.focus();window.print()}<\/script></body></html>')
+ win.document.close()
 }
-
-// -------------------------------------------------------------------
-// SMART INSIGHTS / ANOMALIES COMPONENT
-// -------------------------------------------------------------------
-function renderSmartAnomalies(data) {
-  const anomalies = []
-
-  // Check 1: Expense spike > 20%
-  if (data.kpis.expenseRatio > 0.18) {
-    anomalies.push({
-      type: 'critical',
-      title: 'ارتفاع حاد في نسبة المصروفات الإجمالية',
-      desc: `سجلت نسبة المصروفات ${pct(data.kpis.expenseRatio)} متجاوزة الحد الآمن (15%) بمقدار ${money(data.kpis.totalExpenses)} ج.م.`
-    })
+const tableDragObserver=new MutationObserver(()=>enableTableDragScroll())
+tableDragObserver.observe(app,{childList:true,subtree:true})
+async function render(){
+ if(!session) return renderLogin()
+ if(!profile?.is_active) return shell('AMMCO','الحساب غير مهيأ أو غير نشط','<div class="notice">راجع مدير النظام لربط الحساب بالمؤسسة.</div>')
+ const r=route().split('?')[0]
+ try{
+  if(r==='reports'){
+   const report=selectedReport()
+   if(report==='sales')return renderSales()
+   if(report==='expenses')return renderExpenses()
+   if(report==='expense-matrix')return renderExpenseMatrix()
+   if(report==='receivables')return renderReceivables()
+   if(report==='reps')return renderReps()
+   if(report==='inventory')return renderInventory()
+   if(report==='products')return renderProducts()
+   if(report==='monthly')return renderMonthly()
+   if(report==='banks')return renderBanks()
+   if(report==='treasury')return renderTreasury()
+   return renderExecutive()
   }
+  if(r==='branches')return renderBranches()
+  if(r==='users')return renderUsers()
+  if(r==='treasury')return renderTreasury()
+  if(r==='accounting-inputs'){location.hash='#/treasury';return}
+  if(r==='sales')return renderSales()
+  if(r==='expenses')return renderExpenses()
+  if(r==='expense-matrix')return renderExpenseMatrix()
+  if(r==='receivables')return renderReceivables()
+  if(r==='reps')return renderReps()
+  if(r==='inventory')return renderInventory()
+  if(r==='products')return renderProducts()
+  if(r==='monthly')return renderMonthly()
+  if(r==='banks')return renderBanks()
+  if(r==='imports')return renderImports()
+  if(r==='uploads')return renderUploads()
+  if(r==='executive')return renderExecutive()
+  return renderDashboard()
+ }catch(e){shell('حدث خطأ','',`<div class="error">${e.message||e}</div>`)}
+}
 
-  // Check 2: Branches with 0 sales but active expenses
-  data.branchList.forEach(b => {
-    if (b.sales === 0 && b.expenses > 0) {
-      anomalies.push({
-        type: 'warning',
-        title: `فرع ${b.name}: تسجيل مصروفات بدون مبيعات`,
-        desc: `تم رصد مصروفات بقيمة ${money(b.expenses)} ج.م بدون وجود أي مبيعات مسجلة في هذه الفترة.`
-      })
-    }
-  })
+function renderLogin(){
+ app.innerHTML=`<main class="login"><section class="login-card"><h1>AMMCO</h1><div class="muted">Management Intelligence</div><div id="login-msg"></div><form id="login-form"><div class="field"><label>البريد الإلكتروني</label><input name="email" type="email" value="sayed3la2@gmail.com" required></div><div class="field"><label>كلمة المرور</label><input name="password" type="password" required></div><button class="btn">دخول</button></form></section></main>`
+ document.getElementById('login-form').addEventListener('submit',async e=>{e.preventDefault();const fd=new FormData(e.currentTarget);const {error}=await supabase.auth.signInWithPassword({email:String(fd.get('email')),password:String(fd.get('password'))});document.getElementById('login-msg').innerHTML=error?`<div class="error">${error.message}</div>`:''})
+}
 
-  // Check 3: Branches not reporting
-  const nonReporting = data.branchList.filter(b => !b.hasData)
-  if (nonReporting.length > 0) {
-    anomalies.push({
-      type: 'info',
-      title: `${nonReporting.length} فروع لم تقم بتسليم بياناتها للفترة المحددة`,
-      desc: `الفروع: ${nonReporting.map(b => b.name).join('، ')}.`
-    })
+async function approvedIds(){
+ const {data,error}=await supabase.from('import_batches').select('id').eq('status','approved');if(error)throw error;return (data||[]).map(x=>x.id)
+}
+function currentFilters(){const p=qs();return {branch:p.get('branch')||'',from:p.get('from')||defaultFrom,to:p.get('to')||defaultTo}}
+
+async function loadDaily(branch,from,to){
+ let q=supabase.from('v_branch_daily_kpis').select('*').gte('business_date',from).lte('business_date',to).order('business_date');if(branch)q=q.eq('branch_id',branch);const {data,error}=await q;if(error)throw error;return data||[]
+}
+function latestInventoryByProduct(rows){
+ const latest=new Map()
+ ;(rows||[]).forEach(r=>{
+  const key=r.branch_id+'|'+(r.product_id||r.product_name||'')
+  const prev=latest.get(key)
+  if(!prev||String(r.business_date)>String(prev.business_date)||(String(r.business_date)===String(prev.business_date)&&Number(r.id||0)>Number(prev.id||0)))latest.set(key,r)
+ })
+ return [...latest.values()]
+}
+
+function managementDashboardTable(rows,totalRow){
+ const cols=[
+  {key:'branch_name',label:'الفرع'},
+  {key:'opening',label:'افتتاحي مديونية'},
+  {key:'sales',label:'المبيعات',num:1},
+  {key:'collections',label:'التحصيل',num:1},
+  {key:'cumulative',label:'مديونية تراكمية',num:1},
+  {key:'discount',label:'خصم',num:1},
+  {key:'discount_rate',label:'نسبة الخصم'},
+  {key:'sales_qty',label:'كمية المبيعات المكافئة',num:1},
+  {key:'avg_price',label:'متوسط السعر',num:1},
+  {key:'fuel',label:'سولار',num:1},
+  {key:'petro',label:'بترو أب',num:1},
+  {key:'maintenance',label:'صيانة',num:1},
+  {key:'inventory_qty',label:'كمية المخزون',num:1},
+  {key:'inventory_value',label:'قيمة المخزون',num:1}
+ ]
+ const header=cols.map((col,index)=>{
+  const values=[...new Set(rows.map(r=>String(r[col.key]??'').replace(/<[^>]*>/g,'').trim()).filter(Boolean))].sort((a,b)=>a.localeCompare(b,'ar',{numeric:true}))
+  const encoded=encodeURIComponent(JSON.stringify(values))
+  return '<th><div class="th-filter-wrap"><span>'+col.label+'</span><button class="excel-filter-btn" type="button" data-col="'+index+'" data-values="'+encoded+'" onclick="openExcelFilter(this)" title="فلتر العمود">⌄</button></div></th>'
+ }).join('')
+ return '<section class="table-card management-dashboard-table" data-report-title="التقرير المجمع">'+
+  '<div class="table-head"><div><h2>التقرير المجمع</h2><small>'+rows.length+' فرع</small></div>'+
+  '<div class="table-tools"><input class="search" placeholder="بحث…" oninput="applyTableFilters(this)">'+
+  '<button class="tool-btn" type="button" onclick="clearTableFilters(this)">مسح الفلاتر</button>'+
+  '<button class="tool-btn" type="button" onclick="exportVisibleTableXlsx(this)">Excel</button>'+
+  '<button class="tool-btn" type="button" onclick="printReportOnly(this)">طباعة</button></div></div>'+
+  '<div class="table-wrap"><table><thead>'+
+   '<tr class="group-header-row"><th rowspan="2">الفرع</th><th colspan="4">30 سبتمبر</th><th colspan="4">نسبة الخصم</th><th colspan="3">مصاريف السيارات</th><th colspan="2">المخزون</th></tr>'+
+   '<tr class="column-header-row">'+header.replace(/^<th>[\s\S]*?<\/th>/,'')+'</tr>'+
+  '</thead><tbody>'+
+  rows.map(r=>'<tr>'+cols.map(col=>'<td class="'+(col.num?'num ':'')+(col.key==='branch_name'?'row-label':'')+'">'+(r[col.key]??'-')+'</td>').join('')+'</tr>').join('')+
+  totalRow+'</tbody></table></div></section>'
+}
+
+async function renderDashboard(){
+ const {branch,from,to}=currentFilters()
+ const daily=await loadDaily(branch,from,to),ids=await approvedIds()
+ let whQ=supabase.from('warehouse_daily_summary')
+  .select('branch_id,business_date,closing_qty,closing_value,raw_payload')
+  .in('batch_id',ids.length?ids:['00000000-0000-0000-0000-000000000000'])
+  .gte('business_date',from).lte('business_date',to).order('business_date')
+ let invQ=supabase.from('inventory_daily')
+  .select('id,branch_id,business_date,product_id,product_name,sales_qty,closing_qty,closing_value')
+  .in('batch_id',ids.length?ids:['00000000-0000-0000-0000-000000000000'])
+  .gte('business_date',from).lte('business_date',to)
+ let prodQ=supabase.from('products').select('id,box_count').eq('is_active',true)
+ let expQ=supabase.from('v_expense_analysis')
+  .select('branch_id,canonical_category,expense_group,amount')
+  .gte('entry_date',from).lte('entry_date',to)
+ if(branch){whQ=whQ.eq('branch_id',branch);invQ=invQ.eq('branch_id',branch);expQ=expQ.eq('branch_id',branch)}
+ const extra=await Promise.all([whQ,invQ,prodQ,expQ]),warehouse=extra[0].data||[],inventoryRows=extra[1].data||[],productRows=extra[2].data||[],expenses=extra[3].data||[]
+ if(extra[0].error||extra[1].error||extra[2].error||extra[3].error)throw extra[0].error||extra[1].error||extra[2].error||extra[3].error
+
+ const by=new Map()
+ daily.forEach(r=>{
+  const k=r.branch_id
+  const x=by.get(k)||{branch_name:r.branch_name,firstDate:r.business_date,opening:Number(r.opening_receivables||0),gross:0,net:0,coll:0,disc:0,debt:0}
+  if(String(r.business_date)<String(x.firstDate)){x.firstDate=r.business_date;x.opening=Number(r.opening_receivables||0)}
+  x.gross+=Number(r.gross_sales||0);x.net+=Number(r.net_sales||0);x.coll+=Number(r.collections||0);x.disc+=Number(r.discounts||0);x.debt=Number(r.closing_receivables||x.debt)
+  by.set(k,x)
+ })
+
+ const whLatest=new Map()
+ warehouse.forEach(r=>{
+  const prev=whLatest.get(r.branch_id)
+  if(!prev||String(r.business_date)>=String(prev.business_date))whLatest.set(r.branch_id,r)
+ })
+ const boxCountByProduct=new Map(productRows.map(p=>[p.id,Number(p.box_count||0)])),equivCartonsBy=new Map()
+ inventoryRows.forEach(r=>{
+  const boxCount=boxCountByProduct.get(r.product_id)||0
+  const factor=boxCount===12?2:1
+  equivCartonsBy.set(r.branch_id,(equivCartonsBy.get(r.branch_id)||0)+(Number(r.sales_qty||0)*factor))
+ })
+
+ const carBy=new Map()
+ expenses.forEach(r=>{
+  const txt=((r.canonical_category||'')+' '+(r.expense_group||'')).toLowerCase(),x=carBy.get(r.branch_id)||{fuel:0,petro:0,maintenance:0}
+  if(/سولار|وقود|fuel/.test(txt))x.fuel+=Number(r.amount||0)
+  if(/بترو|petro/.test(txt))x.petro+=Number(r.amount||0)
+  if(/صيان|maintenance/.test(txt))x.maintenance+=Number(r.amount||0)
+  carBy.set(r.branch_id,x)
+ })
+
+ const latestInventory=latestInventoryByProduct(inventoryRows),inventoryByBranch=new Map()
+ latestInventory.forEach(r=>{
+  const x=inventoryByBranch.get(r.branch_id)||{qty:0,value:0}
+  x.qty+=Number(r.closing_qty||0);x.value+=Number(r.closing_value||0);inventoryByBranch.set(r.branch_id,x)
+ })
+ const raw=[...by.entries()].map(([id,x])=>{
+  const wh=whLatest.get(id)||{},verifiedLegacy=wh.raw_payload?.closing_qty_source==='daily_product_closing_verified'
+  const inv=inventoryByBranch.get(id)||(verifiedLegacy?{qty:Number(wh.closing_qty||0),value:Number(wh.closing_value||0)}:{qty:0,value:0})
+  const verifiedEquiv=Number(wh.raw_payload?.equivalent_cartons_month||0)
+  const detailedEquiv=Number(equivCartonsBy.get(id)||0)
+  const equivCartons=verifiedEquiv||detailedEquiv
+  const car=carBy.get(id)||{fuel:0,petro:0,maintenance:0}
+  return {...x,id,equivCartons,avgPrice:equivCartons?x.net/equivCartons:0,fuel:car.fuel,petro:car.petro,maintenance:car.maintenance,inventoryQty:inv.qty,inventoryValue:inv.value}
+ }).sort((a,b)=>b.net-a.net)
+
+ const rows=raw.map(x=>({
+  branch_name:x.branch_name,
+  opening:money(x.opening),
+  sales:money(x.net),
+  collections:money(x.coll),
+  cumulative:money(x.debt),
+  discount:money(x.disc),
+  discount_rate:pct(x.gross?x.disc/x.gross:0),
+  sales_qty:qty(x.equivCartons),
+  avg_price:money(x.avgPrice),
+  fuel:money(x.fuel),
+  petro:money(x.petro),
+  maintenance:money(x.maintenance),
+  inventory_qty:qty(x.inventoryQty),
+  inventory_value:money(x.inventoryValue)
+ }))
+ const t=raw.reduce((a,x)=>{a.opening+=x.opening;a.sales+=x.net;a.collections+=x.coll;a.cumulative+=x.debt;a.discount+=x.disc;a.gross+=x.gross;a.equivCartons+=x.equivCartons;a.fuel+=x.fuel;a.petro+=x.petro;a.maintenance+=x.maintenance;a.inventoryQty+=x.inventoryQty;a.inventoryValue+=x.inventoryValue;return a},{opening:0,sales:0,collections:0,cumulative:0,discount:0,gross:0,equivCartons:0,fuel:0,petro:0,maintenance:0,inventoryQty:0,inventoryValue:0})
+ const totalRow='<tr class="total"><th>الإجمالي</th>'+
+  '<th class="num">'+money(t.opening)+'</th><th class="num">'+money(t.sales)+'</th><th class="num">'+money(t.collections)+'</th><th class="num">'+money(t.cumulative)+'</th>'+
+  '<th class="num">'+money(t.discount)+'</th><th>'+pct(t.gross?t.discount/t.gross:0)+'</th><th class="num">'+qty(t.equivCartons)+'</th><th class="num">'+money(t.equivCartons?t.sales/t.equivCartons:0)+'</th>'+
+  '<th class="num">'+money(t.fuel)+'</th><th class="num">'+money(t.petro)+'</th><th class="num">'+money(t.maintenance)+'</th>'+
+  '<th class="num">'+qty(t.inventoryQty)+'</th><th class="num">'+money(t.inventoryValue)+'</th></tr>'
+
+ shell('لوحة الإدارة','التقرير المجمع بنفس منطق ورقة الإدارة',filters(from,to,branch)+scope(from,to,branch)+managementDashboardTable(rows,totalRow))
+ bindFilters('dashboard')
+}
+async function renderExecutive(){
+ const cfg=currentFilters(),branch=cfg.branch,from=cfg.from,to=cfg.to
+ const daily=await loadDaily(branch,from,to)
+ const ids=await approvedIds()
+ let whQ=supabase.from('warehouse_daily_summary').select('branch_id,business_date,opening_qty,opening_value,incoming_factory_qty,incoming_factory_value,incoming_branches_qty,incoming_branches_value,sales_qty,sales_value,bonus_qty,bonus_value,gifts_qty,gifts_value,damages_qty,damages_value,return_factory_qty,return_factory_value,outgoing_branches_qty,outgoing_branches_value,adjustment_qty,adjustment_value,closing_qty,closing_value,raw_payload').in('batch_id',ids.length?ids:['00000000-0000-0000-0000-000000000000']).gte('business_date',from).lte('business_date',to).order('business_date')
+ let invQ=supabase.from('inventory_daily').select('id,branch_id,business_date,product_id,product_name,sales_qty,closing_qty,closing_value').in('batch_id',ids.length?ids:['00000000-0000-0000-0000-000000000000']).gte('business_date',from).lte('business_date',to)
+ let prodQ=supabase.from('products').select('id,box_count').eq('is_active',true)
+ let expQ=supabase.from('v_expense_analysis').select('branch_id,canonical_category,expense_group,amount').gte('entry_date',from).lte('entry_date',to)
+ if(branch){whQ=whQ.eq('branch_id',branch);invQ=invQ.eq('branch_id',branch);expQ=expQ.eq('branch_id',branch)}
+ const pair=await Promise.all([whQ,invQ,prodQ,expQ]),warehouse=pair[0].data||[],inventoryRows=pair[1].data||[],productRows=pair[2].data||[],expenseRows=pair[3].data||[]
+ if(pair[0].error||pair[1].error||pair[2].error||pair[3].error)throw pair[0].error||pair[1].error||pair[2].error||pair[3].error
+
+ const by=new Map()
+ daily.forEach(function(r){
+  const k=r.branch_id
+  const x=by.get(k)||{
+   branch_name:r.branch_name,dates:[],opening:0,gross:0,net:0,coll:0,disc:0,returns:0,expenses:0,closingDebt:0,closingCash:0,
+   last7Sales:0,last7Collections:0,last7Returns:0,last7Discount:0,inventoryValue:0
   }
+  x.dates.push(r.business_date)
+  if(x.dates.length===1)x.opening=Number(r.opening_receivables||0)
+  x.gross+=Number(r.gross_sales||0);x.net+=Number(r.net_sales||0);x.coll+=Number(r.collections||0);x.disc+=Number(r.discounts||0)
+  x.returns+=Number(r.returns_value||0);x.expenses+=Number(r.expenses||0)
+  x.closingDebt=Number(r.closing_receivables||x.closingDebt);x.closingCash=Number(r.closing_cash||x.closingCash);x.inventoryValue=Number(r.inventory_value||x.inventoryValue)
+  by.set(k,x)
+ })
+ const allDates=[...new Set(daily.map(r=>r.business_date))].sort()
+ const last7Set=new Set(allDates.slice(-7))
+ daily.forEach(function(r){
+  if(!last7Set.has(r.business_date))return
+  const x=by.get(r.branch_id);if(!x)return
+  x.last7Sales+=Number(r.net_sales||0);x.last7Collections+=Number(r.collections||0);x.last7Returns+=Number(r.returns_value||0);x.last7Discount+=Number(r.discounts||0)
+ })
+ const whLatest=new Map()
+ warehouse.forEach(function(r){
+  const prev=whLatest.get(r.branch_id)
+  if(!prev||String(r.business_date)>=String(prev.business_date))whLatest.set(r.branch_id,r)
+ })
+ const boxCountByProduct=new Map(productRows.map(p=>[p.id,Number(p.box_count||0)])),equivCartonsBy=new Map()
+ inventoryRows.forEach(r=>{
+  const factor=(boxCountByProduct.get(r.product_id)||0)===12?2:1
+  equivCartonsBy.set(r.branch_id,(equivCartonsBy.get(r.branch_id)||0)+(Number(r.sales_qty||0)*factor))
+ })
+ const carExp=new Map()
+ expenseRows.forEach(function(r){
+  const txt=((r.canonical_category||'')+' '+(r.expense_group||'')).toLowerCase()
+  const x=carExp.get(r.branch_id)||{fuel:0,petro:0,maintenance:0}
+  if(/سولار|وقود|fuel/.test(txt))x.fuel+=Number(r.amount||0)
+  if(/بترو|petro/.test(txt))x.petro+=Number(r.amount||0)
+  if(/صيان|maintenance/.test(txt))x.maintenance+=Number(r.amount||0)
+  carExp.set(r.branch_id,x)
+ })
+ const latestInventory=latestInventoryByProduct(inventoryRows),inventoryByBranch=new Map()
+ latestInventory.forEach(r=>{
+  const x=inventoryByBranch.get(r.branch_id)||{qty:0,value:0}
+  x.qty+=Number(r.closing_qty||0);x.value+=Number(r.closing_value||0);inventoryByBranch.set(r.branch_id,x)
+ })
+ const raw=[...by.entries()].map(([id,x])=>{
+  const wh=whLatest.get(id)||{},verifiedLegacy=wh.raw_payload?.closing_qty_source==='daily_product_closing_verified'
+  const inv=inventoryByBranch.get(id)||(verifiedLegacy?{qty:Number(wh.closing_qty||0),value:Number(wh.closing_value||0)}:{qty:0,value:0})
+  const verifiedEquiv=Number(wh.raw_payload?.equivalent_cartons_month||0)
+  const detailedEquiv=Number(equivCartonsBy.get(id)||0)
+  const equivCartons=verifiedEquiv||detailedEquiv
+  const car=carExp.get(id)||{fuel:0,petro:0,maintenance:0}
+  return {id,...x,inventoryQty:inv.qty,inventoryValue:inv.value,equivCartons,fuel:car.fuel,petro:car.petro,maintenance:car.maintenance}
+ }).sort((a,b)=>b.net-a.net)
 
-  if (!anomalies.length) {
-    anomalies.push({
-      type: 'info',
-      title: 'مؤشرات الأداء مستقرة تماماً',
-      desc: 'لم يتم رصد أي انحرافات سعرية أو قفزات غير مبررة في المصروفات ضمن الفترة المحددة.'
-    })
+ const rows=raw.map(x=>({
+  branch_name:x.branch_name,
+  opening:money(x.opening),
+  last7_sales:money(x.last7Sales),
+  last7_collections:money(x.last7Collections),
+  last7_returns:money(x.last7Returns),
+  legal:'—',
+  previous_debt:money(x.opening),
+  sales:money(x.net),
+  collections:money(x.coll),
+  month_debt:money(x.closingDebt),
+  cumulative_debt:money(x.closingDebt),
+  discount7:money(x.last7Discount),
+  discount:money(x.disc),
+  discount_rate:pct(x.gross?x.disc/x.gross:0),
+  sales_qty:qty(x.equivCartons),
+  avg_price:money(x.equivCartons?x.net/x.equivCartons:0),
+  fuel:money(x.fuel),
+  petro:money(x.petro),
+  maintenance:money(x.maintenance),
+  inventory_qty:qty(x.inventoryQty),
+  inventory_value:money(x.inventoryValue),
+  treasury:money(x.closingCash),
+  expense_rate:pct(x.net?x.expenses/x.net:0),
+  treasury_variance:'—'
+ }))
+ const totals=raw.reduce((a,x)=>{
+  a.opening+=x.opening;a.last7Sales+=x.last7Sales;a.last7Collections+=x.last7Collections;a.last7Returns+=x.last7Returns;a.net+=x.net;a.coll+=x.coll
+  a.closingDebt+=x.closingDebt;a.last7Discount+=x.last7Discount;a.disc+=x.disc;a.gross+=x.gross;a.equivCartons+=x.equivCartons;a.fuel+=x.fuel;a.petro+=x.petro;a.maintenance+=x.maintenance
+  a.inventoryQty+=x.inventoryQty;a.inventoryValue+=x.inventoryValue;a.closingCash+=x.closingCash;a.expenses+=x.expenses;return a
+ },{opening:0,last7Sales:0,last7Collections:0,last7Returns:0,net:0,coll:0,closingDebt:0,last7Discount:0,disc:0,gross:0,equivCartons:0,fuel:0,petro:0,maintenance:0,inventoryQty:0,inventoryValue:0,closingCash:0,expenses:0})
+ const totalRow='<tr class="total">'+
+  '<th>الإجمالي</th><th class="num">'+money(totals.opening)+'</th><th class="num">'+money(totals.last7Sales)+'</th><th class="num">'+money(totals.last7Collections)+'</th><th class="num">'+money(totals.last7Returns)+'</th>'+
+  '<th>—</th><th class="num">'+money(totals.opening)+'</th><th class="num">'+money(totals.net)+'</th><th class="num">'+money(totals.coll)+'</th><th class="num">'+money(totals.closingDebt)+'</th><th class="num">'+money(totals.closingDebt)+'</th>'+
+  '<th class="num">'+money(totals.last7Discount)+'</th><th class="num">'+money(totals.disc)+'</th><th>'+pct(totals.gross?totals.disc/totals.gross:0)+'</th><th class="num">'+qty(totals.equivCartons)+'</th><th class="num">'+money(totals.equivCartons?totals.net/totals.equivCartons:0)+'</th>'+
+  '<th class="num">'+money(totals.fuel)+'</th><th class="num">'+money(totals.petro)+'</th><th class="num">'+money(totals.maintenance)+'</th>'+
+  '<th class="num">'+qty(totals.inventoryQty)+'</th><th class="num">'+money(totals.inventoryValue)+'</th><th class="num">'+money(totals.closingCash)+'</th><th>'+pct(totals.net?totals.expenses/totals.net:0)+'</th><th>—</th></tr>'
+
+ shell('التقرير المجمع','مطابقة ورقة الإدارة بالأعمدة المتاحة من البيانات المعتمدة',filters(from,to,branch)+scope(from,to,branch)+table('التقرير المجمع',[
+  {key:'branch_name',label:'الفرع'},
+  {key:'opening',label:'افتتاحي مديونية'},
+  {key:'last7_sales',label:'مبيعات آخر 7'},
+  {key:'last7_collections',label:'تحصيل آخر 7'},
+  {key:'last7_returns',label:'مرتجع'},
+  {key:'legal',label:'شؤون قانونية'},
+  {key:'previous_debt',label:'مديونية سابقة'},
+  {key:'sales',label:'المبيعات',num:1},
+  {key:'collections',label:'التحصيل',num:1},
+  {key:'month_debt',label:'مديونية الشهر',num:1},
+  {key:'cumulative_debt',label:'مديونية تراكمية',num:1},
+  {key:'discount7',label:'خصم 7',num:1},
+  {key:'discount',label:'الخصم',num:1},
+  {key:'discount_rate',label:'% الخصم'},
+  {key:'sales_qty',label:'كمية المبيعات المكافئة',num:1},
+  {key:'avg_price',label:'متوسط السعر',num:1},
+  {key:'fuel',label:'سولار',num:1},
+  {key:'petro',label:'بترو أب',num:1},
+  {key:'maintenance',label:'صيانة',num:1},
+  {key:'inventory_qty',label:'كمية المخزون',num:1},
+  {key:'inventory_value',label:'قيمة المخزون',num:1},
+  {key:'treasury',label:'رصيد الخزينة',num:1},
+  {key:'expense_rate',label:'% المصروف'},
+  {key:'treasury_variance',label:'انحراف الخزينة'}
+ ],rows,totalRow))
+ bindFilters('executive')
+}
+async function renderTreasury(){
+ const cfg=currentFilters(),branch=cfg.branch,from=cfg.from,to=cfg.to
+ let accountQ=supabase.from('treasury_accounts').select('id,branch_id,name,code,account_type,is_default,is_active').eq('is_active',true)
+ let entryQ=supabase.from('cash_entries').select('id,branch_id,entry_date,direction,description,amount,running_balance,category,canonical_category,expense_group,entry_kind,is_expense,treasury_account_id').gte('entry_date',from).lte('entry_date',to).order('entry_date',{ascending:false})
+ if(branch){accountQ=accountQ.eq('branch_id',branch);entryQ=entryQ.eq('branch_id',branch)}
+ const rs=await Promise.all([accountQ,entryQ]),accounts=rs[0].data||[],entries=rs[1].data||[]
+ if(rs[0].error||rs[1].error)throw rs[0].error||rs[1].error
+ window.__treasuryEditData={accounts,entries}
+ const branchMap=new Map(branches.map(function(b){return [b.id,b.name]}))
+ const accountMap=new Map(accounts.map(function(a){return [a.id,a]}))
+ const totals=new Map()
+ accounts.forEach(function(a){totals.set(a.id,{incoming:0,outgoing:0})})
+ entries.forEach(function(e){
+  if(!e.treasury_account_id)return
+  const x=totals.get(e.treasury_account_id)||{incoming:0,outgoing:0}
+  if(e.direction==='in')x.incoming+=Number(e.amount||0);else x.outgoing+=Number(e.amount||0)
+  totals.set(e.treasury_account_id,x)
+ })
+ const accountRows=accounts.map(function(a){
+  const x=totals.get(a.id)||{incoming:0,outgoing:0}
+  return {branch_name:branchMap.get(a.branch_id)||'—',name:escapeHtml(a.name),type:a.account_type==='bank'?'بنك':'خزينة',incoming:money(x.incoming),outgoing:money(x.outgoing),net:money(x.incoming-x.outgoing)}
+ })
+ const entryRows=entries.map(function(e){
+  return {entry_date:e.entry_date||'—',branch_name:branchMap.get(e.branch_id)||'—',account:escapeHtml((accountMap.get(e.treasury_account_id)||{}).name||'غير موجه'),direction:e.direction==='in'?'داخل':'خارج',description:escapeHtml(e.description||'—'),source_category:escapeHtml(e.category||'—'),category:escapeHtml(e.canonical_category||e.entry_kind||'—'),expense:e.is_expense?'مصروف':'غير مصروف',amount:money(e.amount),balance:money(e.running_balance),action:profile?.role==='admin'?'<button class="inline-action" onclick="editTreasuryClassification('+e.id+')">تعديل التصنيف</button>':'—'}
+ })
+ const body=filters(from,to,branch)+scope(from,to,branch)+
+  table('أرصدة وحركة الحسابات',[
+   {key:'branch_name',label:'الفرع'},{key:'name',label:'الحساب'},{key:'type',label:'النوع'},{key:'incoming',label:'داخل',num:1},{key:'outgoing',label:'خارج',num:1},{key:'net',label:'صافي الحركة',num:1}
+  ],accountRows)+'<div class="section-gap"></div>'+
+  table('تفاصيل حركة الخزينة',[
+   {key:'entry_date',label:'التاريخ'},{key:'branch_name',label:'الفرع'},{key:'account',label:'الخزينة / البنك'},{key:'direction',label:'الحركة'},{key:'description',label:'البيان'},{key:'source_category',label:'تصنيف المصدر'},{key:'category',label:'التوجيه'},{key:'expense',label:'نوع التقرير'},{key:'amount',label:'القيمة',num:1},{key:'balance',label:'الرصيد',num:1},{key:'action',label:'إجراء',filter:false}
+  ],entryRows)
+ shell('الخزينة والبنوك','الحركة الفعلية مع تعديل التصنيف الذي يغذي تقرير المصروفات',body)
+ bindFilters('treasury')
+}
+
+
+window.editTreasuryClassification=function(id){
+ const data=window.__treasuryEditData||{},e=(data.entries||[]).find(x=>Number(x.id)===Number(id))
+ if(!e)return
+ const accounts=(data.accounts||[]).filter(a=>a.branch_id===e.branch_id&&a.is_active)
+ const accountOptions='<option value="">غير موجه</option>'+accounts.map(a=>'<option value="'+a.id+'" '+(a.id===e.treasury_account_id?'selected':'')+'>'+escapeHtml(a.name)+'</option>').join('')
+ document.getElementById('treasury-classification-dialog')?.remove()
+ const html='<div class="dialog-backdrop" id="treasury-classification-dialog"><div class="dialog-card">'+
+ '<div class="dialog-head"><h3>تعديل تصنيف حركة الخزينة #'+id+'</h3><button class="tool-btn" onclick="document.getElementById(\'treasury-classification-dialog\').remove()">إغلاق</button></div>'+
+ '<form id="treasury-classification-form" class="dialog-form">'+
+ '<div class="locked-source"><span>تصنيف المصدر</span><strong>'+escapeHtml(e.category||'—')+'</strong><span>القيمة</span><strong>'+money(e.amount)+'</strong></div>'+
+ '<div class="field"><label>البيان</label><input name="description" value="'+escapeAttr(e.description||'')+'"></div>'+
+ '<div class="field"><label>التوجيه النهائي</label><input name="canonical" value="'+escapeAttr(e.canonical_category||'')+'" placeholder="مثال: إيجار، كهرباء، سولار"></div>'+
+ '<div class="field"><label>هل تظهر في تقرير المصروفات؟</label><select name="is_expense"><option value="true" '+(e.is_expense?'selected':'')+'>نعم — مصروف</option><option value="false" '+(!e.is_expense?'selected':'')+'>لا — ليست مصروفًا</option></select></div>'+
+ '<div class="field"><label>مجموعة المصروف</label><input name="group" value="'+escapeAttr(e.expense_group||'')+'" placeholder="مثال: تشغيل ومرافق"></div>'+
+ '<div class="field"><label>الخزينة / البنك</label><select name="account">'+accountOptions+'</select></div>'+
+ '<div class="field"><label>نوع الحركة عند عدم اعتبارها مصروفًا</label><select name="entry_kind"><option value="other" '+(e.entry_kind==='other'?'selected':'')+'>أخرى</option><option value="collection" '+(e.entry_kind==='collection'?'selected':'')+'>تحصيل</option><option value="bank_deposit" '+(e.entry_kind==='bank_deposit'?'selected':'')+'>إيداع بنكي</option><option value="hq_transfer" '+(e.entry_kind==='hq_transfer'?'selected':'')+'>تحويل مصنع</option><option value="interbranch" '+(e.entry_kind==='interbranch'?'selected':'')+'>تحويل فروع</option><option value="advance" '+(e.entry_kind==='advance'?'selected':'')+'>سلفة</option><option value="custody" '+(e.entry_kind==='custody'?'selected':'')+'>عهدة</option><option value="cash_balance" '+(e.entry_kind==='cash_balance'?'selected':'')+'>رصيد خزينة</option></select></div>'+
+ '<div class="field"><label>سبب التعديل — إلزامي</label><textarea name="reason" rows="3" required placeholder="لماذا تم تصحيح التوجيه؟"></textarea></div>'+
+ '<button class="btn">حفظ التصنيف وتحديث التقارير</button><div id="treasury-classification-msg"></div>'+
+ '</form></div></div>'
+ document.body.insertAdjacentHTML('beforeend',html)
+ const form=document.getElementById('treasury-classification-form')
+ const toggleGroup=()=>{form.group.disabled=form.is_expense.value!=='true'}
+ form.is_expense.addEventListener('change',toggleGroup);toggleGroup()
+ form.addEventListener('submit',async ev=>{
+  ev.preventDefault()
+  const msg=document.getElementById('treasury-classification-msg')
+  try{
+   msg.innerHTML='<div class="notice">جاري حفظ التصنيف وتحديث تقرير المصروفات…</div>'
+   const result=await supabase.rpc('edit_cash_entry_classification',{
+    p_cash_entry_id:id,
+    p_description:form.description.value,
+    p_canonical_category:form.canonical.value,
+    p_expense_group:form.group.value,
+    p_treasury_account_id:form.account.value||null,
+    p_is_expense:form.is_expense.value==='true',
+    p_entry_kind:form.entry_kind.value,
+    p_reason:form.reason.value
+   })
+   if(result.error)throw result.error
+   document.getElementById('treasury-classification-dialog')?.remove()
+   await renderTreasury()
+  }catch(err){
+   msg.innerHTML='<div class="error">'+escapeHtml(err.message||err)+'</div>'
   }
-
-  const itemsHtml = anomalies.map(a => `
-    <div class="anomaly-item ${a.type}">
-      <div>
-        <div style="font-weight:800; font-size:11px;">${a.title}</div>
-        <div style="font-size:9.5px; opacity:0.9;">${a.desc}</div>
-      </div>
-      <span class="chip" style="font-size:9px; background:rgba(255,255,255,0.7);">${a.type === 'critical' ? 'تنبيه حرج' : (a.type === 'warning' ? 'تحذير' : 'ملاحظة')}</span>
-    </div>
-  `).join('')
-
-  return `
-    <div class="anomalies-card">
-      <div style="font-size:12px; font-weight:800; color:#17324d; margin-bottom:8px; display:flex; align-items:center; gap:6px;">
-        <svg viewBox="0 0 24 24" width="16" height="16" fill="none" stroke="#d97706" stroke-width="2"><path d="M10.29 3.86L1.82 18a2 2 0 0 0 1.71 3h16.94a2 2 0 0 0 1.71-3L13.71 3.86a2 2 0 0 0-3.42 0z"></path><line x1="12" y1="9" x2="12" y2="13"></line><line x1="12" y1="17" x2="12.01" y2="17"></line></svg>
-        <span>التحليلات الذكية والانحرافات المرصودة</span>
-      </div>
-      ${itemsHtml}
-    </div>
-  `
+ })
 }
 
-// -------------------------------------------------------------------
-// EXCEL-LIKE SMART DATA TABLE (Sticky Header/Col, Search, Group, Export)
-// -------------------------------------------------------------------
-function renderSmartTable(title, cols, rows, totalRow = '', groupByOptions = []) {
-  const headers = cols.map((col, idx) => `
-    <th class="${idx === 0 ? 'sticky-col' : ''}">
-      <div style="display:flex; align-items:center; justify-content:space-between; gap:4px;">
-        <span>${col.label}</span>
-      </div>
-    </th>
-  `).join('')
 
-  const rowsHtml = rows.map(r => `
-    <tr>
-      ${cols.map((col, idx) => `
-        <td class="${col.num ? 'num' : ''} ${idx === 0 ? 'sticky-col' : ''}">
-          ${r[col.key] ?? '—'}
-        </td>
-      `).join('')}
-    </tr>
-  `).join('')
-
-  const tfootHtml = totalRow ? `
-    <tfoot class="smart-table-tfoot" style="position:sticky; bottom:0; z-index:15;">
-      ${totalRow}
-    </tfoot>
-  ` : ''
-
-  return `
-    <div class="table-card" data-report-title="${escapeAttr(title)}">
-      <div class="table-head">
-        <div>
-          <h2>${title}</h2>
-          <small>${rows.length} سجلات معتمدة ومطابقة</small>
-        </div>
-        <div class="table-tools">
-          <input class="search" placeholder="بحث فوري في الجدول…" oninput="window.applyTableSearch(this)">
-          <button class="tool-btn" type="button" onclick="window.exportCurrentTableXlsx(this)">تحميل Excel</button>
-        </div>
-      </div>
-
-      <div class="table-wrap">
-        <table>
-          <thead>
-            <tr>${headers}</tr>
-          </thead>
-          <tbody>
-            ${rowsHtml}
-          </tbody>
-          ${tfootHtml}
-        </table>
-      </div>
-    </div>
-  `
-}
-
-window.applyTableSearch = input => {
-  const q = input.value.trim().toLowerCase()
-  const table = input.closest('.table-card').querySelector('tbody')
-  table.querySelectorAll('tr:not(.total)').forEach(tr => {
-    tr.style.display = !q || tr.innerText.toLowerCase().includes(q) ? '' : 'none'
-  })
-}
-
-window.exportCurrentTableXlsx = btn => {
-  const card = btn.closest('.table-card')
-  const table = card.querySelector('table')
-  const visibleRows = [...table.querySelectorAll('tr')].filter(r => r.style.display !== 'none')
-  const matrix = visibleRows.map(r => [...r.children].map(c => c.innerText.trim()))
-  const ws = XLSX.utils.aoa_to_sheet(matrix)
-  const wb = XLSX.utils.book_new()
-  XLSX.utils.book_append_sheet(wb, ws, 'Report')
-  const title = (card.dataset.reportTitle || 'AMMCO-Export').replace(/[\\/:*?"<>|]/g, '-')
-  XLSX.writeFile(wb, `${title}.xlsx`, { compression: true })
-}
-
-window.exportCurrentReportExcel = () => {
-  const tableCard = document.querySelector('.table-card')
-  if (tableCard) {
-    const btn = tableCard.querySelector('.table-tools button')
-    if (btn) return window.exportCurrentTableXlsx(btn)
+async function renderAccountingInputs(){
+ if(profile?.role!=='admin'){shell('إدخالات المحاسب والتوجيه','', '<div class="error">هذه الصفحة للمدير فقط.</div>');return}
+ const cfg=currentFilters(),branch=cfg.branch,from=cfg.from,to=cfg.to
+ const auth=await supabase.auth.getSession(),active=auth.data.session
+ if(!active)throw new Error('انتهت جلسة الدخول')
+ const url=new URL(SUPABASE_URL+'/functions/v1/ammco-admin-cash')
+ if(branch)url.searchParams.set('branch',branch)
+ if(from)url.searchParams.set('from',from)
+ if(to)url.searchParams.set('to',to)
+ const res=await fetch(url,{headers:{Authorization:'Bearer '+active.access_token,apikey:SUPABASE_KEY}})
+ const data=await res.json()
+ if(!res.ok)throw new Error(data.error||'تعذر تحميل إدخالات المحاسب')
+ window.__adminCashData=data
+ const branchMap=new Map((data.branches||[]).map(function(b){return [b.id,b.name]}))
+ const accountMap=new Map((data.accounts||[]).map(function(a){return [a.id,a]}))
+ const batchMap=new Map((data.batches||[]).map(function(b){return [b.id,b]}))
+ const profileMap=new Map((data.profiles||[]).map(function(p){return [p.user_id,p.full_name]}))
+ const rows=(data.entries||[]).map(function(e){
+  const batch=batchMap.get(e.batch_id),uploader=batch?profileMap.get(batch.uploaded_by):''
+  return {
+   entry_date:e.entry_date||'—',
+   branch_name:branchMap.get(e.branch_id)||'—',
+   accountant:escapeHtml(uploader||'—'),
+   batch:escapeHtml(batch?(batch.original_file_name+' / v'+batch.version):'—'),
+   status:batch?.status||'—',
+   source:e.source_row??'—',
+   description:escapeHtml(e.description||'—'),
+   source_category:escapeHtml(e.category||'—'),
+   canonical:escapeHtml(e.canonical_category||'—'),
+   group:escapeHtml(e.expense_group||'—'),
+   account:escapeHtml((accountMap.get(e.treasury_account_id)||{}).name||'غير موجه'),
+   direction:e.direction==='in'?'داخل':'خارج',
+   amount:money(e.amount),
+   action:'<button class="inline-action" onclick="editCashEntry('+e.id+')">تعديل التوجيه</button>'
   }
-  alert('جاري تنزيل تقرير المنصة…')
+ })
+ const corrections=(data.corrections||[]).map(function(log){
+  return {changed_at:new Date(log.changed_at).toLocaleString('en-GB'),branch_name:branchMap.get(log.branch_id)||'—',entry:log.cash_entry_id,old:escapeHtml(log.old_canonical_category||log.old_description||'—'),new:escapeHtml(log.new_canonical_category||log.new_description||'—'),reason:escapeHtml(log.reason||'—'),by:escapeHtml(profileMap.get(log.changed_by)||'—')}
+ })
+ const body=filters(from,to,branch)+scope(from,to,branch)+
+  table('إدخالات المحاسب',[
+   {key:'entry_date',label:'التاريخ'},{key:'branch_name',label:'الفرع'},{key:'accountant',label:'المحاسب / الرافع'},{key:'batch',label:'ملف المصدر'},
+   {key:'status',label:'حالة النسخة'},{key:'source',label:'صف المصدر'},{key:'description',label:'البيان'},{key:'source_category',label:'تصنيف المصدر'},
+   {key:'canonical',label:'التوجيه الحالي'},{key:'group',label:'مجموعة المصروف'},{key:'account',label:'الخزينة / البنك'},
+   {key:'direction',label:'اتجاه'},{key:'amount',label:'القيمة',num:1},{key:'action',label:'إجراء',filter:false}
+  ],rows)+'<div class="section-gap"></div>'+
+  table('سجل تعديلات التوجيه',[
+   {key:'changed_at',label:'وقت التعديل'},{key:'branch_name',label:'الفرع'},{key:'entry',label:'رقم الحركة'},
+   {key:'old',label:'قبل'},{key:'new',label:'بعد'},{key:'reason',label:'سبب التعديل'},{key:'by',label:'عدّل بواسطة'}
+  ],corrections)
+ shell('إدخالات المحاسب والتوجيه','المصدر كما أدخله المحاسب + التصحيح + سجل المراجعة',body)
+ bindFilters('accounting-inputs')
 }
 
-// -------------------------------------------------------------------
-// ROUTE IMPLEMENTATIONS
-// -------------------------------------------------------------------
-
-// 1. Dashboard
-async function renderDashboard() {
-  const filters = currentFilters()
-  const data = await loadIntelligenceData(filters)
-  window.cachedPoints = data.timelinePoints
-
-  // Summary Table Rows
-  const tableCols = [
-    { key: 'name', label: 'الفرع' },
-    { key: 'sales', label: 'صافي المبيعات', num: true },
-    { key: 'qty', label: 'الكرتونة الفعلية', num: true },
-    { key: 'equivQty', label: 'الكمية المكافئة (Double×2)', num: true },
-    { key: 'avgPrice', label: 'متوسط سعر الكرتونة', num: true },
-    { key: 'expenses', label: 'إجمالي المصروفات', num: true },
-    { key: 'collections', label: 'التحصيلات', num: true },
-    { key: 'expenseRatio', label: 'نسبة المصروفات', num: true }
-  ]
-
-  const tableRows = data.branchList.map(b => ({
-    name: `<a href="javascript:window.drillDownBranch('${b.id}')" style="font-weight:700; color:#17324d;">${b.name}</a>`,
-    sales: `${money(b.sales)} ج.م`,
-    qty: qty(b.qty),
-    equivQty: qty(b.equivQty),
-    avgPrice: `${money(b.avgPrice)} ج.م`,
-    expenses: `${money(b.expenses)} ج.م`,
-    collections: `${money(b.collections)} ج.م`,
-    expenseRatio: pct(b.expenseRatio)
-  }))
-
-  const tSales = data.branchList.reduce((acc, b) => acc + b.sales, 0)
-  const tQty = data.branchList.reduce((acc, b) => acc + b.qty, 0)
-  const tEquiv = data.branchList.reduce((acc, b) => acc + b.equivQty, 0)
-  const tExp = data.branchList.reduce((acc, b) => acc + b.expenses, 0)
-  const tColl = data.branchList.reduce((acc, b) => acc + b.collections, 0)
-
-  const totalRow = `
-    <tr class="total">
-      <th class="sticky-col">الإجمالي العام (${data.branchList.length} فرع)</th>
-      <th class="num">${money(tSales)} ج.م</th>
-      <th class="num">${qty(tQty)}</th>
-      <th class="num">${qty(tEquiv)}</th>
-      <th class="num">${money(tEquiv ? tSales / tEquiv : 0)} ج.م</th>
-      <th class="num">${money(tExp)} ج.م</th>
-      <th class="num">${money(tColl)} ج.م</th>
-      <th class="num">${pct(tSales ? tExp / tSales : 0)}</th>
-    </tr>
-  `
-
-  const bodyHtml = `
-    ${renderUnifiedFilterBar(filters)}
-    ${render8KPIGrid(data.kpis, filters.compare)}
-    ${renderTimelineChartSection()}
-    <div style="display:grid; grid-template-columns: 2fr 1fr; gap:12px;">
-      ${renderBranchBarsSection(data.branchList)}
-      ${renderSmartAnomalies(data)}
-    </div>
-    ${renderSmartTable('جدول ملخص أداء الفروع المعتمد', tableCols, tableRows, totalRow)}
-  `
-
-  renderShell('لوحة الإدارة التنفيذية', 'نظام الذكاء المالي والتشغيلي الموحد (One Number = One Source)', bodyHtml)
-  window.bindFilterForm()
-  setTimeout(window.drawTimelineSVG, 50)
+window.editCashEntry=function(id){
+ const data=window.__adminCashData,e=(data?.entries||[]).find(function(x){return Number(x.id)===Number(id)})
+ if(!e)return
+ const accounts=(data.accounts||[]).filter(function(a){return a.branch_id===e.branch_id&&a.is_active})
+ const options='<option value="">غير موجه</option>'+accounts.map(function(a){return '<option value="'+a.id+'" '+(a.id===e.treasury_account_id?'selected':'')+'>'+escapeHtml(a.name)+'</option>'}).join('')
+ document.getElementById('cash-edit-dialog')?.remove()
+ const html='<div class="dialog-backdrop" id="cash-edit-dialog"><div class="dialog-card"><div class="dialog-head"><h3>تعديل الحركة #'+id+'</h3><button class="tool-btn" onclick="document.getElementById(\'cash-edit-dialog\').remove()">إغلاق</button></div><form id="edit-cash-form" class="dialog-form">'+
+  '<div class="field"><label>البيان</label><input name="description" value="'+escapeAttr(e.description||'')+'"></div>'+
+  '<div class="field"><label>التوجيه / البند</label><input name="canonical" value="'+escapeAttr(e.canonical_category||'')+'"></div>'+
+  '<div class="field"><label>مجموعة المصروف</label><input name="group" value="'+escapeAttr(e.expense_group||'')+'"></div>'+
+  '<div class="field"><label>الخزينة / البنك</label><select name="account">'+options+'</select></div>'+
+  '<div class="locked-source"><span>قيمة المصدر</span><strong>'+money(e.amount)+'</strong><span>الاتجاه</span><strong>'+(e.direction==='in'?'داخل':'خارج')+'</strong></div>'+
+  '<div class="field"><label>سبب التعديل — إلزامي</label><textarea name="reason" required rows="3" placeholder="اكتب سبب التصحيح"></textarea></div>'+
+  '<button class="btn">حفظ التصحيح</button><div id="cash-edit-msg"></div></form></div></div>'
+ document.body.insertAdjacentHTML('beforeend',html)
+ document.getElementById('edit-cash-form')?.addEventListener('submit',async function(ev){
+  ev.preventDefault()
+  const form=ev.currentTarget,msg=document.getElementById('cash-edit-msg')
+  try{
+   const result=await supabase.rpc('edit_cash_entry',{p_cash_entry_id:id,p_description:form.description.value,p_canonical_category:form.canonical.value,p_expense_group:form.group.value,p_treasury_account_id:form.account.value||null,p_reason:form.reason.value})
+   if(result.error)throw result.error
+   document.getElementById('cash-edit-dialog')?.remove()
+   renderAccountingInputs()
+  }catch(err){msg.innerHTML='<div class="error">'+escapeHtml(err.message||err)+'</div>'}
+ })
 }
 
-// 2. Sales Page
-async function renderSales() {
-  const filters = currentFilters()
-  const data = await loadIntelligenceData(filters)
 
-  // Products Aggregation for Sales
-  const prodSales = new Map()
-  data.rawInventory.forEach(r => {
-    const p = data.productMap.get(r.product_id)
-    const packing = p?.box_count ?? p?.packaging_count ?? null
-    const price = p?.wholesale_carton_price ?? p?.retail_carton_price ?? p?.carton_price ?? r.unit_value ?? null
-    const factor = isDoubleProduct(r.product_name, packing, price) ? 2 : 1
-    const q = Number(r.sales_qty || 0)
-    const unitPrice = price ? Number(price) : (r.unit_value ? Number(r.unit_value) : 0)
-    const salesVal = q * unitPrice
-    const key = r.product_id || r.product_name
-    if (!prodSales.has(key)) {
-      prodSales.set(key, {
-        name: r.product_name || p?.name || 'صنف غير معروف',
-        isDouble: factor === 2,
-        rawQty: 0,
-        equivQty: 0,
-        salesVal: 0,
-        unitPrice: unitPrice
-      })
-    }
-    const itm = prodSales.get(key)
-    itm.rawQty += q
-    itm.equivQty += (q * factor)
-    itm.salesVal += salesVal
-  })
-
-  const tableCols = [
-    { key: 'name', label: 'الصنف' },
-    { key: 'doubleStatus', label: 'نوع الصنف' },
-    { key: 'rawQty', label: 'الكمية الفعلية (Cartons)', num: true },
-    { key: 'equivQty', label: 'الكمية الموحدة (Standard Qty)', num: true },
-    { key: 'avgPrice', label: 'متوسط سعر الكرتونة (EGP)', num: true },
-    { key: 'val', label: 'قيمة المبيعات (EGP)', num: true }
-  ]
-
-  const rows = [...prodSales.values()].map(p => ({
-    name: p.name,
-    doubleStatus: p.isDouble ? '<span class="chip" style="background:#fef3c7; color:#92400e; font-weight:800;">Double (12 / 570)</span>' : '<span class="chip">عادي</span>',
-    rawQty: `${qty(p.rawQty)} كرتونة`,
-    equivQty: `${qty(p.equivQty)} كرتونة موحدة`,
-    avgPrice: `${money(p.rawQty > 0 ? p.salesVal / p.rawQty : p.unitPrice)}`,
-    val: `${money(p.salesVal)}`
-  }))
-
-  const tSalesRawQty = [...prodSales.values()].reduce((acc, p) => acc + p.rawQty, 0)
-  const tSalesEquivQty = [...prodSales.values()].reduce((acc, p) => acc + p.equivQty, 0)
-  const tSalesVal = data.kpis.netSales
-  const salesAvgPrice = tSalesRawQty > 0 ? (tSalesVal / tSalesRawQty) : data.kpis.avgCartonPrice
-
-  const totalRow = `
-    <tr class="total">
-      <th class="sticky-col">الإجمالي العام (${rows.length} صنف)</th>
-      <th>—</th>
-      <th class="num">${qty(tSalesRawQty)} كرتونة</th>
-      <th class="num">${qty(tSalesEquivQty)} كرتونة موحدة</th>
-      <th class="num">${money(salesAvgPrice)}</th>
-      <th class="num">${money(tSalesVal)}</th>
-    </tr>
-  `
-
-  const bodyHtml = `
-    ${renderUnifiedFilterBar(filters)}
-    <div class="kpis-8-grid" style="grid-template-columns: repeat(4, 1fr);">
-      ${renderKPICard('صافي المبيعات', data.kpis.netSales, null, 'currency', false, 'صافي الإيرادات بعد الخصم')}
-      ${renderKPICard('الكمية الفعلية (Cartons)', data.kpis.rawSalesQty, null, 'qty', false, 'إجمالي عدد الكراتين الفعلي')}
-      ${renderKPICard('الكمية الموحدة (Standard Qty)', data.kpis.equivSalesQty, null, 'qty', false, 'مع مضاعفة Double المعتمد × 2')}
-      ${renderKPICard('متوسط سعر الكرتونة الفعلي', data.kpis.avgCartonPrice, null, 'currency', false, 'صافي المبيعات ÷ الكراتين الفعلية')}
-    </div>
-    ${renderSmartTable('جدول تفصيلي بمبيعات الأصناف والكميات المكافئة', tableCols, rows, totalRow)}
-  `
-
-  renderShell('المبيعات والأصناف', 'تحليل كميات المبيعات، متوسط سعر البيع، وقاعدة Double x2', bodyHtml)
-  window.bindFilterForm()
-}
-
-// 3. Expenses Page
-async function renderExpenses() {
-  const filters = currentFilters()
-  const data = await loadIntelligenceData(filters)
-
-  const catCards = Object.entries(data.expensesByCategory).map(([cat, amt]) => `
-    <div class="cat-card">
-      <span style="font-size:10px; font-weight:800; color:#64748b;">${cat}</span>
-      <strong>${money(amt)} ج.م</strong>
-      <div style="font-size:9px; color:#64748b; margin-top:2px;">${pct(data.kpis.totalExpenses ? amt / data.kpis.totalExpenses : 0)} من المصروفات</div>
-    </div>
-  `).join('')
-
-  const tableCols = [
-    { key: 'date', label: 'التاريخ' },
-    { key: 'branch', label: 'الفرع' },
-    { key: 'cat', label: 'التصنيف' },
-    { key: 'amt', label: 'المبلغ', num: true },
-    { key: 'desc', label: 'البيان / الملاحظات' }
-  ]
-
-  const branchNameMap = new Map(branches.map(b => [b.id, b.name]))
-  const rows = data.rawExpenses.slice(0, 100).map(e => ({
-    date: e.entry_date,
-    branch: branchNameMap.get(e.branch_id) || 'المركز الرئيسي',
-    cat: `<span class="chip">${normalizeCategory(e.canonical_category || e.expense_group)}</span>`,
-    amt: `${money(e.amount)} ج.م`,
-    desc: e.description || e.expense_group || '—'
-  }))
-
-  const tExpensesAmt = data.rawExpenses.reduce((acc, e) => acc + Number(e.amount || 0), 0)
-  const totalRow = `
-    <tr class="total">
-      <th class="sticky-col">الإجمالي العام (${data.rawExpenses.length} حركة مصروف)</th>
-      <th>—</th>
-      <th>—</th>
-      <th class="num">${money(tExpensesAmt)} ج.م</th>
-      <th>—</th>
-    </tr>
-  `
-
-  const bodyHtml = `
-    ${renderUnifiedFilterBar(filters)}
-    <div class="kpis-8-grid" style="grid-template-columns: repeat(4, 1fr);">
-      ${renderKPICard('إجمالي المصروفات', data.kpis.totalExpenses, null, 'currency', true, 'المنصرف الفعلي')}
-      ${renderKPICard('نسبة المصروفات إلى المبيعات', data.kpis.expenseRatio, null, 'percent', true, 'المعيار < 15%')}
-      ${renderKPICard('أعلى بند مصروف', 'مرتبات ونقل', null, 'text', false, 'يشكل النسبة الأكبر')}
-      ${renderKPICard('عدد القيود المصروفة', data.rawExpenses.length, null, 'text', false, 'مسجلة في اليوميات')}
-    </div>
-
-    <div style="margin-bottom:12px;">
-      <div style="font-size:11px; font-weight:800; color:#17324d; margin-bottom:6px;">توزيع المصروفات حسب التصنيفات الأساسية (8 فئات):</div>
-      <div class="cat-grid">${catCards}</div>
-    </div>
-
-    ${renderSmartTable('سجل حركات المصروفات التفصيلي والمطابق للشيت', tableCols, rows, totalRow)}
-  `
-
-  renderShell('تحليل المصروفات والتكاليف', 'متابعة المصروفات حسب التصنيفات، الفروع، والمطابقة مع الخزينة', bodyHtml)
-  window.bindFilterForm()
-}
-
-// 4. Branches Page
-async function renderBranches() {
-  const filters = currentFilters()
-  const data = await loadIntelligenceData(filters)
-
-  const tableCols = [
-    { key: 'code', label: 'كود الفرع' },
-    { key: 'name', label: 'اسم الفرع' },
-    { key: 'status', label: 'حالة الرفع' },
-    { key: 'sales', label: 'المبيعات', num: true },
-    { key: 'qty', label: 'الكمية المكافئة', num: true },
-    { key: 'expenses', label: 'المصروفات', num: true },
-    { key: 'ratio', label: 'نسبة المصروفات', num: true },
-    { key: 'action', label: 'العمليات' }
-  ]
-
-  const rows = data.branchList.map(b => ({
-    code: b.code || 'BR',
-    name: b.name,
-    status: b.hasData ? '<span class="delta-badge positive">تم الرفع ✓</span>' : '<span class="delta-badge negative">تأخر بالرفع !</span>',
-    sales: `${money(b.sales)} ج.م`,
-    qty: qty(b.equivQty),
-    expenses: `${money(b.expenses)} ج.م`,
-    ratio: pct(b.expenseRatio),
-    action: `<button class="btn secondary" style="padding:3px 8px; font-size:10px;" onclick="window.drillDownBranch('${b.id}')">عرض التحليلات</button>`
-  }))
-
-  const tBranchSales = data.branchList.reduce((acc, b) => acc + b.sales, 0)
-  const tBranchEquiv = data.branchList.reduce((acc, b) => acc + b.equivQty, 0)
-  const tBranchExp = data.branchList.reduce((acc, b) => acc + b.expenses, 0)
-  const tBranchRatio = tBranchSales > 0 ? (tBranchExp / tBranchSales) : 0
-
-  const totalRow = `
-    <tr class="total">
-      <th class="sticky-col">—</th>
-      <th class="sticky-col">الإجمالي العام (${data.branchList.length} فرع)</th>
-      <th>${data.branchList.filter(b => b.hasData).length} تم الرفع</th>
-      <th class="num">${money(tBranchSales)} ج.م</th>
-      <th class="num">${qty(tBranchEquiv)}</th>
-      <th class="num">${money(tBranchExp)} ج.م</th>
-      <th class="num">${pct(tBranchRatio)}</th>
-      <th>—</th>
-    </tr>
-  `
-
-  const bodyHtml = `
-    ${renderUnifiedFilterBar(filters)}
-    ${renderBranchBarsSection(data.branchList)}
-    ${renderSmartTable('بيانات الفروع وحالة الالتزام برفع الملفات', tableCols, rows, totalRow)}
-  `
-
-  renderShell('إدارة وأداء الفروع', 'متابعة الفروع، حصص السوق، ومعدلات كفاءة التشغيل', bodyHtml)
-  window.bindFilterForm()
-}
-
-// 5. Products Matrix Page
-async function renderProducts() {
-  const filters = currentFilters()
-  const data = await loadIntelligenceData(filters)
-
-  const tableCols = [
-    { key: 'code', label: 'الكود' },
-    { key: 'name', label: 'الصنف' },
-    { key: 'box', label: 'سعة الكرتونة' },
-    { key: 'isDouble', label: 'معامل الحساب' },
-    { key: 'sales', label: 'إجمالي المبيعات (كرتونة)', num: true }
-  ]
-
-  const rows = data.products.map(p => {
-    const packing = p.box_count ?? p.packaging_count ?? null
-    const price = p.wholesale_carton_price ?? p.retail_carton_price ?? p.carton_price ?? null
-    const isDbl = isDoubleProduct(p.name, packing, price)
-    return {
-      code: p.code || '—',
-      name: p.name,
-      box: `${packing || 1} عبوة`,
-      isDouble: isDbl ? '<span class="chip" style="background:#fef3c7; color:#92400e; font-weight:800;">Double (12 / 570)</span>' : '<span class="chip">عادي (×1)</span>',
-      sales: `${qty(data.rawInventory.filter(i => i.product_id === p.id).reduce((acc, i) => acc + Number(i.sales_qty || 0), 0))} كرتونة`
-    }
-  })
-
-  const totalProdSales = data.rawInventory.reduce((acc, i) => acc + Number(i.sales_qty || 0), 0)
-  const totalRow = `
-    <tr class="total">
-      <th class="sticky-col">—</th>
-      <th class="sticky-col">إجمالي الأصناف (${data.products.length} صنف نشط)</th>
-      <th>—</th>
-      <th>—</th>
-      <th class="num">${qty(totalProdSales)} كرتونة</th>
-    </tr>
-  `
-
-  const bodyHtml = `
-    ${renderUnifiedFilterBar(filters)}
-    ${renderSmartTable('مصفوفة الأصناف وقواعد احتساب الكميات الموحدة', tableCols, rows, totalRow)}
-  `
-
-  renderShell('الأصناف والمخزون', 'قاعدة الأصناف الموحدة، مصفوفة التحويل، ومتابعة الكميات', bodyHtml)
-  window.bindFilterForm()
-}
-
-// 6. Treasury Page
-async function renderTreasury() {
-  const filters = currentFilters()
-  const data = await loadIntelligenceData(filters)
-
-  const openingCash = 125000
-  const cashIn = data.collections
-  const cashOut = data.kpis.totalExpenses
-  const closingCash = openingCash + cashIn - cashOut
-
-  const treasuryCols = [
-    { key: 'item', label: 'البيان' },
-    { key: 'in', label: 'الوارد / المقبوض', num: true },
-    { key: 'out', label: 'المنصرف / المدفوع', num: true },
-    { key: 'balance', label: 'الرصيد التراكمي', num: true }
-  ]
-  const treasuryRows = [
-    { item: 'رصيد أول المدة التقديري', in: `${money(openingCash)} ج.م`, out: '—', balance: `${money(openingCash)} ج.م` },
-    { item: 'متحصلات المبيعات والعملاء', in: `${money(cashIn)} ج.م`, out: '—', balance: `${money(openingCash + cashIn)} ج.م` },
-    { item: 'إجمالي المصروفات التشغيلية', in: '—', out: `${money(cashOut)} ج.م`, balance: `${money(closingCash)} ج.م` }
-  ]
-  const treasuryTotalRow = `
-    <tr class="total">
-      <th class="sticky-col">صافي الرصيد الختامي للخزينة</th>
-      <th class="num">${money(openingCash + cashIn)} ج.م</th>
-      <th class="num">${money(cashOut)} ج.م</th>
-      <th class="num">${money(closingCash)} ج.م</th>
-    </tr>
-  `
-
-  const bodyHtml = `
-    ${renderUnifiedFilterBar(filters)}
-    <div class="kpis-8-grid" style="grid-template-columns: repeat(4, 1fr);">
-      ${renderKPICard('رصيد أول المدة التقديري', openingCash, null, 'currency', false, 'رصيد مرحل')}
-      ${renderKPICard('المتحصلات النقدية (تحصيل الفروع)', cashIn, null, 'currency', false, 'إيداعات نقدية مثبتة')}
-      ${renderKPICard('المصروفات النقدية المنصرفة', cashOut, null, 'currency', true, 'من واقع يوميات الصرف')}
-      ${renderKPICard('رصيد الخزينة الختامي', closingCash, null, 'currency', false, 'المطابقة الحالية')}
-    </div>
-    ${renderSmartTable('ملخص حركة السيولة والخزينة النقدية', treasuryCols, treasuryRows, treasuryTotalRow)}
-  `
-
-  renderShell('الخزينة والمقبوضات', 'متابعة السيولة، حركة النقدية اليومية، وتدقيق قيود الخزينة', bodyHtml)
-  window.bindFilterForm()
-}
-
-// 7. Analytics Page
-async function renderAnalytics() {
-  const filters = currentFilters()
-  const data = await loadIntelligenceData(filters)
-  window.cachedPoints = data.timelinePoints
-
-  const bodyHtml = `
-    ${renderUnifiedFilterBar(filters)}
-    ${renderTimelineChartSection()}
-    ${renderBranchBarsSection(data.branchList)}
-    ${renderSmartAnomalies(data)}
-  `
-
-  renderShell('التحليلات المتقدمة', 'مركز المقارنات التنفيذية ونماذج التنبؤ بالانحرافات', bodyHtml)
-  window.bindFilterForm()
-  setTimeout(window.drawTimelineSVG, 50)
-}
-
-// 8. Reports Hub
-async function renderReports() {
-  const filters = currentFilters()
-  const data = await loadIntelligenceData(filters)
-
-  const bodyHtml = `
-    ${renderUnifiedFilterBar(filters)}
-    <div style="background:#fff; border:1px solid #dfe5eb; border-radius:10px; padding:15px; margin-bottom:12px;">
-      <div style="font-size:13px; font-weight:800; color:#17324d; margin-bottom:10px;">مركز التقارير الموحد للطباعة والتصدير</div>
-      <div style="display:flex; gap:10px; flex-wrap:wrap;">
-        <button class="btn" type="button" onclick="window.print()">طباعة التقرير التنفيذي الشامل</button>
-        <button class="btn secondary" type="button" onclick="window.exportCurrentReportExcel()">تصدير كافة البيانات إلى Excel</button>
-      </div>
-    </div>
-    ${renderBranchBarsSection(data.branchList)}
-  `
-
-  renderShell('التقارير التنفيذية', 'استخراج وطباعة التقارير المعتمدة بصيغ PDF وExcel', bodyHtml)
-  window.bindFilterForm()
-}
-
-// 9. Data Review / Imports
-async function renderImports() {
-  const { data: batches } = await supabase.from('import_batches').select('*').order('created_at', { ascending: false }).limit(20)
-
-  const branchNameMap = new Map(branches.map(b => [b.id, b.name]))
-  const tableCols = [
-    { key: 'date', label: 'تاريخ الرفع' },
-    { key: 'branch', label: 'الفرع' },
-    { key: 'period', label: 'فترة الشيت' },
-    { key: 'status', label: 'حالة المطابقة' },
-    { key: 'rows', label: 'عدد السجلات', num: true }
-  ]
-
-  const rows = (batches || []).map(b => ({
-    date: new Date(b.created_at).toLocaleString('ar-EG'),
-    branch: branchNameMap.get(b.branch_id) || 'فرع',
-    period: `${b.period_start || '—'} إلى ${b.period_end || '—'}`,
-    status: b.status === 'approved' ? '<span class="delta-badge positive">معتمد ومطابق ✓</span>' : `<span class="delta-badge neutral">${b.status}</span>`,
-    rows: qty(b.row_count || 0)
-  }))
-
-  const tBatchRows = (batches || []).reduce((acc, b) => acc + Number(b.row_count || 0), 0)
-  const totalRow = `
-    <tr class="total">
-      <th class="sticky-col">إجمالي الدفعات (${(batches || []).length} دفعة)</th>
-      <th>—</th>
-      <th>—</th>
-      <th>${(batches || []).filter(b => b.status === 'approved').length} معتمد</th>
-      <th class="num">${qty(tBatchRows)} سجل</th>
-    </tr>
-  `
-
-  const bodyHtml = `
-    <div style="margin-bottom:12px;">
-      <a href="#/uploads" class="btn" style="padding:6px 14px; text-decoration:none; display:inline-block;">+ رفع شيتات فروع جديدة</a>
-    </div>
-    ${renderSmartTable('سجل دفعات الشيتات المرفوعة ومطابقة البيانات', tableCols, rows, totalRow)}
-  `
-
-  renderShell('مراجعة وتدقيق البيانات', 'سجل دفعات الشيتات، التأكد من عدم التكرار، وتدقيق البيانات', bodyHtml)
-}
-
-// 10. Settings Page
-async function renderSettings() {
-  const bodyHtml = `
-    <div class="card" style="max-width:600px; padding:20px;">
-      <h2 style="margin-top:0; font-size:14px; color:#17324d;">إعدادات نظام AMMCO Intelligence</h2>
-      <div style="font-size:11px; color:#64748b; line-height:1.6; margin-bottom:15px;">
-        <p>• <b>مشروع قاعدة البيانات المعتمد</b>: yumeijsyiphzdsulsubf (Supabase AMMCO)</p>
-        <p>• <b>منطق توحيد الكميات</b>: منتجات Double تحتسب الكمية × 2 تلقائياً.</p>
-        <p>• <b>قاعدة One Number = One Source</b>: المعادلات الرياضية متطابقة في كافة الشاشات والتقارير.</p>
-      </div>
-      <button class="btn secondary" onclick="localStorage.clear(); alert('تم مسح التخزين المؤقت'); location.reload();">مسح التخزين المؤقت للمتصفح</button>
-    </div>
-  `
-
-  renderShell('إعدادات النظام', 'التحكم في المعايير، الصلاحيات، والتفضيلات التشغيلية', bodyHtml)
-}
-
-// 11. Uploads Page
-async function renderUploads() {
-  const branchOptions = branches.map(b => `<option value="${b.id}">${b.name}</option>`).join('')
-
-  const bodyHtml = `
-    <div class="card" style="max-width:600px; padding:20px;">
-      <h2 style="margin-top:0; font-size:14px; color:#17324d;">رفع شيت فرع جديد</h2>
-      <p style="font-size:11px; color:#64748b; margin-bottom:15px;">اختر الفرع وملف Excel لمعالجته وتدقيق البيانات وفق المعايير الموحدة.</p>
-      <form id="upload-single-form" style="display:grid; gap:12px;">
-        <div class="field">
-          <label>الفرع</label>
-          <select name="branch_id" required>
-            ${branchOptions}
-          </select>
-        </div>
-        <div class="field">
-          <label>فترة الشيت (من تاريخ)</label>
-          <input type="date" name="period_start" value="${defaultDates.from}" required>
-        </div>
-        <div class="field">
-          <label>فترة الشيت (إلى تاريخ)</label>
-          <input type="date" name="period_end" value="${defaultDates.to}" required>
-        </div>
-        <div class="field">
-          <label>ملف الإكسيل (.xlsx)</label>
-          <input type="file" name="file" accept=".xlsx,.xls" required>
-        </div>
-        <div id="upload-msg" style="font-size:11px;"></div>
-        <button class="btn" type="submit" style="padding:8px 16px;">بدء الرفع والمعالجة</button>
-      </form>
-    </div>
-  `
-
-  renderShell('رفع شيتات الفروع', 'معالجة ملفات الإكسيل اليومية والشهرية وإدراجها في قاعدة البيانات', bodyHtml)
-
-  document.getElementById('upload-single-form')?.addEventListener('submit', async e => {
-    e.preventDefault()
-    const msg = document.getElementById('upload-msg')
-    msg.innerHTML = '<span style="color:#0284c7;">جاري قراءة وتحليل ملف الإكسيل…</span>'
-    const fd = new FormData(e.currentTarget)
-    const file = fd.get('file')
-    if (!file || !file.name) return
-
-    try {
-      const buffer = await file.arrayBuffer()
-      const parsed = await parseWorkbookBrowser(buffer)
-      msg.innerHTML = `<span style="color:#15803d; font-weight:700;">تم تحليل الملف بنجاح (${parsed.inventory?.length || 0} صنف، ${parsed.expenses?.length || 0} مصروف). جاري الربط…</span>`
-      setTimeout(() => {
-        location.hash = '#/imports'
-      }, 1500)
-    } catch (err) {
-      msg.innerHTML = `<span style="color:#b91c1c;">خطأ في تحليل الملف: ${err.message}</span>`
-    }
-  })
-}
-
-// -------------------------------------------------------------------
-// AUTHENTICATION & BOOTSTRAP
-// -------------------------------------------------------------------
-function renderLogin() {
-  app.innerHTML = `
-    <main class="login">
-      <section class="login-card">
-        <h1>AMMCO</h1>
-        <div class="muted">Management Intelligence Platform</div>
-        <div id="login-msg" style="margin:10px 0;"></div>
-        <form id="login-form">
-          <div class="field">
-            <label>البريد الإلكتروني</label>
-            <input name="email" type="email" value="sayed3la2@gmail.com" required>
-          </div>
-          <div class="field">
-            <label>كلمة المرور</label>
-            <input name="password" type="password" required placeholder="••••••••">
-          </div>
-          <button class="btn" type="submit" style="margin-top:10px;">تسجيل الدخول</button>
-        </form>
-      </section>
-    </main>
-  `
-
-  document.getElementById('login-form')?.addEventListener('submit', async e => {
-    e.preventDefault()
-    const fd = new FormData(e.currentTarget)
-    const { error } = await supabase.auth.signInWithPassword({
-      email: String(fd.get('email')),
-      password: String(fd.get('password'))
-    })
-    if (error) {
-      document.getElementById('login-msg').innerHTML = `<div class="error">${error.message}</div>`
-    } else {
-      boot()
-    }
-  })
-}
-
-async function render() {
-  if (!session) return renderLogin()
-  const r = route()
-
-  try {
-    if (r === 'sales') return renderSales()
-    if (r === 'expenses') return renderExpenses()
-    if (r === 'branches') return renderBranches()
-    if (r === 'products') return renderProducts()
-    if (r === 'treasury') return renderTreasury()
-    if (r === 'analytics') return renderAnalytics()
-    if (r === 'reports') return renderReports()
-    if (r === 'imports') return renderImports()
-    if (r === 'settings') return renderSettings()
-    if (r === 'uploads') return renderUploads()
-    return renderDashboard()
-  } catch (err) {
-    console.error('Rendering error:', err)
-    renderShell('خطأ في تحميل البيانات', '', `<div class="error">تعذر تحميل الصفحة: ${err.message}</div>`)
+async function renderUsers(){
+ if(profile?.role!=='admin'){shell('المستخدمون والصلاحيات','', '<div class="error">هذه الصفحة للمدير فقط.</div>');return}
+ const auth=await supabase.auth.getSession(),active=auth.data.session
+ if(!active)throw new Error('انتهت جلسة الدخول')
+ const res=await fetch(SUPABASE_URL+'/functions/v1/ammco-admin-users',{headers:{Authorization:'Bearer '+active.access_token,apikey:SUPABASE_KEY}})
+ const data=await res.json()
+ if(!res.ok)throw new Error(data.error||'تعذر تحميل المستخدمين')
+ window.__userAdminData=data
+ const branchMap=new Map((data.branches||[]).map(function(b){return [b.id,b.name]}))
+ const roleLabel={admin:'مدير',analyst:'محلل',branch_user:'مستخدم فرع'}
+ const rows=(data.users||[]).map(function(u){
+  return {
+   full_name:escapeHtml(u.full_name||'—'),
+   email:escapeHtml(u.email||'—'),
+   role:roleLabel[u.role]||u.role,
+   status:u.is_active?'نشط':'متوقف',
+   branches:u.role==='admin'?'كل الفروع':(u.branch_ids||[]).map(function(id){return branchMap.get(id)}).filter(Boolean).join('، ')||'—',
+   last:u.last_sign_in_at?new Date(u.last_sign_in_at).toLocaleString('en-GB'):'—',
+   action:'<button class="inline-action" onclick="editUser(\''+u.user_id+'\')">تعديل</button>'
   }
+ })
+ const branchOptions=(data.branches||[]).map(function(b){return '<option value="'+b.id+'">'+escapeHtml(b.name)+'</option>'}).join('')
+ const create='<section class="card admin-create-card"><div class="section-title"><h2>إضافة مستخدم</h2><span>إنشاء حساب وتحديد الدور والفروع</span></div>'+
+ '<form id="create-user-form" class="admin-form-grid">'+
+ '<div class="field"><label>الاسم</label><input name="full_name" required></div>'+
+ '<div class="field"><label>البريد</label><input name="email" type="email" dir="ltr" required></div>'+
+ '<div class="field"><label>كلمة مرور مؤقتة</label><input name="password" type="password" minlength="8" required></div>'+
+ '<div class="field"><label>الدور</label><select name="role"><option value="branch_user">مستخدم فرع</option><option value="analyst">محلل</option><option value="admin">مدير</option></select></div>'+
+ '<div class="field branch-multi"><label>الفروع</label><select name="branches" multiple>'+branchOptions+'</select></div>'+
+ '<div class="field form-action"><label>&nbsp;</label><button class="btn">إنشاء المستخدم</button></div></form><div id="user-admin-msg"></div></section>'
+ shell('المستخدمون والصلاحيات','إدارة الحسابات والأدوار والفروع المسموح بها',create+table('المستخدمون',[
+  {key:'full_name',label:'الاسم'},{key:'email',label:'البريد'},{key:'role',label:'الدور'},{key:'status',label:'الحالة'},
+  {key:'branches',label:'الفروع'},{key:'last',label:'آخر دخول'},{key:'action',label:'إجراء',filter:false}
+ ],rows))
+ document.getElementById('create-user-form')?.addEventListener('submit',async function(ev){
+  ev.preventDefault()
+  const form=ev.currentTarget,fd=new FormData(form),msg=document.getElementById('user-admin-msg')
+  try{
+   msg.innerHTML='<div class="notice">جاري إنشاء المستخدم…</div>'
+   const branch_ids=[...form.querySelector('[name=branches]').selectedOptions].map(function(o){return o.value})
+   const r=await fetch(SUPABASE_URL+'/functions/v1/ammco-admin-users',{method:'POST',headers:{Authorization:'Bearer '+active.access_token,apikey:SUPABASE_KEY,'Content-Type':'application/json'},body:JSON.stringify({action:'create',full_name:fd.get('full_name'),email:fd.get('email'),password:fd.get('password'),role:fd.get('role'),branch_ids:branch_ids})})
+   const out=await r.json()
+   if(!r.ok)throw new Error(out.error||'تعذر إنشاء المستخدم')
+   msg.innerHTML='<div class="success">تم إنشاء المستخدم.</div>'
+   setTimeout(renderUsers,400)
+  }catch(err){msg.innerHTML='<div class="error">'+escapeHtml(err.message||err)+'</div>'}
+ })
 }
 
-async function boot() {
-  const { data } = await supabase.auth.getSession()
-  session = data.session
+window.editUser=function(id){
+ const data=window.__userAdminData,u=(data?.users||[]).find(function(x){return x.user_id===id})
+ if(!u)return
+ const checks=(data.branches||[]).map(function(b){return '<label class="check-row"><input type="checkbox" value="'+b.id+'" '+((u.branch_ids||[]).includes(b.id)?'checked':'')+'> '+escapeHtml(b.name)+'</label>'}).join('')
+ document.getElementById('user-edit-dialog')?.remove()
+ const html='<div class="dialog-backdrop" id="user-edit-dialog"><div class="dialog-card"><div class="dialog-head"><h3>تعديل المستخدم</h3><button class="tool-btn" onclick="document.getElementById(\'user-edit-dialog\').remove()">إغلاق</button></div><form id="edit-user-form" class="dialog-form">'+
+ '<div class="field"><label>الاسم</label><input name="full_name" value="'+escapeAttr(u.full_name||'')+'"></div>'+
+ '<div class="field"><label>الدور</label><select name="role"><option value="branch_user" '+(u.role==='branch_user'?'selected':'')+'>مستخدم فرع</option><option value="analyst" '+(u.role==='analyst'?'selected':'')+'>محلل</option><option value="admin" '+(u.role==='admin'?'selected':'')+'>مدير</option></select></div>'+
+ '<label class="switch-row"><input type="checkbox" name="active" '+(u.is_active?'checked':'')+'> مستخدم نشط</label>'+
+ '<div class="field"><label>الفروع المسموح بها</label><div class="branch-checks">'+checks+'</div></div>'+
+ '<button class="btn">حفظ الصلاحيات</button><div id="user-edit-msg"></div></form></div></div>'
+ document.body.insertAdjacentHTML('beforeend',html)
+ document.getElementById('edit-user-form')?.addEventListener('submit',async function(ev){
+  ev.preventDefault()
+  const form=ev.currentTarget,msg=document.getElementById('user-edit-msg')
+  try{
+   const branch_ids=[...form.querySelectorAll('.branch-checks input:checked')].map(function(x){return x.value})
+   const auth=await supabase.auth.getSession(),active=auth.data.session
+   const r=await fetch(SUPABASE_URL+'/functions/v1/ammco-admin-users',{method:'POST',headers:{Authorization:'Bearer '+active.access_token,apikey:SUPABASE_KEY,'Content-Type':'application/json'},body:JSON.stringify({action:'update',user_id:id,full_name:form.full_name.value,role:form.role.value,is_active:form.active.checked,branch_ids:branch_ids})})
+   const out=await r.json()
+   if(!r.ok)throw new Error(out.error||'تعذر تحديث المستخدم')
+   document.getElementById('user-edit-dialog')?.remove()
+   renderUsers()
+  }catch(err){msg.innerHTML='<div class="error">'+escapeHtml(err.message||err)+'</div>'}
+ })
+}
 
-  if (session) {
-    const { data: p } = await supabase.from('profiles').select('full_name, role, is_active').eq('user_id', session.user.id).maybeSingle()
-    profile = p || { full_name: session.user.email?.split('@')[0], is_active: true }
+async function renderSales(){const {branch,from,to}=currentFilters();const daily=await loadDaily(branch,from,to);const rows=daily.map(r=>({business_date:r.business_date,branch_name:r.branch_name,gross:money(r.gross_sales),discounts:money(r.discounts),net:money(r.net_sales),collections:money(r.collections),expenses:money(r.expenses)}));shell('تقرير المبيعات','تفاصيل المبيعات اليومية حسب الفرع',filters(from,to,branch)+scope(from,to,branch)+table('المبيعات اليومية',[{key:'business_date',label:'التاريخ'},{key:'branch_name',label:'الفرع'},{key:'gross',label:'قبل الخصم',num:1},{key:'discounts',label:'الخصم',num:1},{key:'net',label:'صافي البيع',num:1},{key:'collections',label:'التحصيل',num:1},{key:'expenses',label:'المصروفات',num:1}],rows));bindFilters('sales')}
+async function renderExpenses(){
+ const cfg=currentFilters(),branch=cfg.branch,from=cfg.from,to=cfg.to,ids=await approvedIds()
+ let cashQ=supabase.from('cash_entries').select('branch_id,entry_date,category,canonical_category,expense_group,description,amount,is_expense,entry_kind,direction').in('batch_id',ids.length?ids:['00000000-0000-0000-0000-000000000000']).gte('entry_date',from).lte('entry_date',to)
+ let salesQ=supabase.from('v_branch_daily_kpis').select('branch_id,net_sales').gte('business_date',from).lte('business_date',to)
+ if(branch){cashQ=cashQ.eq('branch_id',branch);salesQ=salesQ.eq('branch_id',branch)}
+ const pair=await Promise.all([cashQ,salesQ]),cash=pair[0].data||[],sales=pair[1].data||[]
+ if(pair[0].error||pair[1].error)throw pair[0].error||pair[1].error
+ const bset=branch?branches.filter(b=>b.id===branch):branches
+ const salesBy=new Map();sales.forEach(r=>salesBy.set(r.branch_id,(salesBy.get(r.branch_id)||0)+Number(r.net_sales||0)))
+ const norm=s=>String(s||'').trim().replace(/\s+/g,' ').replace(/[أإآ]/g,'ا').replace(/ة/g,'ه').toLowerCase()
+ const requested=[
+  'عمولات','إيجارات','صيانة السيارات','م. سولار','زيوت','غسيل وتشحيم','كارتات طريق','اطارات السيارات','قطع غيار السيارات','جراج سيارات',
+  'غرامات سيارات','تراخيص سيارات','حوافز بيع','انتقالات','بدل سفر','تأمينات إجتماعية','أكراميات','م. تعتيق','نت وتليفون','نظافة','ادوات كتابية',
+  'مصاريف مياه','م.كهرباء','مستحقه فروع','منح ومكافأت','بترو اب','حوافز إداريين','مصاريف تحويل','أجور ومرتبات','توريد','عهدة','سلفة',
+  'ايداع البنك الأهلى 14','ايداع البنك الأهلى 28','ايداع البنك الأهلى 91','ايداع البنك الأهلى 16 المدين','QNB','القاهرة','ايداع بنك مصر','ايداع CIB',
+  'تحويل نقدى للمصنع','تحويلات وسيطة للمصنع','دائنون','بخزنة الفرع'
+ ]
+ const aliases=[
+  ['عمولات',['عمول']],['إيجارات',['ايجار']],['صيانة السيارات',['صيانه','صيانة']],['م. سولار',['سولار','وقود']],['زيوت',['زيوت']],['غسيل وتشحيم',['غسيل','تشحيم']],
+  ['كارتات طريق',['كارتات طريق','طريق']],['اطارات السيارات',['اطار']],['قطع غيار السيارات',['قطع غيار']],['جراج سيارات',['جراج']],['غرامات سيارات',['غرام']],
+  ['تراخيص سيارات',['ترخيص']],['حوافز بيع',['حوافز بيع']],['انتقالات',['انتقالات']],['بدل سفر',['بدل سفر']],['تأمينات إجتماعية',['تامينات','تأمينات']],
+  ['أكراميات',['اكراميات']],['م. تعتيق',['تعتيق']],['نت وتليفون',['نت','تليفون']],['نظافة',['نظاف']],['ادوات كتابية',['ادوات كتابيه','ادوات كتابية']],
+  ['مصاريف مياه',['مياه']],['م.كهرباء',['كهرب']],['مستحقه فروع',['مستحقه فروع','مستحقة فروع']],['منح ومكافأت',['منح','مكافات','مكافأت']],
+  ['بترو اب',['بترو']],['حوافز إداريين',['حوافز ادار']],['مصاريف تحويل',['مصاريف تحويل']],['أجور ومرتبات',['اجور','مرتبات']],['توريد',['توريد']],
+  ['عهدة',['عهده','عهدة']],['سلفة',['سلفه','سلفة']],['ايداع البنك الأهلى 14',['14']],['ايداع البنك الأهلى 28',['28']],['ايداع البنك الأهلى 91',['91']],
+  ['ايداع البنك الأهلى 16 المدين',['16 المدين']],['QNB',['qnb']],['القاهرة',['القاهره','القاهرة']],['ايداع بنك مصر',['بنك مصر']],['ايداع CIB',['cib']],
+  ['تحويل نقدى للمصنع',['تحويل نقدي للمصنع','تحويل نقدى للمصنع']],['تحويلات وسيطة للمصنع',['وسيطه للمصنع','وسيطة للمصنع']],['دائنون',['دائن']],['بخزنة الفرع',['خزنه الفرع','خزنة الفرع']]
+ ]
+ const matchLabel=r=>{
+  const txt=norm((r.canonical_category||'')+' '+(r.category||'')+' '+(r.expense_group||'')+' '+(r.description||'')+' '+(r.entry_kind||''))
+  for(const [label,keys] of aliases)if(keys.some(k=>txt.includes(norm(k))))return label
+  return r.canonical_category||r.category||r.entry_kind||'غير مصنف'
+ }
+ const matrix=new Map()
+ cash.forEach(r=>{
+  const label=matchLabel(r),row=matrix.get(label)||new Map()
+  row.set(r.branch_id,(row.get(r.branch_id)||0)+Number(r.amount||0));matrix.set(label,row)
+ })
+ const extras=[...matrix.keys()].filter(k=>!requested.includes(k)).sort((a,b)=>String(a).localeCompare(String(b),'ar'))
+ const labels=[...requested,...extras]
+ const rows=labels.map(label=>{
+  const row=matrix.get(label)||new Map(),obj={label}
+  let total=0;bset.forEach(b=>{const v=row.get(b.id)||0;obj[b.id]=money(v);total+=v});obj.total=money(total);return obj
+ })
+ const salesObj={label:'المبيعات'},pctObj={label:'%'}
+ let totalSales=0,totalCash=0
+ bset.forEach(b=>{const s=salesBy.get(b.id)||0;totalSales+=s;salesObj[b.id]=money(s)
+  const exp=cash.filter(r=>r.branch_id===b.id&&r.is_expense).reduce((a,r)=>a+Number(r.amount||0),0);totalCash+=exp;pctObj[b.id]=pct(s?exp/s:0)})
+ salesObj.total=money(totalSales);pctObj.total=pct(totalSales?totalCash/totalSales:0)
+ const cols=[{key:'label',label:'البيان'},...bset.map(b=>({key:b.id,label:b.name,num:1})),{key:'total',label:'الإجمالي',num:1}]
+ shell('تقرير المصروفات','مطابقة بنود ورقة الإدارة × الفروع × الإجمالي',
+  filters(from,to,branch)+scope(from,to,branch)+table('تحليل مصروفات الفروع',cols,[salesObj,pctObj,...rows]))
+ bindFilters('expenses')
+}
 
-    const { data: b } = await supabase.from('branches').select('id, name, code, is_active').eq('is_active', true).order('name')
-    branches = b || []
+async function renderExpenseMatrix(){
+ const cfg=currentFilters(),branch=cfg.branch,from=cfg.from,to=cfg.to
+ let salesQ=supabase.from('v_branch_daily_kpis').select('branch_id,business_date,net_sales').gte('business_date',from).lte('business_date',to)
+ let expQ=supabase.from('v_expense_analysis').select('branch_id,canonical_category,expense_group,amount').gte('entry_date',from).lte('entry_date',to)
+ let setQ=supabase.from('branch_expense_accrual_settings').select('branch_id,month_start,wages,branch_manager,sector_manager,rent,carried_expenses,commission_rate,working_days_basis').lte('month_start',to).order('month_start',{ascending:false})
+ if(branch){salesQ=salesQ.eq('branch_id',branch);expQ=expQ.eq('branch_id',branch);setQ=setQ.eq('branch_id',branch)}
+ const all=await Promise.all([salesQ,expQ,setQ]),sales=all[0].data||[],expenses=all[1].data||[],settings=all[2].data||[]
+ if(all[0].error||all[1].error||all[2].error)throw all[0].error||all[1].error||all[2].error
+ const bset=branch?branches.filter(b=>b.id===branch):branches
+ const salesBy=new Map(),daysBy=new Map()
+ sales.forEach(r=>{salesBy.set(r.branch_id,(salesBy.get(r.branch_id)||0)+Number(r.net_sales||0));const set=daysBy.get(r.branch_id)||new Set();set.add(r.business_date);daysBy.set(r.branch_id,set)})
+ const latestSetting=new Map();settings.forEach(r=>{if(!latestSetting.has(r.branch_id))latestSetting.set(r.branch_id,r)})
+ const expBy=new Map()
+ expenses.forEach(r=>{const txt=((r.canonical_category||'')+' '+(r.expense_group||'')).toLowerCase(),x=expBy.get(r.branch_id)||{treasury:0,fuel:0,petro:0}
+  x.treasury+=Number(r.amount||0);if(/سولار|وقود|fuel/.test(txt))x.fuel+=Number(r.amount||0);if(/بترو|petro/.test(txt))x.petro+=Number(r.amount||0);expBy.set(r.branch_id,x)})
+ const raw=bset.map(b=>{
+  const s=salesBy.get(b.id)||0,st=latestSetting.get(b.id)||{},ex=expBy.get(b.id)||{treasury:0,fuel:0,petro:0},days=(daysBy.get(b.id)||new Set()).size
+  const basis=Number(st.working_days_basis||30),wages=Number(st.wages||0)+Number(st.branch_manager||0)+Number(st.sector_manager||0),rent=Number(st.rent||0)
+  const accrued=wages+rent,carried=Number(st.carried_expenses||0),toDate=(accrued*(days/Math.max(1,basis)))+carried,commission=s*Number(st.commission_rate||0)
+  const vehicle=ex.fuel+ex.petro,total=toDate+ex.treasury+commission
+  return {branch_name:b.name,sales:s,days,wages,rent,accrued,carried,toDate,fuel:ex.fuel,petro:ex.petro,vehicle,vehicleRate:s?vehicle/s:0,treasury:ex.treasury,commission,total,totalRate:s?total/s:0}
+ })
+ const rows=raw.map(x=>({branch_name:x.branch_name,sales:money(x.sales),days:x.days,wages:money(x.wages),rent:money(x.rent),accrued:money(x.accrued),carried:money(x.carried),to_date:money(x.toDate),fuel:money(x.fuel),petro:money(x.petro),vehicle:money(x.vehicle),vehicle_rate:pct(x.vehicleRate),treasury:money(x.treasury),commission:money(x.commission),expenses:money(x.total),expense_rate:pct(x.totalRate)}))
+ const total=raw.reduce((a,x)=>{for(const k of ['sales','wages','rent','accrued','carried','toDate','fuel','petro','vehicle','treasury','commission','total'])a[k]+=x[k];return a},{sales:0,wages:0,rent:0,accrued:0,carried:0,toDate:0,fuel:0,petro:0,vehicle:0,treasury:0,commission:0,total:0})
+ const totalRow='<tr class="total"><th>الإجمالي</th><th class="num">'+money(total.sales)+'</th><th>—</th><th class="num">'+money(total.wages)+'</th><th class="num">'+money(total.rent)+'</th><th class="num">'+money(total.accrued)+'</th><th class="num">'+money(total.carried)+'</th><th class="num">'+money(total.toDate)+'</th><th class="num">'+money(total.fuel)+'</th><th class="num">'+money(total.petro)+'</th><th class="num">'+money(total.vehicle)+'</th><th>'+pct(total.sales?total.vehicle/total.sales:0)+'</th><th class="num">'+money(total.treasury)+'</th><th class="num">'+money(total.commission)+'</th><th class="num">'+money(total.total)+'</th><th>'+pct(total.sales?total.total/total.sales:0)+'</th></tr>'
+ shell('تحليلي مصروفات','مطابقة ورقة الإدارة: المستحقات + السيارات + الخزينة + العمولات',
+  filters(from,to,branch)+scope(from,to,branch)+table('تحليلي مصروفات',[
+   {key:'branch_name',label:'الفروع'},{key:'sales',label:'المبيعات',num:1},{key:'days',label:'أيام العمل'},
+   {key:'wages',label:'أجور',num:1},{key:'rent',label:'إيجارات',num:1},{key:'accrued',label:'إجمالي المستحق',num:1},
+   {key:'carried',label:'مصروفات مرحلة',num:1},{key:'to_date',label:'المستحق حتى تاريخه',num:1},
+   {key:'fuel',label:'م. سولار',num:1},{key:'petro',label:'بترو أب',num:1},{key:'vehicle',label:'إجمالي سيارات',num:1},{key:'vehicle_rate',label:'% السيارات'},
+   {key:'treasury',label:'مصروفات من الخزينة',num:1},{key:'commission',label:'عمولات',num:1},{key:'expenses',label:'المصروفات',num:1},{key:'expense_rate',label:'% المصروفات'}
+  ],rows,totalRow))
+ bindFilters('expense-matrix')
+}
+
+async function renderReceivables(){
+ const {branch,from,to}=currentFilters();const daily=await loadDaily(branch,from,to)
+ const by=new Map()
+ daily.forEach(r=>{const k=r.branch_id;const x=by.get(k)||{branch_name:r.branch_name,opening:+r.opening_receivables||0,sales:0,collections:0,closing:0,first:r.business_date,last:r.business_date};if(r.business_date<x.first){x.first=r.business_date;x.opening=+r.opening_receivables||0}if(r.business_date>=x.last){x.last=r.business_date;x.closing=+r.closing_receivables||0}x.sales+=+r.net_sales||0;x.collections+=+r.collections||0;by.set(k,x)})
+ const rows=[...by.values()].map(x=>({branch_name:x.branch_name,opening:money(x.opening),sales:money(x.sales),collections:money(x.collections),rate:pct(x.sales?x.collections/x.sales:0),closing:money(x.closing),check:Math.abs((x.opening+x.sales-x.collections)-x.closing)<.02?'مطابق':'راجع'}))
+ shell('المديونيات والتحصيل','افتتاحي + صافي البيع - التحصيل = رصيد آخر',filters(from,to,branch)+scope(from,to,branch)+table('المديونية حسب الفرع',[{key:'branch_name',label:'الفرع'},{key:'opening',label:'مديونية أول',num:1},{key:'sales',label:'صافي البيع',num:1},{key:'collections',label:'التحصيل',num:1},{key:'rate',label:'% التحصيل'},{key:'closing',label:'مديونية آخر',num:1},{key:'check',label:'فحص المعادلة'}],rows))
+ bindFilters('receivables')
+}
+
+async function renderMonthly(){
+ const p=qs();const year=p.get('year')||String(new Date().getFullYear());const branch=p.get('branch')||''
+ let q=supabase.from('v_branch_daily_kpis').select('branch_id,branch_name,business_date,gross_sales,net_sales,discounts,collections,expenses,closing_receivables,inventory_value').gte('business_date',`${year}-01-01`).lte('business_date',`${year}-12-31`).order('business_date')
+ if(branch)q=q.eq('branch_id',branch)
+ const {data,error}=await q;if(error)throw error
+ const by=new Map()
+ ;(data||[]).forEach(r=>{const m=r.business_date.slice(0,7);const x=by.get(m)||{month:m,gross:0,net:0,disc:0,coll:0,exp:0,debt:0,inv:0};x.gross+=+r.gross_sales||0;x.net+=+r.net_sales||0;x.disc+=+r.discounts||0;x.coll+=+r.collections||0;x.exp+=+r.expenses||0;x.debt=+r.closing_receivables||x.debt;x.inv=+r.inventory_value||x.inv;by.set(m,x)})
+ let ytd=0
+ const rows=[...by.values()].sort((a,b)=>a.month.localeCompare(b.month)).map(x=>{ytd+=x.net;return{month:x.month,gross:money(x.gross),disc:money(x.disc),net:money(x.net),coll:money(x.coll),exp:money(x.exp),debt:money(x.debt),inv:money(x.inv),ytd:money(ytd)}})
+ const form=`<form id="year-filter" class="filters"><div class="field"><label>الفرع</label><select name="branch">${branchOptions(branch)}</select></div><div class="field"><label>السنة</label><input name="year" value="${year}"></div><div></div><div class="field"><label>&nbsp;</label><button class="btn">تطبيق</button></div></form>`
+ shell('التحليل الشهري وYTD','مقارنة الشهور والتراكم السنوي',form+table('Monthly / YTD',[{key:'month',label:'الشهر'},{key:'gross',label:'قبل الخصم',num:1},{key:'disc',label:'الخصم',num:1},{key:'net',label:'صافي البيع',num:1},{key:'coll',label:'التحصيل',num:1},{key:'exp',label:'المصروفات',num:1},{key:'debt',label:'مديونية آخر',num:1},{key:'inv',label:'مخزون آخر',num:1},{key:'ytd',label:'YTD مبيعات',num:1}],rows))
+ document.getElementById('year-filter')?.addEventListener('submit',e=>{e.preventDefault();const fd=new FormData(e.currentTarget);location.hash=`#/monthly?branch=${fd.get('branch')||''}&year=${fd.get('year')}`})
+}
+
+async function renderBanks(){
+ const p=qs();const to=p.get('to')||defaultTo,from=`${to.slice(0,4)}-01-01`,branch=p.get('branch')||''
+ let accountQ=supabase.from('treasury_accounts').select('id,branch_id,name,code,account_type').eq('is_active',true)
+ let entryQ=supabase.from('cash_entries').select('branch_id,treasury_account_id,entry_date,direction,amount').gte('entry_date',from).lte('entry_date',to)
+ if(branch){accountQ=accountQ.eq('branch_id',branch);entryQ=entryQ.eq('branch_id',branch)}
+ const [{data:accounts},{data:entries,error}]=await Promise.all([accountQ,entryQ]);if(error)throw error
+ const names=new Map(branches.map(b=>[b.id,b.name])),byId=new Map((accounts||[]).map(a=>[a.id,a]))
+ const rowsMap=new Map()
+ ;(entries||[]).forEach(e=>{const a=byId.get(e.treasury_account_id);if(!a||a.account_type!=='bank')return;const key=`${a.branch_id}:${a.id}`;const x=rowsMap.get(key)||{branch_name:names.get(a.branch_id)||'-',account:a.name,in:0,out:0};if(e.direction==='in')x.in+=+e.amount||0;else x.out+=+e.amount||0;rowsMap.set(key,x)})
+ const rows=[...rowsMap.values()].map(x=>({...x,in:money(x.in),out:money(x.out),net:money((+x.in.toString().replace(/,/g,''))-(+x.out.toString().replace(/,/g,'')))}))
+ const form=`<form id="bank-filter" class="filters"><div class="field"><label>الفرع</label><select name="branch">${branchOptions(branch)}</select></div><div class="field"><label>حتى تاريخ</label><input type="date" name="to" value="${to}"></div><div></div><div class="field"><label>&nbsp;</label><button class="btn">تطبيق</button></div></form>`
+ shell('البنوك وYTD','حركة الحسابات البنكية منذ بداية السنة',form+scope(from,to,branch)+table('الحسابات البنكية',[{key:'branch_name',label:'الفرع'},{key:'account',label:'الحساب'},{key:'in',label:'داخل',num:1},{key:'out',label:'خارج',num:1},{key:'net',label:'الصافي',num:1}],rows))
+ document.getElementById('bank-filter')?.addEventListener('submit',e=>{e.preventDefault();const fd=new FormData(e.currentTarget);location.hash=`#/banks?branch=${fd.get('branch')||''}&to=${fd.get('to')}`})
+}
+
+async function renderReps(){const {branch,from,to}=currentFilters();const ids=await approvedIds();let q=supabase.from('sales_rep_daily').select('branch_id,business_date,rep_name,sales_before_discount,net_after_discount,discounts,deposit_amount,closing_balance').in('batch_id',ids.length?ids:['00000000-0000-0000-0000-000000000000']).gte('business_date',from).lte('business_date',to);if(branch)q=q.eq('branch_id',branch);const {data,error}=await q;if(error)throw error;const names=new Map(branches.map(b=>[b.id,b.name]));const by=new Map();(data||[]).forEach(r=>{const k=`${r.branch_id}:${r.rep_name}`;const x=by.get(k)||{branch_name:names.get(r.branch_id),rep_name:r.rep_name,gross:0,net:0,disc:0,deposit:0,closing:0};x.gross+=+r.sales_before_discount||0;x.net+=+r.net_after_discount||0;x.disc+=+r.discounts||0;x.deposit+=+r.deposit_amount||0;x.closing=+r.closing_balance||x.closing;by.set(k,x)});const rows=[...by.values()].map(x=>({...x,gross:money(x.gross),net:money(x.net),disc:money(x.disc),deposit:money(x.deposit),closing:money(x.closing)}));shell('أداء المناديب','المندوب × الفرع',filters(from,to,branch)+scope(from,to,branch)+table('أداء المناديب',[{key:'branch_name',label:'الفرع'},{key:'rep_name',label:'المندوب'},{key:'gross',label:'قبل الخصم',num:1},{key:'disc',label:'الخصم',num:1},{key:'net',label:'صافي البيع',num:1},{key:'deposit',label:'التوريد',num:1},{key:'closing',label:'الرصيد',num:1}],rows));bindFilters('reps')}
+async function renderInventory(){
+ const cfg=currentFilters(),branch=cfg.branch,from=cfg.from,to=cfg.to,ids=await approvedIds()
+ let q=supabase.from('warehouse_daily_summary').select('*').in('batch_id',ids.length?ids:['00000000-0000-0000-0000-000000000000']).gte('business_date',from).lte('business_date',to).order('business_date')
+ if(branch)q=q.eq('branch_id',branch)
+ const {data,error}=await q;if(error)throw error
+ const names=new Map(branches.map(b=>[b.id,b.name])),by=new Map()
+ ;(data||[]).forEach(r=>{
+  const x=by.get(r.branch_id)||{branch_name:names.get(r.branch_id)||'—',firstDate:r.business_date,lastDate:r.business_date,qty:{},val:{}}
+  if(String(r.business_date)<String(x.firstDate)){x.firstDate=r.business_date;x.qty.opening=Number(r.opening_qty||0);x.val.opening=Number(r.opening_value||0)}
+  if(x.qty.opening===undefined){x.qty.opening=Number(r.opening_qty||0);x.val.opening=Number(r.opening_value||0)}
+  const add=(obj,key,v)=>obj[key]=(obj[key]||0)+Number(v||0)
+  add(x.qty,'factory',r.incoming_factory_qty);add(x.val,'factory',r.incoming_factory_value)
+  add(x.qty,'branches',r.incoming_branches_qty);add(x.val,'branches',r.incoming_branches_value)
+  add(x.qty,'sales',r.sales_qty);add(x.val,'sales',r.sales_value)
+  add(x.qty,'bonus',r.bonus_qty);add(x.val,'bonus',r.bonus_value)
+  add(x.qty,'gifts',r.gifts_qty);add(x.val,'gifts',r.gifts_value)
+  add(x.qty,'damages',r.damages_qty);add(x.val,'damages',r.damages_value)
+  add(x.qty,'return_factory',r.return_factory_qty);add(x.val,'return_factory',r.return_factory_value)
+  add(x.qty,'out_branches',r.outgoing_branches_qty);add(x.val,'out_branches',r.outgoing_branches_value)
+  add(x.qty,'adjustment',r.adjustment_qty);add(x.val,'adjustment',r.adjustment_value)
+  if(String(r.business_date)>=String(x.lastDate)){x.lastDate=r.business_date;x.qty.closing=Number(r.closing_qty||0);x.val.closing=Number(r.closing_value||0)}
+  by.set(r.branch_id,x)
+ })
+ const rows=[]
+ ;[...by.values()].forEach(x=>{
+  rows.push({branch_name:x.branch_name,date:from+' → '+to,type:'الكمية',opening:qty(x.qty.opening),factory:qty(x.qty.factory),branches:qty(x.qty.branches),sales:qty(x.qty.sales),bonus:qty(x.qty.bonus),gifts:qty(x.qty.gifts),damages:qty(x.qty.damages),return_factory:qty(x.qty.return_factory),out_branches:qty(x.qty.out_branches),adjustment:qty(x.qty.adjustment),closing:qty(x.qty.closing),chains_in:'—',chains_out:'—',army:'—'})
+  rows.push({branch_name:x.branch_name,date:from+' → '+to,type:'القيمة',opening:money(x.val.opening),factory:money(x.val.factory),branches:money(x.val.branches),sales:money(x.val.sales),bonus:money(x.val.bonus),gifts:money(x.val.gifts),damages:money(x.val.damages),return_factory:money(x.val.return_factory),out_branches:money(x.val.out_branches),adjustment:money(x.val.adjustment),closing:money(x.val.closing),chains_in:'—',chains_out:'—',army:'—'})
+ })
+ shell('حركة مخزون','مطابقة ورقة الإدارة: كمية وقيمة لكل فرع',filters(from,to,branch)+scope(from,to,branch)+table('حركة مخزون',[
+  {key:'branch_name',label:'الفرع'},{key:'date',label:'الفترة'},{key:'type',label:'م'},
+  {key:'opening',label:'رصيد أول',num:1},{key:'factory',label:'وارد مصنع',num:1},{key:'branches',label:'وارد فروع',num:1},
+  {key:'sales',label:'إجمالي مبيعات اليوم',num:1},{key:'bonus',label:'البوانص',num:1},{key:'gifts',label:'هدايا',num:1},
+  {key:'damages',label:'توالف',num:1},{key:'return_factory',label:'مرتجع للمصنع',num:1},{key:'out_branches',label:'منصرف للفروع',num:1},
+  {key:'adjustment',label:'تسوية',num:1},{key:'closing',label:'رصيد آخر',num:1},
+  {key:'chains_in',label:'وارد سلاسل'},{key:'chains_out',label:'منصرف سلاسل'},{key:'army',label:'جيش'}
+ ],rows))
+ bindFilters('inventory')
+}
+async function renderProducts(){
+ const {branch,from,to}=currentFilters(),ids=await approvedIds()
+ let q=supabase.from('inventory_daily')
+  .select('id,branch_id,business_date,product_id,product_name,sales_qty,closing_qty,closing_value')
+  .in('batch_id',ids.length?ids:['00000000-0000-0000-0000-000000000000'])
+  .gte('business_date',from).lte('business_date',to)
+  .order('business_date',{ascending:true})
+ if(branch)q=q.eq('branch_id',branch)
+ const {data,error}=await q;if(error)throw error
+ const bset=branch?branches.filter(b=>b.id===branch):branches
+ const sales=new Map()
+ ;(data||[]).forEach(r=>{
+  const key=r.branch_id+'|'+(r.product_id||r.product_name)
+  sales.set(key,(sales.get(key)||0)+Number(r.sales_qty||0))
+ })
+ const latest=latestInventoryByProduct(data||[]),matrix=new Map()
+ latest.forEach(r=>{
+  const x=matrix.get(r.product_name)||{}
+  const key=r.branch_id+'|'+(r.product_id||r.product_name)
+  x[r.branch_id]={sales:sales.get(key)||0,closing:Number(r.closing_qty||0),value:Number(r.closing_value||0),date:r.business_date}
+  matrix.set(r.product_name,x)
+ })
+ const rows=[...matrix.entries()].sort((a,b)=>a[0].localeCompare(b[0],'ar')).map(([product,cells])=>{
+  let html='<td class="row-label">'+escapeHtml(product)+'</td>'
+  for(const b of bset){
+   const x=cells[b.id]
+   html+='<td class="num">'+(x?qty(x.sales):'—')+'</td><td class="num">'+(x?qty(x.closing):'—')+'</td><td class="num">'+(x?money(x.value):'—')+'</td>'
   }
-
-  await render()
+  return '<tr>'+html+'</tr>'
+ }).join('')
+ const head=bset.map((b,i)=>'<th colspan="3" class="'+(i%2?'group-green':'group-blue')+'">'+escapeHtml(b.name)+'</th>').join('')
+ const sub=bset.map(()=>'<th>بيع</th><th>رصيد آخر</th><th>قيمة رصيد آخر</th>').join('')
+ shell('أرصدة ومصفوفة الأصناف','الرصيد = عمود رصيد آخر لنفس الصنف في آخر يوم متاح',
+  filters(from,to,branch)+scope(from,to,branch)+
+  '<section class="table-card matrix"><div class="table-head"><div><h2>أرصدة الفروع حسب آخر رصيد للصنف</h2><small>'+matrix.size+' صنف</small></div></div><div class="table-wrap"><table><thead><tr><th rowspan="2">الصنف</th>'+head+'</tr><tr>'+sub+'</tr></thead><tbody>'+rows+'</tbody></table></div></section>')
+ bindFilters('products')
+}
+async function renderBranches(){const {data,error}=await supabase.from('branches').select('id,name,code,is_active,created_at,treasury_accounts(id,is_active)').order('created_at');if(error)throw error;const rows=(data||[]).map(b=>({name:b.name,code:b.code,status:b.is_active?'نشط':'متوقف',treasuries:(b.treasury_accounts||[]).filter(x=>x.is_active).length,created_at:new Date(b.created_at).toLocaleString('en-GB')}));const add=profile?.role==='admin'?`<section class="card" style="margin-bottom:14px"><h2>+ إضافة فرع جديد</h2><form id="add-branch" class="filters" style="margin:0"><div class="field"><label>اسم الفرع</label><input name="name" required></div><div class="field"><label>كود الفرع</label><input name="code" dir="ltr" required></div><div></div><div class="field"><label>&nbsp;</label><button class="btn">إنشاء الفرع</button></div></form><div id="branch-msg"></div></section>`:'';shell('إدارة الفروع','إضافة الفروع وإدارة الحالة',add+table('الفروع الحالية',[{key:'name',label:'الفرع'},{key:'code',label:'الكود'},{key:'status',label:'الحالة'},{key:'treasuries',label:'عدد الخزائن',num:1},{key:'created_at',label:'تاريخ الإنشاء'}],rows));document.getElementById('add-branch')?.addEventListener('submit',async e=>{e.preventDefault();const fd=new FormData(e.currentTarget);const {error}=await supabase.rpc('create_branch_with_default_treasury',{p_code:String(fd.get('code')).trim(),p_name:String(fd.get('name')).trim()});document.getElementById('branch-msg').innerHTML=error?`<div class="error">${error.message}</div>`:'<div class="success">تم إنشاء الفرع والخزنة الرئيسية.</div>';if(!error)boot()})}
+async function renderImports(){
+ const {data,error}=await supabase.from('import_batches').select('id,branch_id,original_file_name,period_start,period_end,version,status,uploaded_at,approved_at,validated_at,failure_message,branches(name)').order('uploaded_at',{ascending:false}).limit(300)
+ if(error)throw error
+ const labels={uploaded:'مرفوع',processing:'قيد التحليل',validated:'جاهز للاعتماد',approved:'معتمد',rejected:'يحتاج مراجعة',failed:'فشل',superseded:'نسخة سابقة'}
+ const rows=(data||[]).map(r=>({
+  branch_name:Array.isArray(r.branches)?r.branches[0]?.name:r.branches?.name,
+  period:`${r.period_start} — ${r.period_end}`,
+  file:r.original_file_name,
+  version:r.version,
+  status:labels[r.status]||r.status,
+  uploaded_at:new Date(r.uploaded_at).toLocaleString('en-GB'),
+  approved_at:r.approved_at?new Date(r.approved_at).toLocaleString('en-GB'):'',
+  action:r.status==='validated'&&profile?.role==='admin'
+    ? `<button class="btn" onclick="approveBatch('${r.id}')">اعتماد</button>`
+    : ['uploaded','failed','rejected','processing'].includes(r.status)
+      ? `<button class="btn secondary" onclick="processBatch('${r.id}')">إعادة التحليل</button>`
+      : (r.failure_message||'—')
+ }))
+ shell('سجل الرفع','كل نسخ الشيتات وحالة الاعتماد',`<div id="imports-msg"></div>`+table('نسخ الشيتات',[{key:'branch_name',label:'الفرع'},{key:'period',label:'الفترة'},{key:'file',label:'الملف'},{key:'version',label:'الإصدار',num:1},{key:'status',label:'الحالة'},{key:'uploaded_at',label:'وقت الرفع'},{key:'approved_at',label:'وقت الاعتماد'},{key:'action',label:'إجراء'}],rows))
+}
+window.processBatch=async id=>{
+ const msg=document.getElementById('imports-msg'); if(msg)msg.innerHTML='<div class="notice">جاري تحليل الملف…</div>'
+ try{
+  const {data:{session:active}}=await supabase.auth.getSession()
+  const res=await fetch(`${SUPABASE_URL}/functions/v1/ammco-import-process`,{
+   method:'POST',
+   headers:{Authorization:`Bearer ${active.access_token}`,apikey:SUPABASE_KEY,'Content-Type':'application/json'},
+   body:JSON.stringify({batchId:id})
+  })
+  const out=await res.json()
+  if(!res.ok) throw new Error(out.error||'تعذر تحليل الملف')
+  if(msg)msg.innerHTML=out.status==='rejected'
+    ? `<div class="error">تم التحليل ويحتاج مراجعة: ${out.issues} ملاحظة.</div>`
+    : `<div class="success">تم التحليل بنجاح: ${out.sheets} صفحة، ${out.rows} صف، ${out.products} صنف.</div>`
+  setTimeout(renderImports,500)
+ }catch(err){if(msg)msg.innerHTML=`<div class="error">${err.message||err}</div>`}
 }
 
-window.addEventListener('hashchange', render)
-supabase.auth.onAuthStateChange((_e, s) => {
-  session = s
-  boot()
-})
+window.approveBatch=async id=>{
+ const msg=document.getElementById('imports-msg'); if(msg)msg.innerHTML='<div class="notice">جاري اعتماد النسخة…</div>'
+ const {error}=await supabase.rpc('approve_import_batch',{p_batch_id:id})
+ if(error){if(msg)msg.innerHTML=`<div class="error">${error.message}</div>`;return}
+ if(msg)msg.innerHTML='<div class="success">تم اعتماد النسخة وتحديث التقارير.</div>'
+ setTimeout(renderImports,500)
+}
+function renderUploads(){
+ const branchOpts=selected=>`<option value="">اختر الفرع</option>${branches.map(b=>`<option value="${b.id}" ${selected===b.id?'selected':''}>${b.name}</option>`).join('')}`
+ const todayMonth=new Date().toISOString().slice(0,7)
+ const periodStart=`${todayMonth}-01`
+ const periodEnd=new Date(new Date().getFullYear(),new Date().getMonth()+1,0).toISOString().slice(0,10)
+ const lanes=Array.from({length:12},(_,i)=>({
+  index:i+1,
+  branchId:branches[i]?.id||'',
+  branchName:branches[i]?.name||'مسار إضافي'
+ }))
+ shell('رفع شيتات الفروع','12 مسار رفع في نفس الشاشة مع متابعة مستقلة لكل فرع',`
+  <div id="upload-msg"></div>
+  <section class="card bulk-upload-head">
+   <div class="notice">يمكنك تجهيز حتى 12 فرعًا ثم الضغط مرة واحدة. التحليل يتم على جهازك، والحفظ يتم في Supabase. للحفاظ على استقرار المتصفح تتم المعالجة في 3 مسارات متوازية آمنة.</div>
+   <div class="bulk-period">
+    <div class="field"><label>من</label><input id="bulk-period-start" type="date" value="${periodStart}"></div>
+    <div class="field"><label>إلى</label><input id="bulk-period-end" type="date" value="${periodEnd}"></div>
+    <div class="bulk-summary"><strong id="bulk-ready-count">0</strong><span>ملف جاهز</span></div>
+    <button class="btn" id="bulk-upload-btn">رفع وتحليل الملفات المحددة</button>
+   </div>
+  </section>
+  <section class="upload-lanes">
+   ${lanes.map(l=>`
+    <article class="upload-lane" data-lane="${l.index}">
+     <div class="upload-lane-head">
+      <span class="lane-number">${String(l.index).padStart(2,'0')}</span>
+      <strong class="lane-title">${l.branchName}</strong>
+      <span class="lane-status idle" id="lane-status-${l.index}">بانتظار ملف</span>
+     </div>
+     <div class="upload-lane-body">
+      <div class="field"><label>الفرع</label><select class="lane-branch" data-lane="${l.index}">${branchOpts(l.branchId)}</select></div>
+      <div class="field lane-file-field"><label>ملف Excel</label><input class="lane-file" data-lane="${l.index}" type="file" accept=".xlsx,application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"></div>
+      <div class="lane-file-name" id="lane-file-name-${l.index}">لم يتم اختيار ملف</div>
+     </div>
+     <div class="lane-progress"><span id="lane-progress-${l.index}"></span></div>
+     <div class="lane-result" id="lane-result-${l.index}"></div>
+    </article>`).join('')}
+  </section>
+  <div class="bulk-upload-footer">
+   <span>الفروع الموجودة حاليًا: <b>${branches.length}</b></span>
+   <span>المسارات المتاحة: <b>12</b></span>
+   <span>المسارات الإضافية: <b>${Math.max(0,12-branches.length)}</b></span>
+  </div>
+ `)
+
+ const readyCount=()=>{
+  const files=[...document.querySelectorAll('.lane-file')].filter(input=>input.files?.[0]).length
+  const el=document.getElementById('bulk-ready-count');if(el)el.textContent=String(files)
+ }
+ document.querySelectorAll('.lane-file').forEach(input=>input.addEventListener('change',()=>{
+  const lane=input.dataset.lane
+  const file=input.files?.[0]
+  const name=document.getElementById(`lane-file-name-${lane}`)
+  const status=document.getElementById(`lane-status-${lane}`)
+  if(name)name.textContent=file?file.name:'لم يتم اختيار ملف'
+  if(status){status.textContent=file?'جاهز للرفع':'بانتظار ملف';status.className=`lane-status ${file?'ready':'idle'}`}
+  readyCount()
+ }))
+ document.querySelectorAll('.lane-branch').forEach(select=>select.addEventListener('change',()=>{
+  const lane=select.dataset.lane
+  const title=select.closest('.upload-lane')?.querySelector('.lane-title')
+  const option=select.options[select.selectedIndex]
+  if(title)title.textContent=option?.text||'مسار إضافي'
+ }))
+
+ const setLane=(lane,state,label,detail='',progress=0)=>{
+  const status=document.getElementById(`lane-status-${lane}`)
+  const result=document.getElementById(`lane-result-${lane}`)
+  const bar=document.getElementById(`lane-progress-${lane}`)
+  if(status){status.textContent=label;status.className=`lane-status ${state}`}
+  if(result)result.innerHTML=detail
+  if(bar)bar.style.width=`${Math.max(0,Math.min(100,progress))}%`
+ }
+
+ const processLane=async task=>{
+  const {lane,branchId,file,periodStart,periodEnd,active}=task
+  try{
+   setLane(lane,'working','قراءة الملف','جاري تحليل Excel على جهازك…',10)
+   const parsed=await parseWorkbookBrowser(file,{periodStart,periodEnd})
+   setLane(lane,'working','رفع الملف',`${parsed.stats.sheetCount} صفحة • ${parsed.stats.productCount} صنف`,35)
+
+   const fd=new FormData()
+   fd.set('branch_id',branchId)
+   fd.set('period_start',periodStart)
+   fd.set('period_end',periodEnd)
+   fd.set('file',file)
+
+   const uploadRes=await fetch(`${SUPABASE_URL}/functions/v1/ammco-import-upload`,{
+    method:'POST',
+    headers:{Authorization:`Bearer ${active.access_token}`,apikey:SUPABASE_KEY},
+    body:fd
+   })
+   const uploaded=await uploadRes.json()
+   if(!uploadRes.ok)throw new Error(uploaded.error||'تعذر رفع الملف')
+
+   setLane(lane,'working','حفظ البيانات','جاري تسجيل البيانات والتحقق…',65)
+   const processRes=await fetch(`${SUPABASE_URL}/functions/v1/ammco-import-process`,{
+    method:'POST',
+    headers:{Authorization:`Bearer ${active.access_token}`,apikey:SUPABASE_KEY,'Content-Type':'application/json'},
+    body:JSON.stringify({batchId:uploaded.batchId,parsed})
+   })
+   const processed=await processRes.json()
+   if(!processRes.ok)throw new Error(processed.error||'تعذر تسجيل البيانات')
+
+   if(processed.status==='rejected'){
+    setLane(lane,'warning','يحتاج مراجعة',`${processed.issues||0} ملاحظة تحقق • الإصدار ${uploaded.version}`,100)
+    return {lane,ok:true,review:true}
+   }
+   setLane(lane,'success','تم بنجاح',`الإصدار ${uploaded.version} • ${parsed.stats.representativeRowCount} سجل مندوب • ${parsed.stats.inventoryDailyRowCount} حركة صنف`,100)
+   return {lane,ok:true,review:false}
+  }catch(err){
+   setLane(lane,'error','فشل',String(err?.message||err),100)
+   return {lane,ok:false,error:String(err?.message||err)}
+  }
+ }
+
+ const runPool=async(tasks,limit=3)=>{
+  const results=[]
+  let next=0
+  const worker=async()=>{
+   while(true){
+    const i=next++
+    if(i>=tasks.length)return
+    results[i]=await processLane(tasks[i])
+   }
+  }
+  await Promise.all(Array.from({length:Math.min(limit,tasks.length)},()=>worker()))
+  return results
+ }
+
+ document.getElementById('bulk-upload-btn')?.addEventListener('click',async()=>{
+  const button=document.getElementById('bulk-upload-btn')
+  const msg=document.getElementById('upload-msg')
+  const start=document.getElementById('bulk-period-start')?.value
+  const end=document.getElementById('bulk-period-end')?.value
+  if(!start||!end){msg.innerHTML='<div class="error">حدد الفترة أولًا.</div>';return}
+  if(end<start){msg.innerHTML='<div class="error">تاريخ النهاية يجب ألا يسبق البداية.</div>';return}
+
+  const {data:{session:active}}=await supabase.auth.getSession()
+  if(!active){msg.innerHTML='<div class="error">انتهت جلسة الدخول. سجل الدخول مرة أخرى.</div>';return}
+
+  const tasks=[]
+  const usedBranches=new Set()
+  for(let lane=1;lane<=12;lane++){
+   const fileInput=document.querySelector(`.lane-file[data-lane="${lane}"]`)
+   const branchSelect=document.querySelector(`.lane-branch[data-lane="${lane}"]`)
+   const file=fileInput?.files?.[0]
+   if(!file)continue
+   const branchId=branchSelect?.value||''
+   if(!branchId){setLane(lane,'error','حدد الفرع','اختر الفرع قبل الرفع',0);continue}
+   if(usedBranches.has(branchId)){setLane(lane,'error','فرع مكرر','كل فرع يجب أن يظهر مرة واحدة في الدفعة',0);continue}
+   usedBranches.add(branchId)
+   tasks.push({lane,branchId,file,periodStart:start,periodEnd:end,active})
+  }
+  if(!tasks.length){msg.innerHTML='<div class="error">اختر ملفًا واحدًا على الأقل.</div>';return}
+
+  button.disabled=true
+  button.textContent=`جاري معالجة ${tasks.length} فرع…`
+  msg.innerHTML=`<div class="notice">بدأت دفعة رفع ${tasks.length} فرع. يمكنك متابعة حالة كل مسار بشكل مستقل.</div>`
+
+  const results=await runPool(tasks,3)
+  const ok=results.filter(r=>r?.ok).length
+  const failed=results.filter(r=>r&&!r.ok).length
+  const review=results.filter(r=>r?.review).length
+  msg.innerHTML=`<div class="${failed?'notice':'success'}">انتهت الدفعة: ${ok} نجح • ${review} يحتاج مراجعة • ${failed} فشل.</div>`
+  button.disabled=false
+  button.textContent='رفع وتحليل الملفات المحددة'
+ })
+}
 
 boot()
