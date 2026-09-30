@@ -44,6 +44,7 @@ export function SmartTable({
   )
 
   const visibleColumns = columns.filter((column) => !hidden.includes(column.key))
+  const activeFilterCount = selectedBranches.length + Object.values(columnFilters).filter((value) => value.trim()).length + (search.trim() ? 1 : 0)
 
   const filteredRows = useMemo(() => {
     const q = search.trim().toLowerCase()
@@ -100,7 +101,7 @@ export function SmartTable({
 
           {branches.length > 1 ? (
             <details className="table-menu">
-              <summary>الفروع</summary>
+              <summary>{`فلتر الفروع${selectedBranches.length ? ` (${selectedBranches.length})` : ""}`}</summary>
               <div className="table-menu-panel">
                 <button type="button" className="menu-clear" onClick={() => setSelectedBranches([])}>كل الفروع</button>
                 {branches.map((branch) => (
@@ -122,7 +123,7 @@ export function SmartTable({
           ) : null}
 
           <details className="table-menu">
-            <summary>الأعمدة</summary>
+            <summary>اختيار الأعمدة</summary>
             <div className="table-menu-panel">
               {columns.map((column) => (
                 <label key={column.key}>
@@ -140,6 +141,20 @@ export function SmartTable({
               ))}
             </div>
           </details>
+          {activeFilterCount > 0 ? (
+            <button
+              type="button"
+              className="btn secondary"
+              onClick={() => {
+                setSearch('')
+                setSelectedBranches([])
+                setColumnFilters({})
+                setSort(null)
+              }}
+            >
+              مسح الفلاتر ({activeFilterCount})
+            </button>
+          ) : null}
         </div>
       </div>
 
@@ -176,7 +191,11 @@ export function SmartTable({
               const href = rowHrefKey ? text(row[rowHrefKey]) : ''
               const cells = visibleColumns.map((column) => (
                 <td key={column.key} className={column.numeric ? 'num-cell' : undefined}>
-                  {href ? <Link href={href}>{text(row[column.key]) || '-'}</Link> : (text(row[column.key]) || '-')}
+                  {column.key === branchKey
+                    ? <span className="branch-badge">{text(row[column.key]) || '-'}</span>
+                    : href
+                      ? <Link href={href}>{text(row[column.key]) || '-'}</Link>
+                      : (text(row[column.key]) || '-')}
                 </td>
               ))
 
