@@ -253,20 +253,109 @@ function currentFilters(){const p=qs();return {branch:p.get('branch')||'',from:p
 async function loadDaily(branch,from,to){
  let q=supabase.from('v_branch_daily_kpis').select('*').gte('business_date',from).lte('business_date',to).order('business_date');if(branch)q=q.eq('branch_id',branch);const {data,error}=await q;if(error)throw error;return data||[]
 }
+function managementDashboardTable(rows,totalRow){
+ const cols=[
+  {key:'branch_name',label:'الفرع'},
+  {key:'opening',label:'افتتاحي مديونية'},
+  {key:'sales',label:'المبيعات',num:1},
+  {key:'collections',label:'التحصيل',num:1},
+  {key:'cumulative',label:'تراكمي',num:1},
+  {key:'discount',label:'خصم',num:1},
+  {key:'discount_rate',label:'نسبة الخصم'},
+  {key:'avg_price',label:'متوسط السعر',num:1},
+  {key:'fuel',label:'سولار',num:1},
+  {key:'petro',label:'بترو أب',num:1},
+  {key:'maintenance',label:'صيانة',num:1},
+  {key:'inventory_qty',label:'كمية المخزون',num:1},
+  {key:'inventory_value',label:'قيمة المخزون',num:1}
+ ]
+ const header=cols.map((col,index)=>{
+  const values=[...new Set(rows.map(r=>String(r[col.key]??'').replace(/<[^>]*>/g,'').trim()).filter(Boolean))].sort((a,b)=>a.localeCompare(b,'ar',{numeric:true}))
+  const encoded=encodeURIComponent(JSON.stringify(values))
+  return '<th><div class="th-filter-wrap"><span>'+col.label+'</span><button class="excel-filter-btn" type="button" data-col="'+index+'" data-values="'+encoded+'" onclick="openExcelFilter(this)" title="فلتر العمود">⌄</button></div></th>'
+ }).join('')
+ return '<section class="table-card management-dashboard-table" data-report-title="التقرير المجمع">'+
+  '<div class="table-head"><div><h2>التقرير المجمع</h2><small>'+rows.length+' فرع</small></div>'+
+  '<div class="table-tools"><input class="search" placeholder="بحث…" oninput="applyTableFilters(this)">'+
+  '<button class="tool-btn" type="button" onclick="clearTableFilters(this)">مسح الفلاتر</button>'+
+  '<button class="tool-btn" type="button" onclick="exportVisibleTableXlsx(this)">Excel</button>'+
+  '<button class="tool-btn" type="button" onclick="printReportOnly(this)">طباعة</button></div></div>'+
+  '<div class="table-wrap"><table><thead>'+
+   '<tr class="group-header-row"><th rowspan="2">الفرع</th><th colspan="4">30 سبتمبر</th><th colspan="3">نسبة الخصم</th><th colspan="3">مصاريف السيارات</th><th colspan="2">المخزون</th></tr>'+
+   '<tr class="column-header-row">'+header.replace(/^<th>[\s\S]*?<\/th>/,'')+'</tr>'+
+  '</thead><tbody>'+
+  rows.map(r=>'<tr>'+cols.map(col=>'<td class="'+(col.num?'num ':'')+(col.key==='branch_name'?'row-label':'')+'">'+(r[col.key]??'-')+'</td>').join('')+'</tr>').join('')+
+  totalRow+'</tbody></table></div></section>'
+}
+
 async function renderDashboard(){
- const {branch,from,to}=currentFilters();const daily=await loadDaily(branch,from,to)
- const totals=daily.reduce((a,r)=>{a.gross+=+r.gross_sales||0;a.net+=+r.net_sales||0;a.disc+=+r.discounts||0;a.coll+=+r.collections||0;a.exp+=+r.expenses||0;return a},{gross:0,net:0,disc:0,coll:0,exp:0})
- const by=new Map();daily.forEach(r=>{const k=r.branch_id;const x=by.get(k)||{branch_name:r.branch_name,net:0,coll:0,disc:0,exp:0,debt:0};x.net+=+r.net_sales||0;x.coll+=+r.collections||0;x.disc+=+r.discounts||0;x.exp+=+r.expenses||0;x.debt=+r.closing_receivables||x.debt;by.set(k,x)})
- const rawRows=[...by.values()].sort((a,b)=>b.net-a.net)
- const companyDebt=rawRows.reduce((s,x)=>s+x.debt,0)
- const rows=rawRows.map(x=>({...x,net:money(x.net),coll:money(x.coll),coll_rate:pct(x.net?x.coll/x.net:0),disc:money(x.disc),disc_rate:pct((x.net+x.disc)?x.disc/(x.net+x.disc):0),exp:money(x.exp),exp_rate:pct(x.net?x.exp/x.net:0),debt:money(x.debt)}))
- const totalRow=`<tr class="total"><th>إجمالي الشركة</th><th class="num">${money(totals.net)}</th><th class="num">${money(totals.coll)}</th><th>${pct(totals.net?totals.coll/totals.net:0)}</th><th class="num">${money(totals.disc)}</th><th>${pct(totals.gross?totals.disc/totals.gross:0)}</th><th class="num">${money(totals.exp)}</th><th>${pct(totals.net?totals.exp/totals.net:0)}</th><th class="num">${money(companyDebt)}</th></tr>`
- shell('مركز الإدارة','ملخص أداء الفروع',filters(from,to,branch)+scope(from,to,branch)+`<section class="kpis dashboard-kpis">
-  <div class="kpi"><span>صافي المبيعات</span><strong>${money(totals.net)}</strong></div>
-  <div class="kpi"><span>التحصيل</span><strong>${money(totals.coll)}</strong></div>
-  <div class="kpi"><span>الخصومات</span><strong>${money(totals.disc)}</strong></div>
-  <div class="kpi"><span>المصروفات</span><strong>${money(totals.exp)}</strong></div>
- </section>`+table('مقارنة الفروع',[{key:'branch_name',label:'الفرع'},{key:'net',label:'صافي البيع',num:1},{key:'coll',label:'التحصيل',num:1},{key:'coll_rate',label:'% التحصيل'},{key:'disc',label:'الخصم',num:1},{key:'disc_rate',label:'% الخصم'},{key:'exp',label:'المصروفات',num:1},{key:'exp_rate',label:'% المصروف'},{key:'debt',label:'مديونية آخر',num:1}],rows,totalRow));bindFilters('dashboard')
+ const {branch,from,to}=currentFilters()
+ const daily=await loadDaily(branch,from,to),ids=await approvedIds()
+ let whQ=supabase.from('warehouse_daily_summary')
+  .select('branch_id,business_date,sales_qty,closing_qty,closing_value')
+  .in('batch_id',ids.length?ids:['00000000-0000-0000-0000-000000000000'])
+  .gte('business_date',from).lte('business_date',to).order('business_date')
+ let expQ=supabase.from('v_expense_analysis')
+  .select('branch_id,canonical_category,expense_group,amount')
+  .gte('entry_date',from).lte('entry_date',to)
+ if(branch){whQ=whQ.eq('branch_id',branch);expQ=expQ.eq('branch_id',branch)}
+ const extra=await Promise.all([whQ,expQ]),warehouse=extra[0].data||[],expenses=extra[1].data||[]
+ if(extra[0].error||extra[1].error)throw extra[0].error||extra[1].error
+
+ const by=new Map()
+ daily.forEach(r=>{
+  const k=r.branch_id
+  const x=by.get(k)||{branch_name:r.branch_name,firstDate:r.business_date,opening:Number(r.opening_receivables||0),gross:0,net:0,coll:0,disc:0,debt:0}
+  if(String(r.business_date)<String(x.firstDate)){x.firstDate=r.business_date;x.opening=Number(r.opening_receivables||0)}
+  x.gross+=Number(r.gross_sales||0);x.net+=Number(r.net_sales||0);x.coll+=Number(r.collections||0);x.disc+=Number(r.discounts||0);x.debt=Number(r.closing_receivables||x.debt)
+  by.set(k,x)
+ })
+
+ const whLatest=new Map(),salesQtyBy=new Map()
+ warehouse.forEach(r=>{
+  salesQtyBy.set(r.branch_id,(salesQtyBy.get(r.branch_id)||0)+Number(r.sales_qty||0))
+  const prev=whLatest.get(r.branch_id)
+  if(!prev||String(r.business_date)>=String(prev.business_date))whLatest.set(r.branch_id,r)
+ })
+
+ const carBy=new Map()
+ expenses.forEach(r=>{
+  const txt=((r.canonical_category||'')+' '+(r.expense_group||'')).toLowerCase(),x=carBy.get(r.branch_id)||{fuel:0,petro:0,maintenance:0}
+  if(/سولار|وقود|fuel/.test(txt))x.fuel+=Number(r.amount||0)
+  if(/بترو|petro/.test(txt))x.petro+=Number(r.amount||0)
+  if(/صيان|maintenance/.test(txt))x.maintenance+=Number(r.amount||0)
+  carBy.set(r.branch_id,x)
+ })
+
+ const raw=[...by.entries()].map(([id,x])=>{
+  const wh=whLatest.get(id)||{},car=carBy.get(id)||{fuel:0,petro:0,maintenance:0},salesQty=Number(salesQtyBy.get(id)||0)
+  return {...x,id,salesQty,avgPrice:salesQty?x.net/salesQty:0,fuel:car.fuel,petro:car.petro,maintenance:car.maintenance,inventoryQty:Number(wh.closing_qty||0),inventoryValue:Number(wh.closing_value||0)}
+ }).sort((a,b)=>b.net-a.net)
+
+ const rows=raw.map(x=>({
+  branch_name:x.branch_name,
+  opening:money(x.opening),
+  sales:money(x.net),
+  collections:money(x.coll),
+  cumulative:money(x.debt),
+  discount:money(x.disc),
+  discount_rate:pct(x.gross?x.disc/x.gross:0),
+  avg_price:money(x.avgPrice),
+  fuel:money(x.fuel),
+  petro:money(x.petro),
+  maintenance:money(x.maintenance),
+  inventory_qty:qty(x.inventoryQty),
+  inventory_value:money(x.inventoryValue)
+ }))
+ const t=raw.reduce((a,x)=>{a.opening+=x.opening;a.sales+=x.net;a.collections+=x.coll;a.cumulative+=x.debt;a.discount+=x.disc;a.gross+=x.gross;a.salesQty+=x.salesQty;a.fuel+=x.fuel;a.petro+=x.petro;a.maintenance+=x.maintenance;a.inventoryQty+=x.inventoryQty;a.inventoryValue+=x.inventoryValue;return a},{opening:0,sales:0,collections:0,cumulative:0,discount:0,gross:0,salesQty:0,fuel:0,petro:0,maintenance:0,inventoryQty:0,inventoryValue:0})
+ const totalRow='<tr class="total"><th>الإجمالي</th>'+
+  '<th class="num">'+money(t.opening)+'</th><th class="num">'+money(t.sales)+'</th><th class="num">'+money(t.collections)+'</th><th class="num">'+money(t.cumulative)+'</th>'+
+  '<th class="num">'+money(t.discount)+'</th><th>'+pct(t.gross?t.discount/t.gross:0)+'</th><th class="num">'+money(t.salesQty?t.sales/t.salesQty:0)+'</th>'+
+  '<th class="num">'+money(t.fuel)+'</th><th class="num">'+money(t.petro)+'</th><th class="num">'+money(t.maintenance)+'</th>'+
+  '<th class="num">'+qty(t.inventoryQty)+'</th><th class="num">'+money(t.inventoryValue)+'</th></tr>'
+
+ shell('لوحة الإدارة','التقرير المجمع بنفس منطق ورقة الإدارة',filters(from,to,branch)+scope(from,to,branch)+managementDashboardTable(rows,totalRow))
+ bindFilters('dashboard')
 }
 async function renderExecutive(){
  const cfg=currentFilters(),branch=cfg.branch,from=cfg.from,to=cfg.to
