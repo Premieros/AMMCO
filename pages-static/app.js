@@ -197,6 +197,88 @@ async function renderTreasury(){
  bindFilters('treasury')
 }
 
+
+async function renderAccountingInputs(){
+ if(profile?.role!=='admin'){shell('إدخالات المحاسب والتوجيه','', '<div class="error">هذه الصفحة للمدير فقط.</div>');return}
+ const cfg=currentFilters(),branch=cfg.branch,from=cfg.from,to=cfg.to
+ const auth=await supabase.auth.getSession(),active=auth.data.session
+ if(!active)throw new Error('انتهت جلسة الدخول')
+ const url=new URL(SUPABASE_URL+'/functions/v1/ammco-admin-cash')
+ if(branch)url.searchParams.set('branch',branch)
+ if(from)url.searchParams.set('from',from)
+ if(to)url.searchParams.set('to',to)
+ const res=await fetch(url,{headers:{Authorization:'Bearer '+active.access_token,apikey:SUPABASE_KEY}})
+ const data=await res.json()
+ if(!res.ok)throw new Error(data.error||'تعذر تحميل إدخالات المحاسب')
+ window.__adminCashData=data
+ const branchMap=new Map((data.branches||[]).map(function(b){return [b.id,b.name]}))
+ const accountMap=new Map((data.accounts||[]).map(function(a){return [a.id,a]}))
+ const batchMap=new Map((data.batches||[]).map(function(b){return [b.id,b]}))
+ const profileMap=new Map((data.profiles||[]).map(function(p){return [p.user_id,p.full_name]}))
+ const rows=(data.entries||[]).map(function(e){
+  const batch=batchMap.get(e.batch_id),uploader=batch?profileMap.get(batch.uploaded_by):''
+  return {
+   entry_date:e.entry_date||'—',
+   branch_name:branchMap.get(e.branch_id)||'—',
+   accountant:escapeHtml(uploader||'—'),
+   batch:escapeHtml(batch?(batch.original_file_name+' / v'+batch.version):'—'),
+   status:batch?.status||'—',
+   source:e.source_row??'—',
+   description:escapeHtml(e.description||'—'),
+   source_category:escapeHtml(e.category||'—'),
+   canonical:escapeHtml(e.canonical_category||'—'),
+   group:escapeHtml(e.expense_group||'—'),
+   account:escapeHtml((accountMap.get(e.treasury_account_id)||{}).name||'غير موجه'),
+   direction:e.direction==='in'?'داخل':'خارج',
+   amount:money(e.amount),
+   action:'<button class="inline-action" onclick="editCashEntry('+e.id+')">تعديل التوجيه</button>'
+  }
+ })
+ const corrections=(data.corrections||[]).map(function(log){
+  return {changed_at:new Date(log.changed_at).toLocaleString('en-GB'),branch_name:branchMap.get(log.branch_id)||'—',entry:log.cash_entry_id,old:escapeHtml(log.old_canonical_category||log.old_description||'—'),new:escapeHtml(log.new_canonical_category||log.new_description||'—'),reason:escapeHtml(log.reason||'—'),by:escapeHtml(profileMap.get(log.changed_by)||'—')}
+ })
+ const body=filters(from,to,branch)+scope(from,to,branch)+
+  table('إدخالات المحاسب',[
+   {key:'entry_date',label:'التاريخ'},{key:'branch_name',label:'الفرع'},{key:'accountant',label:'المحاسب / الرافع'},{key:'batch',label:'ملف المصدر'},
+   {key:'status',label:'حالة النسخة'},{key:'source',label:'صف المصدر'},{key:'description',label:'البيان'},{key:'source_category',label:'تصنيف المصدر'},
+   {key:'canonical',label:'التوجيه الحالي'},{key:'group',label:'مجموعة المصروف'},{key:'account',label:'الخزينة / البنك'},
+   {key:'direction',label:'اتجاه'},{key:'amount',label:'القيمة',num:1},{key:'action',label:'إجراء',filter:false}
+  ],rows)+'<div class="section-gap"></div>'+
+  table('سجل تعديلات التوجيه',[
+   {key:'changed_at',label:'وقت التعديل'},{key:'branch_name',label:'الفرع'},{key:'entry',label:'رقم الحركة'},
+   {key:'old',label:'قبل'},{key:'new',label:'بعد'},{key:'reason',label:'سبب التعديل'},{key:'by',label:'عدّل بواسطة'}
+  ],corrections)
+ shell('إدخالات المحاسب والتوجيه','المصدر كما أدخله المحاسب + التصحيح + سجل المراجعة',body)
+ bindFilters('accounting-inputs')
+}
+
+window.editCashEntry=function(id){
+ const data=window.__adminCashData,e=(data?.entries||[]).find(function(x){return Number(x.id)===Number(id)})
+ if(!e)return
+ const accounts=(data.accounts||[]).filter(function(a){return a.branch_id===e.branch_id&&a.is_active})
+ const options='<option value="">غير موجه</option>'+accounts.map(function(a){return '<option value="'+a.id+'" '+(a.id===e.treasury_account_id?'selected':'')+'>'+escapeHtml(a.name)+'</option>'}).join('')
+ document.getElementById('cash-edit-dialog')?.remove()
+ const html='<div class="dialog-backdrop" id="cash-edit-dialog"><div class="dialog-card"><div class="dialog-head"><h3>تعديل الحركة #'+id+'</h3><button class="tool-btn" onclick="document.getElementById(\'cash-edit-dialog\').remove()">إغلاق</button></div><form id="edit-cash-form" class="dialog-form">'+
+  '<div class="field"><label>البيان</label><input name="description" value="'+escapeAttr(e.description||'')+'"></div>'+
+  '<div class="field"><label>التوجيه / البند</label><input name="canonical" value="'+escapeAttr(e.canonical_category||'')+'"></div>'+
+  '<div class="field"><label>مجموعة المصروف</label><input name="group" value="'+escapeAttr(e.expense_group||'')+'"></div>'+
+  '<div class="field"><label>الخزينة / البنك</label><select name="account">'+options+'</select></div>'+
+  '<div class="locked-source"><span>قيمة المصدر</span><strong>'+money(e.amount)+'</strong><span>الاتجاه</span><strong>'+(e.direction==='in'?'داخل':'خارج')+'</strong></div>'+
+  '<div class="field"><label>سبب التعديل — إلزامي</label><textarea name="reason" required rows="3" placeholder="اكتب سبب التصحيح"></textarea></div>'+
+  '<button class="btn">حفظ التصحيح</button><div id="cash-edit-msg"></div></form></div></div>'
+ document.body.insertAdjacentHTML('beforeend',html)
+ document.getElementById('edit-cash-form')?.addEventListener('submit',async function(ev){
+  ev.preventDefault()
+  const form=ev.currentTarget,msg=document.getElementById('cash-edit-msg')
+  try{
+   const result=await supabase.rpc('edit_cash_entry',{p_cash_entry_id:id,p_description:form.description.value,p_canonical_category:form.canonical.value,p_expense_group:form.group.value,p_treasury_account_id:form.account.value||null,p_reason:form.reason.value})
+   if(result.error)throw result.error
+   document.getElementById('cash-edit-dialog')?.remove()
+   renderAccountingInputs()
+  }catch(err){msg.innerHTML='<div class="error">'+escapeHtml(err.message||err)+'</div>'}
+ })
+}
+
 async function renderSales(){const {branch,from,to}=currentFilters();const daily=await loadDaily(branch,from,to);const rows=daily.map(r=>({business_date:r.business_date,branch_name:r.branch_name,gross:money(r.gross_sales),discounts:money(r.discounts),net:money(r.net_sales),collections:money(r.collections),expenses:money(r.expenses)}));shell('تقرير المبيعات','تفاصيل المبيعات اليومية حسب الفرع',filters(from,to,branch)+scope(from,to,branch)+table('المبيعات اليومية',[{key:'business_date',label:'التاريخ'},{key:'branch_name',label:'الفرع'},{key:'gross',label:'قبل الخصم',num:1},{key:'discounts',label:'الخصم',num:1},{key:'net',label:'صافي البيع',num:1},{key:'collections',label:'التحصيل',num:1},{key:'expenses',label:'المصروفات',num:1}],rows));bindFilters('sales')}
 async function renderExpenses(){const {branch,from,to}=currentFilters();let q=supabase.from('v_expense_analysis').select('entry_date,branch_id,branch_name,canonical_category,expense_group,description,amount').gte('entry_date',from).lte('entry_date',to).order('entry_date');if(branch)q=q.eq('branch_id',branch);const {data,error}=await q;if(error)throw error;const rows=(data||[]).map(r=>({...r,amount:money(r.amount)}));shell('تفاصيل المصروفات','كل بند مع الفرع والمجموعة',filters(from,to,branch)+scope(from,to,branch)+table('المصروفات',[{key:'entry_date',label:'التاريخ'},{key:'branch_name',label:'الفرع'},{key:'canonical_category',label:'البند'},{key:'expense_group',label:'المجموعة'},{key:'description',label:'البيان'},{key:'amount',label:'القيمة',num:1}],rows));bindFilters('expenses')}
 
