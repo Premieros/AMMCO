@@ -279,6 +279,83 @@ window.editCashEntry=function(id){
  })
 }
 
+
+async function renderUsers(){
+ if(profile?.role!=='admin'){shell('المستخدمون والصلاحيات','', '<div class="error">هذه الصفحة للمدير فقط.</div>');return}
+ const auth=await supabase.auth.getSession(),active=auth.data.session
+ if(!active)throw new Error('انتهت جلسة الدخول')
+ const res=await fetch(SUPABASE_URL+'/functions/v1/ammco-admin-users',{headers:{Authorization:'Bearer '+active.access_token,apikey:SUPABASE_KEY}})
+ const data=await res.json()
+ if(!res.ok)throw new Error(data.error||'تعذر تحميل المستخدمين')
+ window.__userAdminData=data
+ const branchMap=new Map((data.branches||[]).map(function(b){return [b.id,b.name]}))
+ const roleLabel={admin:'مدير',analyst:'محلل',branch_user:'مستخدم فرع'}
+ const rows=(data.users||[]).map(function(u){
+  return {
+   full_name:escapeHtml(u.full_name||'—'),
+   email:escapeHtml(u.email||'—'),
+   role:roleLabel[u.role]||u.role,
+   status:u.is_active?'نشط':'متوقف',
+   branches:u.role==='admin'?'كل الفروع':(u.branch_ids||[]).map(function(id){return branchMap.get(id)}).filter(Boolean).join('، ')||'—',
+   last:u.last_sign_in_at?new Date(u.last_sign_in_at).toLocaleString('en-GB'):'—',
+   action:'<button class="inline-action" onclick="editUser(\''+u.user_id+'\')">تعديل</button>'
+  }
+ })
+ const branchOptions=(data.branches||[]).map(function(b){return '<option value="'+b.id+'">'+escapeHtml(b.name)+'</option>'}).join('')
+ const create='<section class="card admin-create-card"><div class="section-title"><h2>إضافة مستخدم</h2><span>إنشاء حساب وتحديد الدور والفروع</span></div>'+
+ '<form id="create-user-form" class="admin-form-grid">'+
+ '<div class="field"><label>الاسم</label><input name="full_name" required></div>'+
+ '<div class="field"><label>البريد</label><input name="email" type="email" dir="ltr" required></div>'+
+ '<div class="field"><label>كلمة مرور مؤقتة</label><input name="password" type="password" minlength="8" required></div>'+
+ '<div class="field"><label>الدور</label><select name="role"><option value="branch_user">مستخدم فرع</option><option value="analyst">محلل</option><option value="admin">مدير</option></select></div>'+
+ '<div class="field branch-multi"><label>الفروع</label><select name="branches" multiple>'+branchOptions+'</select></div>'+
+ '<div class="field form-action"><label>&nbsp;</label><button class="btn">إنشاء المستخدم</button></div></form><div id="user-admin-msg"></div></section>'
+ shell('المستخدمون والصلاحيات','إدارة الحسابات والأدوار والفروع المسموح بها',create+table('المستخدمون',[
+  {key:'full_name',label:'الاسم'},{key:'email',label:'البريد'},{key:'role',label:'الدور'},{key:'status',label:'الحالة'},
+  {key:'branches',label:'الفروع'},{key:'last',label:'آخر دخول'},{key:'action',label:'إجراء',filter:false}
+ ],rows))
+ document.getElementById('create-user-form')?.addEventListener('submit',async function(ev){
+  ev.preventDefault()
+  const form=ev.currentTarget,fd=new FormData(form),msg=document.getElementById('user-admin-msg')
+  try{
+   msg.innerHTML='<div class="notice">جاري إنشاء المستخدم…</div>'
+   const branch_ids=[...form.querySelector('[name=branches]').selectedOptions].map(function(o){return o.value})
+   const r=await fetch(SUPABASE_URL+'/functions/v1/ammco-admin-users',{method:'POST',headers:{Authorization:'Bearer '+active.access_token,apikey:SUPABASE_KEY,'Content-Type':'application/json'},body:JSON.stringify({action:'create',full_name:fd.get('full_name'),email:fd.get('email'),password:fd.get('password'),role:fd.get('role'),branch_ids:branch_ids})})
+   const out=await r.json()
+   if(!r.ok)throw new Error(out.error||'تعذر إنشاء المستخدم')
+   msg.innerHTML='<div class="success">تم إنشاء المستخدم.</div>'
+   setTimeout(renderUsers,400)
+  }catch(err){msg.innerHTML='<div class="error">'+escapeHtml(err.message||err)+'</div>'}
+ })
+}
+
+window.editUser=function(id){
+ const data=window.__userAdminData,u=(data?.users||[]).find(function(x){return x.user_id===id})
+ if(!u)return
+ const checks=(data.branches||[]).map(function(b){return '<label class="check-row"><input type="checkbox" value="'+b.id+'" '+((u.branch_ids||[]).includes(b.id)?'checked':'')+'> '+escapeHtml(b.name)+'</label>'}).join('')
+ document.getElementById('user-edit-dialog')?.remove()
+ const html='<div class="dialog-backdrop" id="user-edit-dialog"><div class="dialog-card"><div class="dialog-head"><h3>تعديل المستخدم</h3><button class="tool-btn" onclick="document.getElementById(\'user-edit-dialog\').remove()">إغلاق</button></div><form id="edit-user-form" class="dialog-form">'+
+ '<div class="field"><label>الاسم</label><input name="full_name" value="'+escapeAttr(u.full_name||'')+'"></div>'+
+ '<div class="field"><label>الدور</label><select name="role"><option value="branch_user" '+(u.role==='branch_user'?'selected':'')+'>مستخدم فرع</option><option value="analyst" '+(u.role==='analyst'?'selected':'')+'>محلل</option><option value="admin" '+(u.role==='admin'?'selected':'')+'>مدير</option></select></div>'+
+ '<label class="switch-row"><input type="checkbox" name="active" '+(u.is_active?'checked':'')+'> مستخدم نشط</label>'+
+ '<div class="field"><label>الفروع المسموح بها</label><div class="branch-checks">'+checks+'</div></div>'+
+ '<button class="btn">حفظ الصلاحيات</button><div id="user-edit-msg"></div></form></div></div>'
+ document.body.insertAdjacentHTML('beforeend',html)
+ document.getElementById('edit-user-form')?.addEventListener('submit',async function(ev){
+  ev.preventDefault()
+  const form=ev.currentTarget,msg=document.getElementById('user-edit-msg')
+  try{
+   const branch_ids=[...form.querySelectorAll('.branch-checks input:checked')].map(function(x){return x.value})
+   const auth=await supabase.auth.getSession(),active=auth.data.session
+   const r=await fetch(SUPABASE_URL+'/functions/v1/ammco-admin-users',{method:'POST',headers:{Authorization:'Bearer '+active.access_token,apikey:SUPABASE_KEY,'Content-Type':'application/json'},body:JSON.stringify({action:'update',user_id:id,full_name:form.full_name.value,role:form.role.value,is_active:form.active.checked,branch_ids:branch_ids})})
+   const out=await r.json()
+   if(!r.ok)throw new Error(out.error||'تعذر تحديث المستخدم')
+   document.getElementById('user-edit-dialog')?.remove()
+   renderUsers()
+  }catch(err){msg.innerHTML='<div class="error">'+escapeHtml(err.message||err)+'</div>'}
+ })
+}
+
 async function renderSales(){const {branch,from,to}=currentFilters();const daily=await loadDaily(branch,from,to);const rows=daily.map(r=>({business_date:r.business_date,branch_name:r.branch_name,gross:money(r.gross_sales),discounts:money(r.discounts),net:money(r.net_sales),collections:money(r.collections),expenses:money(r.expenses)}));shell('تقرير المبيعات','تفاصيل المبيعات اليومية حسب الفرع',filters(from,to,branch)+scope(from,to,branch)+table('المبيعات اليومية',[{key:'business_date',label:'التاريخ'},{key:'branch_name',label:'الفرع'},{key:'gross',label:'قبل الخصم',num:1},{key:'discounts',label:'الخصم',num:1},{key:'net',label:'صافي البيع',num:1},{key:'collections',label:'التحصيل',num:1},{key:'expenses',label:'المصروفات',num:1}],rows));bindFilters('sales')}
 async function renderExpenses(){const {branch,from,to}=currentFilters();let q=supabase.from('v_expense_analysis').select('entry_date,branch_id,branch_name,canonical_category,expense_group,description,amount').gte('entry_date',from).lte('entry_date',to).order('entry_date');if(branch)q=q.eq('branch_id',branch);const {data,error}=await q;if(error)throw error;const rows=(data||[]).map(r=>({...r,amount:money(r.amount)}));shell('تفاصيل المصروفات','كل بند مع الفرع والمجموعة',filters(from,to,branch)+scope(from,to,branch)+table('المصروفات',[{key:'entry_date',label:'التاريخ'},{key:'branch_name',label:'الفرع'},{key:'canonical_category',label:'البند'},{key:'expense_group',label:'المجموعة'},{key:'description',label:'البيان'},{key:'amount',label:'القيمة',num:1}],rows));bindFilters('expenses')}
 
