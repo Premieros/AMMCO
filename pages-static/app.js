@@ -32,40 +32,93 @@ async function boot(){
 window.addEventListener('hashchange',render)
 supabase.auth.onAuthStateChange((_e,s)=>{session=s;setTimeout(boot,0)})
 
-function shell(title,subtitle,body){
- const r=route()
- app.innerHTML=`<div class="shell">
- <aside class="sidebar">
-  <div class="brand"><div class="logo">A</div><div><b>AMMCO</b><small>Management Intelligence</small></div></div>
-  <div class="nav-title">الرئيسية</div><nav class="nav"><a class="${r==='dashboard'?'active':''}" href="#/dashboard">لوحة الإدارة</a></nav>
-  <div class="nav-title">تقارير الإدارة</div><nav class="nav">
-   <a class="${r==='executive'?'active':''}" href="#/executive">التقرير التنفيذي</a>
-   <a class="${r==='sales'?'active':''}" href="#/sales">المبيعات</a>
-   <a class="${r==='reps'?'active':''}" href="#/reps">أداء المناديب</a>
-   <a class="${r==='expenses'?'active':''}" href="#/expenses">تفاصيل المصروفات</a>
-   <a class="${r==='expense-matrix'?'active':''}" href="#/expense-matrix">مصفوفة المصروفات</a>
-   <a class="${r==='receivables'?'active':''}" href="#/receivables">المديونيات والتحصيل</a>
-   <a class="${r==='inventory'?'active':''}" href="#/inventory">حركة المخزون</a>
-   <a class="${r==='products'?'active':''}" href="#/products">مصفوفة الأصناف</a>
-   <a class="${r==='monthly'?'active':''}" href="#/monthly">التحليل الشهري وYTD</a>
-   <a class="${r==='banks'?'active':''}" href="#/banks">البنوك وYTD</a>
-  </nav>
-  <div class="nav-title">التشغيل والمراجعة</div><nav class="nav">
-   <a class="${r==='treasury'?'active':''}" href="#/treasury">الخزينة والبنوك</a>
-   <a class="${r==='accounting-inputs'?'active':''}" href="#/accounting-inputs">إدخالات المحاسب والتوجيه</a>
-  </nav>
-  <div class="nav-title">الإدارة</div><nav class="nav">
-   <a class="${r==='branches'?'active':''}" href="#/branches">إدارة الفروع</a>
-   ${profile?.role==='admin'?`<a class="${r==='users'?'active':''}" href="#/users">المستخدمون والصلاحيات</a>`:''}
-   <a class="${r==='imports'?'active':''}" href="#/imports">سجل الرفع</a>
-   <a class="${r==='uploads'?'active':''}" href="#/uploads">رفع شيت</a>
-  </nav>
- </aside>
- <main class="main"><header class="topbar"><div><b>مركز الإدارة</b></div><div class="actions"><button class="btn secondary" onclick="location.hash='#/branches'">+ إضافة فرع</button><button class="btn" onclick="location.hash='#/uploads'">رفع شيت</button><button class="btn secondary" id="logout">خروج</button></div></header>
- <section class="content"><div class="pagehead"><div><h1>${title}</h1><div class="muted">${subtitle||''}</div></div></div>${body}</section></main></div>`
- document.getElementById('logout')?.addEventListener('click',async()=>{await supabase.auth.signOut();location.hash='';})
+const sheetSectionForRoute=r=>{
+ if(['dashboard','executive','receivables','monthly'].includes(r))return 'التقرير المجمع'
+ if(['sales'].includes(r))return 'البيعات اصناف'
+ if(['products'].includes(r))return 'رصيد الفروع'
+ if(['expense-matrix'].includes(r))return 'تحليلي مصروفات'
+ if(['expenses'].includes(r))return 'تقرير المصروفات'
+ if(['treasury','banks','accounting-inputs'].includes(r))return 'تحويل مصنع'
+ if(['inventory'].includes(r))return 'حركة مخزون'
+ if(['reps'].includes(r))return 'بترو اب'
+ if(['branches','users','imports','uploads'].includes(r))return 'إدارة النظام'
+ return 'التقرير المجمع'
 }
 
+function shell(title,subtitle,body){
+ const r=route().split('?')[0],sheetSection=sheetSectionForRoute(r)
+ app.innerHTML=\`<div class="shell">
+ <aside class="sidebar">
+  <div class="brand"><div class="logo">A</div><div><b>AMMCO</b><small>Management Intelligence</small></div></div>
+
+  <div class="nav-title">التقرير المجمع</div><nav class="nav">
+   <a class="\${r==='dashboard'?'active':''}" href="#/dashboard">لوحة الإدارة</a>
+   <a class="\${r==='executive'?'active':''}" href="#/executive">التقرير التنفيذي</a>
+   <a class="\${r==='receivables'?'active':''}" href="#/receivables">المديونيات والتحصيل</a>
+   <a class="\${r==='monthly'?'active':''}" href="#/monthly">التحليل الشهري وYTD</a>
+  </nav>
+
+  <div class="nav-title">البيعات اصناف</div><nav class="nav">
+   <a class="\${r==='sales'?'active':''}" href="#/sales">المبيعات</a>
+  </nav>
+
+  <div class="nav-title">رصيد الفروع</div><nav class="nav">
+   <a class="\${r==='products'?'active':''}" href="#/products">مصفوفة الأصناف والأرصدة</a>
+  </nav>
+
+  <div class="nav-title">تحليلي مصروفات</div><nav class="nav">
+   <a class="\${r==='expense-matrix'?'active':''}" href="#/expense-matrix">مصفوفة المصروفات</a>
+  </nav>
+
+  <div class="nav-title">تقرير المصروفات</div><nav class="nav">
+   <a class="\${r==='expenses'?'active':''}" href="#/expenses">تفاصيل المصروفات</a>
+  </nav>
+
+  <div class="nav-title">تحويل مصنع</div><nav class="nav">
+   <a class="\${r==='treasury'?'active':''}" href="#/treasury">الخزينة والبنوك</a>
+   <a class="\${r==='banks'?'active':''}" href="#/banks">البنوك وYTD</a>
+   <a class="\${r==='accounting-inputs'?'active':''}" href="#/accounting-inputs">إدخالات المحاسب والتوجيه</a>
+  </nav>
+
+  <div class="nav-title">حركة مخزون</div><nav class="nav">
+   <a class="\${r==='inventory'?'active':''}" href="#/inventory">حركة المخزون</a>
+  </nav>
+
+  <div class="nav-title">بترو اب</div><nav class="nav">
+   <a class="\${r==='reps'?'active':''}" href="#/reps">أداء المناديب</a>
+  </nav>
+
+  <div class="nav-title system-nav-title">إدارة النظام</div><nav class="nav">
+   <a class="\${r==='branches'?'active':''}" href="#/branches">إدارة الفروع</a>
+   \${profile?.role==='admin'?\`<a class="\${r==='users'?'active':''}" href="#/users">المستخدمون والصلاحيات</a>\`:''}
+   <a class="\${r==='imports'?'active':''}" href="#/imports">سجل الرفع</a>
+   <a class="\${r==='uploads'?'active':''}" href="#/uploads">رفع شيتات الفروع</a>
+  </nav>
+ </aside>
+
+ <main class="main">
+  <header class="topbar">
+   <div class="topbar-context"><span>تقرير الإدارة</span><b>\${sheetSection}</b></div>
+   <div class="actions">
+    <button class="btn secondary" onclick="location.hash='#/branches'">+ فرع</button>
+    <button class="btn" onclick="location.hash='#/uploads'">رفع شيت</button>
+    <button class="btn secondary" id="logout">خروج</button>
+   </div>
+  </header>
+  <section class="content">
+   <div class="pagehead">
+    <div>
+     <div class="sheet-context">ورقة الإدارة / \${sheetSection}</div>
+     <h1>\${title}</h1>
+     <div class="muted">\${subtitle||''}</div>
+    </div>
+   </div>
+   \${body}
+  </section>
+ </main>
+ </div>\`
+ document.getElementById('logout')?.addEventListener('click',async()=>{await supabase.auth.signOut();location.hash='';})
+}
 function branchOptions(selected=''){return `<option value="">كل الفروع</option>${branches.map(b=>`<option value="${b.id}" ${selected===b.id?'selected':''}>${b.name}</option>`).join('')}`}
 function filters(from,to,branch){return `<form id="filters" class="filters compact-filters">
  <div class="field filter-branch"><label>الفرع</label><select name="branch">${branchOptions(branch)}</select></div>
