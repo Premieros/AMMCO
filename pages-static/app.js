@@ -353,7 +353,7 @@ async function renderDashboard(){
  const {branch,from,to}=currentFilters()
  const daily=await loadDaily(branch,from,to),ids=await approvedIds()
  let whQ=supabase.from('warehouse_daily_summary')
-  .select('branch_id,business_date,closing_qty,closing_value')
+  .select('branch_id,business_date,closing_qty,closing_value,raw_payload')
   .in('batch_id',ids.length?ids:['00000000-0000-0000-0000-000000000000'])
   .gte('business_date',from).lte('business_date',to).order('business_date')
  let invQ=supabase.from('inventory_daily')
@@ -404,7 +404,11 @@ async function renderDashboard(){
   x.qty+=Number(r.closing_qty||0);x.value+=Number(r.closing_value||0);inventoryByBranch.set(r.branch_id,x)
  })
  const raw=[...by.entries()].map(([id,x])=>{
-  const inv=inventoryByBranch.get(id)||{qty:0,value:0},car=carBy.get(id)||{fuel:0,petro:0,maintenance:0},equivCartons=Number(equivCartonsBy.get(id)||0)
+  const wh=whLatest.get(id)||{},verifiedLegacy=wh.raw_payload?.closing_qty_source==='daily_product_closing_verified'
+  const inv=inventoryByBranch.get(id)||(verifiedLegacy?{qty:Number(wh.closing_qty||0),value:Number(wh.closing_value||0)}:{qty:0,value:0})
+  const detailedEquiv=Number(equivCartonsBy.get(id)||0)
+  const equivCartons=detailedEquiv||Number(wh.raw_payload?.equivalent_cartons_month||0)
+  const car=carBy.get(id)||{fuel:0,petro:0,maintenance:0}
   return {...x,id,equivCartons,avgPrice:equivCartons?x.net/equivCartons:0,fuel:car.fuel,petro:car.petro,maintenance:car.maintenance,inventoryQty:inv.qty,inventoryValue:inv.value}
  }).sort((a,b)=>b.net-a.net)
 
@@ -437,7 +441,7 @@ async function renderExecutive(){
  const cfg=currentFilters(),branch=cfg.branch,from=cfg.from,to=cfg.to
  const daily=await loadDaily(branch,from,to)
  const ids=await approvedIds()
- let whQ=supabase.from('warehouse_daily_summary').select('branch_id,business_date,opening_qty,opening_value,incoming_factory_qty,incoming_factory_value,incoming_branches_qty,incoming_branches_value,sales_qty,sales_value,bonus_qty,bonus_value,gifts_qty,gifts_value,damages_qty,damages_value,return_factory_qty,return_factory_value,outgoing_branches_qty,outgoing_branches_value,adjustment_qty,adjustment_value,closing_qty,closing_value').in('batch_id',ids.length?ids:['00000000-0000-0000-0000-000000000000']).gte('business_date',from).lte('business_date',to).order('business_date')
+ let whQ=supabase.from('warehouse_daily_summary').select('branch_id,business_date,opening_qty,opening_value,incoming_factory_qty,incoming_factory_value,incoming_branches_qty,incoming_branches_value,sales_qty,sales_value,bonus_qty,bonus_value,gifts_qty,gifts_value,damages_qty,damages_value,return_factory_qty,return_factory_value,outgoing_branches_qty,outgoing_branches_value,adjustment_qty,adjustment_value,closing_qty,closing_value,raw_payload').in('batch_id',ids.length?ids:['00000000-0000-0000-0000-000000000000']).gte('business_date',from).lte('business_date',to).order('business_date')
  let invQ=supabase.from('inventory_daily').select('id,branch_id,business_date,product_id,product_name,sales_qty,closing_qty,closing_value').in('batch_id',ids.length?ids:['00000000-0000-0000-0000-000000000000']).gte('business_date',from).lte('business_date',to)
  let prodQ=supabase.from('products').select('id,box_count').eq('is_active',true)
  let expQ=supabase.from('v_expense_analysis').select('branch_id,canonical_category,expense_group,amount').gte('entry_date',from).lte('entry_date',to)
@@ -491,8 +495,12 @@ async function renderExecutive(){
   x.qty+=Number(r.closing_qty||0);x.value+=Number(r.closing_value||0);inventoryByBranch.set(r.branch_id,x)
  })
  const raw=[...by.entries()].map(([id,x])=>{
-  const inv=inventoryByBranch.get(id)||{qty:0,value:0},car=carExp.get(id)||{fuel:0,petro:0,maintenance:0}
-  return {id,...x,inventoryQty:inv.qty,inventoryValue:inv.value,equivCartons:Number(equivCartonsBy.get(id)||0),fuel:car.fuel,petro:car.petro,maintenance:car.maintenance}
+  const wh=whLatest.get(id)||{},verifiedLegacy=wh.raw_payload?.closing_qty_source==='daily_product_closing_verified'
+  const inv=inventoryByBranch.get(id)||(verifiedLegacy?{qty:Number(wh.closing_qty||0),value:Number(wh.closing_value||0)}:{qty:0,value:0})
+  const detailedEquiv=Number(equivCartonsBy.get(id)||0)
+  const equivCartons=detailedEquiv||Number(wh.raw_payload?.equivalent_cartons_month||0)
+  const car=carExp.get(id)||{fuel:0,petro:0,maintenance:0}
+  return {id,...x,inventoryQty:inv.qty,inventoryValue:inv.value,equivCartons,fuel:car.fuel,petro:car.petro,maintenance:car.maintenance}
  }).sort((a,b)=>b.net-a.net)
 
  const rows=raw.map(x=>({
