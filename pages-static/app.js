@@ -160,7 +160,35 @@ async function renderDashboard(){
   <div class="kpi"><span>المصروفات</span><strong>${money(totals.exp)}</strong></div>
  </section>`+table('مقارنة الفروع',[{key:'branch_name',label:'الفرع'},{key:'net',label:'صافي البيع',num:1},{key:'coll',label:'التحصيل',num:1},{key:'disc',label:'الخصم',num:1},{key:'exp',label:'المصروفات',num:1},{key:'debt',label:'مديونية آخر',num:1}],rows,totalRow));bindFilters('dashboard')
 }
-async function renderExecutive(){const {branch,from,to}=currentFilters();const daily=await loadDaily(branch,from,to);const by=new Map();daily.forEach(r=>{const k=r.branch_id;const x=by.get(k)||{branch_name:r.branch_name,gross:0,disc:0,net:0,coll:0,open:+r.opening_receivables||0,debt:0,exp:0};x.gross+=+r.gross_sales||0;x.disc+=+r.discounts||0;x.net+=+r.net_sales||0;x.coll+=+r.collections||0;x.exp+=+r.expenses||0;x.debt=+r.closing_receivables||x.debt;by.set(k,x)});const rows=[...by.values()].map(x=>({...x,gross:money(x.gross),disc:money(x.disc),net:money(x.net),coll:money(x.coll),open:money(x.open),debt:money(x.debt),exp:money(x.exp)}));shell('التقرير التنفيذي','مقارنة الإدارة حسب الفروع',filters(from,to,branch)+scope(from,to,branch)+table('الملخص التنفيذي',[{key:'branch_name',label:'الفرع'},{key:'gross',label:'قبل الخصم',num:1},{key:'disc',label:'الخصم',num:1},{key:'net',label:'صافي البيع',num:1},{key:'coll',label:'التحصيل',num:1},{key:'open',label:'مديونية أول',num:1},{key:'debt',label:'مديونية آخر',num:1},{key:'exp',label:'المصروفات',num:1}],rows));bindFilters('executive')}
+async function renderExecutive(){
+ const cfg=currentFilters(),branch=cfg.branch,from=cfg.from,to=cfg.to
+ const daily=await loadDaily(branch,from,to)
+ const by=new Map()
+ daily.forEach(function(r){
+  const k=r.branch_id
+  const x=by.get(k)||{branch_name:r.branch_name,gross:0,disc:0,net:0,coll:0,open:Number(r.opening_receivables||0),debt:0,exp:0}
+  x.gross+=Number(r.gross_sales||0);x.disc+=Number(r.discounts||0);x.net+=Number(r.net_sales||0);x.coll+=Number(r.collections||0);x.exp+=Number(r.expenses||0);x.debt=Number(r.closing_receivables||x.debt)
+  by.set(k,x)
+ })
+ const raw=[...by.values()].sort(function(a,b){return b.net-a.net})
+ const totals=raw.reduce(function(a,x){a.gross+=x.gross;a.disc+=x.disc;a.net+=x.net;a.coll+=x.coll;a.open+=x.open;a.debt+=x.debt;a.exp+=x.exp;return a},{gross:0,disc:0,net:0,coll:0,open:0,debt:0,exp:0})
+ const rows=raw.map(function(x){return{
+  branch_name:x.branch_name,gross:money(x.gross),disc:money(x.disc),disc_rate:pct(x.gross?x.disc/x.gross:0),net:money(x.net),
+  coll:money(x.coll),coll_rate:pct(x.net?x.coll/x.net:0),open:money(x.open),debt:money(x.debt),exp:money(x.exp),exp_rate:pct(x.net?x.exp/x.net:0)
+ }})
+ const totalRow='<tr class="total"><th>إجمالي الشركة</th><th class="num">'+money(totals.gross)+'</th><th class="num">'+money(totals.disc)+'</th><th>'+pct(totals.gross?totals.disc/totals.gross:0)+'</th><th class="num">'+money(totals.net)+'</th><th class="num">'+money(totals.coll)+'</th><th>'+pct(totals.net?totals.coll/totals.net:0)+'</th><th class="num">'+money(totals.open)+'</th><th class="num">'+money(totals.debt)+'</th><th class="num">'+money(totals.exp)+'</th><th>'+pct(totals.net?totals.exp/totals.net:0)+'</th></tr>'
+ const kpis='<section class="kpis dashboard-kpis">'+
+  '<div class="kpi"><span>صافي المبيعات</span><strong>'+money(totals.net)+'</strong></div>'+
+  '<div class="kpi"><span>التحصيل</span><strong>'+money(totals.coll)+'</strong></div>'+
+  '<div class="kpi"><span>مديونية آخر</span><strong>'+money(totals.debt)+'</strong></div>'+
+  '<div class="kpi"><span>المصروفات</span><strong>'+money(totals.exp)+'</strong></div></section>'
+ shell('التقرير التنفيذي','مقارنة الإدارة حسب الفروع',filters(from,to,branch)+scope(from,to,branch)+kpis+table('الملخص التنفيذي',[
+  {key:'branch_name',label:'الفرع'},{key:'gross',label:'قبل الخصم',num:1},{key:'disc',label:'الخصم',num:1},{key:'disc_rate',label:'% الخصم'},
+  {key:'net',label:'صافي البيع',num:1},{key:'coll',label:'التحصيل',num:1},{key:'coll_rate',label:'% التحصيل'},
+  {key:'open',label:'مديونية أول',num:1},{key:'debt',label:'مديونية آخر',num:1},{key:'exp',label:'المصروفات',num:1},{key:'exp_rate',label:'% المصروف'}
+ ],rows,totalRow))
+ bindFilters('executive')
+}
 
 async function renderTreasury(){
  const cfg=currentFilters(),branch=cfg.branch,from=cfg.from,to=cfg.to
