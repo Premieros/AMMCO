@@ -1203,3 +1203,21 @@ html,body{
 .management-dashboard-table .table-wrap{
   max-height:72vh;
 }
+
+
+/* Mouse drag horizontal scrolling */
+.table-wrap{
+  cursor:grab;
+  user-select:none;
+}
+.table-wrap.dragging{
+  cursor:grabbing;
+}
+.table-wrap input,
+.table-wrap select,
+.table-wrap button,
+.table-wrap a,
+.table-wrap label,
+.table-wrap textarea{
+  user-select:auto;
+}
