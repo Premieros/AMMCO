@@ -207,14 +207,14 @@ async function renderDashboard(){
  const by=new Map();daily.forEach(r=>{const k=r.branch_id;const x=by.get(k)||{branch_name:r.branch_name,net:0,coll:0,disc:0,exp:0,debt:0};x.net+=+r.net_sales||0;x.coll+=+r.collections||0;x.disc+=+r.discounts||0;x.exp+=+r.expenses||0;x.debt=+r.closing_receivables||x.debt;by.set(k,x)})
  const rawRows=[...by.values()].sort((a,b)=>b.net-a.net)
  const companyDebt=rawRows.reduce((s,x)=>s+x.debt,0)
- const rows=rawRows.map(x=>({...x,net:money(x.net),coll:money(x.coll),disc:money(x.disc),exp:money(x.exp),debt:money(x.debt)}))
- const totalRow=`<tr class="total"><th>إجمالي الشركة</th><th class="num">${money(totals.net)}</th><th class="num">${money(totals.coll)}</th><th class="num">${money(totals.disc)}</th><th class="num">${money(totals.exp)}</th><th class="num">${money(companyDebt)}</th></tr>`
+ const rows=rawRows.map(x=>({...x,net:money(x.net),coll:money(x.coll),coll_rate:pct(x.net?x.coll/x.net:0),disc:money(x.disc),disc_rate:pct((x.net+x.disc)?x.disc/(x.net+x.disc):0),exp:money(x.exp),exp_rate:pct(x.net?x.exp/x.net:0),debt:money(x.debt)}))
+ const totalRow=`<tr class="total"><th>إجمالي الشركة</th><th class="num">${money(totals.net)}</th><th class="num">${money(totals.coll)}</th><th>${pct(totals.net?totals.coll/totals.net:0)}</th><th class="num">${money(totals.disc)}</th><th>${pct(totals.gross?totals.disc/totals.gross:0)}</th><th class="num">${money(totals.exp)}</th><th>${pct(totals.net?totals.exp/totals.net:0)}</th><th class="num">${money(companyDebt)}</th></tr>`
  shell('مركز الإدارة','ملخص أداء الفروع',filters(from,to,branch)+scope(from,to,branch)+`<section class="kpis dashboard-kpis">
   <div class="kpi"><span>صافي المبيعات</span><strong>${money(totals.net)}</strong></div>
   <div class="kpi"><span>التحصيل</span><strong>${money(totals.coll)}</strong></div>
   <div class="kpi"><span>الخصومات</span><strong>${money(totals.disc)}</strong></div>
   <div class="kpi"><span>المصروفات</span><strong>${money(totals.exp)}</strong></div>
- </section>`+table('مقارنة الفروع',[{key:'branch_name',label:'الفرع'},{key:'net',label:'صافي البيع',num:1},{key:'coll',label:'التحصيل',num:1},{key:'disc',label:'الخصم',num:1},{key:'exp',label:'المصروفات',num:1},{key:'debt',label:'مديونية آخر',num:1}],rows,totalRow));bindFilters('dashboard')
+ </section>`+table('مقارنة الفروع',[{key:'branch_name',label:'الفرع'},{key:'net',label:'صافي البيع',num:1},{key:'coll',label:'التحصيل',num:1},{key:'coll_rate',label:'% التحصيل'},{key:'disc',label:'الخصم',num:1},{key:'disc_rate',label:'% الخصم'},{key:'exp',label:'المصروفات',num:1},{key:'exp_rate',label:'% المصروف'},{key:'debt',label:'مديونية آخر',num:1}],rows,totalRow));bindFilters('dashboard')
 }
 async function renderExecutive(){
  const cfg=currentFilters(),branch=cfg.branch,from=cfg.from,to=cfg.to
