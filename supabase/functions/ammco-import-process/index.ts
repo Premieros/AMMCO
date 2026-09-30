@@ -143,6 +143,9 @@ Deno.serve(async (req: Request) => {
   const payload = await req.json().catch(() => ({}))
   const batchId = String(payload?.batchId ?? '')
   const browserParsed = payload?.parsed ?? null
+  const historyMode = ['append_only','review','replace'].includes(String(payload?.historyMode))
+    ? String(payload.historyMode)
+    : 'review'
   if (!/^[0-9a-f-]{36}$/i.test(batchId)) return json({ error: 'نسخة رفع غير صالحة' }, { status: 400 })
 
   const url = Deno.env.get('SUPABASE_URL')!
@@ -400,10 +403,42 @@ Deno.serve(async (req: Request) => {
     })
 
     const allHistoricalChanges = [...historicalChanges, ...legacyChanges]
+    const historicalCodes = new Set(['HISTORICAL_DAY_CHANGED','LEGACY_APPROVED_DAY_CHANGED'])
+    const historicalDates = new Set([
+      ...[...lockedByDate.keys()],
+      ...[...legacyByDate.keys()],
+    ])
+    const effectiveDaySnapshots = historyMode === 'append_only'
+      ? daySnapshots.filter((day) => !historicalDates.has(day.businessDate))
+      : daySnapshots
+    const effectiveDates = new Set(effectiveDaySnapshots.map((day) => day.businessDate))
 
-    // Reject invalid or historically changed uploads before heavy fact-table writes.
-    // This keeps review uploads fast and prevents Edge Function timeouts that leave batches stuck in processing.
-    const preflightHasErrors = parsed.issues.some((issue) => issue.severity === 'error')
+    if (historyMode === 'append_only') {
+      for (const issue of parsed.issues) {
+        if (historicalCodes.has(issue.code)) {
+          issue.severity = 'warning'
+          issue.message = `تم تجاهل تعديل يوم سابق والاحتفاظ بالنسخة المعتمدة: ${issue.sheetName ?? ''}`
+        }
+      }
+      parsed.issues.push({
+        sheetName: null,
+        code: 'APPEND_ONLY_MODE',
+        severity: 'info',
+        message: `تم الاحتفاظ بالأيام السابقة واستيراد ${effectiveDaySnapshots.length} يوم جديد فقط.`,
+        rawValue: {
+          ignored_historical_days: [...historicalDates],
+          imported_new_days: [...effectiveDates],
+        },
+      })
+    }
+
+    const blockingErrors = parsed.issues.filter((issue) =>
+      issue.severity === 'error' &&
+      !(historyMode === 'replace' && historicalCodes.has(issue.code))
+    )
+
+    // Review mode stops before heavy writes. Replace ignores only reviewed historical differences.
+    const preflightHasErrors = blockingErrors.length > 0
     if (preflightHasErrors) {
       await Promise.all([
         admin.from('import_sheets').delete().eq('batch_id', batchId),
@@ -443,7 +478,10 @@ Deno.serve(async (req: Request) => {
       }
 
       if (allHistoricalChanges.length > 0) {
-        const { error } = await admin.from('import_day_changes').insert(allHistoricalChanges)
+        const changeRows = allHistoricalChanges.map((row) => historyMode === 'replace'
+          ? { ...row, resolution_status: 'accepted', resolved_at: new Date().toISOString(), resolved_by: userId, resolution_note: 'اعتماد استبدال صريح من المستخدم' }
+          : row)
+        const { error } = await admin.from('import_day_changes').insert(changeRows)
         if (error) throw error
       }
 
@@ -487,9 +525,9 @@ Deno.serve(async (req: Request) => {
       admin.from('import_day_changes').delete().eq('batch_id', batchId),
     ])
 
-    if (daySnapshots.length > 0) {
+    if (effectiveDaySnapshots.length > 0) {
       const { error } = await admin.from('import_day_snapshots').insert(
-        daySnapshots.map((day) => ({
+        effectiveDaySnapshots.map((day) => ({
           batch_id: batchId,
           branch_id: batch.branch_id,
           business_date: day.businessDate,
@@ -501,7 +539,10 @@ Deno.serve(async (req: Request) => {
     }
 
     if (allHistoricalChanges.length > 0) {
-      const { error } = await admin.from('import_day_changes').insert(allHistoricalChanges)
+      const changeRows = allHistoricalChanges.map((row) => historyMode === 'replace'
+        ? { ...row, resolution_status: 'accepted', resolved_at: new Date().toISOString(), resolved_by: userId, resolution_note: 'اعتماد استبدال صريح من المستخدم' }
+        : row)
+      const { error } = await admin.from('import_day_changes').insert(changeRows)
       if (error) throw error
     }
 
@@ -551,7 +592,9 @@ Deno.serve(async (req: Request) => {
       if (error) throw error
     }
 
-    const representativeRows = parsed.representativeDays.flatMap((day) =>
+    const representativeRows = parsed.representativeDays
+      .filter((day) => historyMode !== 'append_only' || effectiveDates.has(day.businessDate))
+      .flatMap((day) =>
       day.reps.map((rep) => ({
         batch_id: batchId,
         branch_id: batch.branch_id,
@@ -627,7 +670,9 @@ Deno.serve(async (req: Request) => {
     }
 
     if (parsed.inventoryDaily.length > 0) {
-      const inventoryRows = parsed.inventoryDaily.map((row) => ({
+      const inventoryRows = parsed.inventoryDaily
+        .filter((row) => historyMode !== 'append_only' || effectiveDates.has(row.businessDate))
+        .map((row) => ({
         batch_id: batchId,
         branch_id: batch.branch_id,
         business_date: row.businessDate,
@@ -661,7 +706,9 @@ Deno.serve(async (req: Request) => {
     }
 
     if (parsed.remittances.length > 0) {
-      const remittanceRows = parsed.remittances.map((row) => ({
+      const remittanceRows = parsed.remittances
+        .filter((row) => historyMode !== 'append_only' || effectiveDates.has(row.businessDate))
+        .map((row) => ({
         batch_id: batchId,
         branch_id: batch.branch_id,
         business_date: row.businessDate,
@@ -685,7 +732,9 @@ Deno.serve(async (req: Request) => {
     }
 
     if (parsed.warehouseDaily.length > 0) {
-      const warehouseRows = parsed.warehouseDaily.map((row) => ({
+      const warehouseRows = parsed.warehouseDaily
+        .filter((row) => historyMode !== 'append_only' || effectiveDates.has(row.businessDate))
+        .map((row) => ({
         batch_id: batchId,
         branch_id: batch.branch_id,
         business_date: row.businessDate,
@@ -721,7 +770,9 @@ Deno.serve(async (req: Request) => {
     }
 
     if (parsed.inventoryCounts.length > 0) {
-      const countRows = parsed.inventoryCounts.map((row) => ({
+      const countRows = parsed.inventoryCounts
+        .filter((row) => historyMode !== 'append_only' || effectiveDates.has(row.countDate))
+        .map((row) => ({
         batch_id: batchId,
         branch_id: batch.branch_id,
         count_date: row.countDate,
@@ -746,7 +797,9 @@ Deno.serve(async (req: Request) => {
     }
 
     if (parsed.treasuryEntries.length > 0) {
-      const cashRows = parsed.treasuryEntries.map((entry) => ({
+      const cashRows = parsed.treasuryEntries
+        .filter((entry) => historyMode !== 'append_only' || effectiveDates.has(entry.entryDate))
+        .map((entry) => ({
         batch_id: batchId,
         branch_id: batch.branch_id,
         entry_date: entry.entryDate,
@@ -775,9 +828,9 @@ Deno.serve(async (req: Request) => {
       }
     }
 
-    if (daySnapshots.length > 0) {
+    if (effectiveDaySnapshots.length > 0) {
       const { error } = await admin.from('branch_daily_metrics').insert(
-        daySnapshots.map((day) => ({
+        effectiveDaySnapshots.map((day) => ({
           batch_id: batchId,
           branch_id: batch.branch_id,
           business_date: day.businessDate,
@@ -802,18 +855,42 @@ Deno.serve(async (req: Request) => {
       if (error) throw error
     }
 
-    const hasErrors = parsed.issues.some((issue) => issue.severity === 'error')
+    const hasErrors = parsed.issues.some((issue) =>
+      issue.severity === 'error' &&
+      !(historyMode === 'replace' && historicalCodes.has(issue.code))
+    )
     const status = hasErrors ? 'rejected' : 'validated'
+
+    if (historyMode === 'append_only' && effectiveDaySnapshots.length === 0) {
+      await admin.from('import_batches').update({
+        status: 'rejected',
+        validated_at: new Date().toISOString(),
+        failure_message: null,
+        metadata: {
+          ...(batch.metadata && typeof batch.metadata === 'object' ? batch.metadata : {}),
+          history_mode: historyMode,
+          no_new_days: true,
+        },
+      }).eq('id', batchId)
+      return json({ status: 'rejected', issues: parsed.issues.length, noNewDays: true, importedNewDays: 0 })
+    }
+
+    const effectiveStart = historyMode === 'append_only' ? effectiveDaySnapshots[0]?.businessDate : batch.period_start
+    const effectiveEnd = historyMode === 'append_only' ? effectiveDaySnapshots.at(-1)?.businessDate : batch.period_end
 
     const { error: updateError } = await admin
       .from('import_batches')
       .update({
         status,
+        period_start: effectiveStart,
+        period_end: effectiveEnd,
         validated_at: new Date().toISOString(),
         workbook_schema_version: parsed.schemaVersion,
         metadata: {
           ...(batch.metadata && typeof batch.metadata === 'object' ? batch.metadata : {}),
           workbook_stats: parsed.stats,
+          history_mode: historyMode,
+          imported_new_days: historyMode === 'append_only' ? effectiveDaySnapshots.length : null,
         },
       })
       .eq('id', batchId)
@@ -835,6 +912,8 @@ Deno.serve(async (req: Request) => {
       expenseEntries: parsed.stats.expenseEntryCount,
       daySnapshots: daySnapshots.length,
       historicalDayChanges: allHistoricalChanges.length,
+      historyMode,
+      importedNewDays: historyMode === 'append_only' ? effectiveDaySnapshots.length : effectiveDaySnapshots.length,
     })
   } catch (error) {
     const message = error instanceof Error ? error.message : 'فشل تحليل ملف Excel'
