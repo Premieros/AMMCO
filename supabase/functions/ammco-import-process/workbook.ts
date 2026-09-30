@@ -812,7 +812,7 @@ function extractInventoryDaily(
     const barcodeNumber = numberCell(worksheet.getCell(`AX${row}`))
     const normalizedProductName = productName.replace(/[\s*]+/g, '')
 
-    if (!normalizedProductName || (!barcodeText && barcodeNumber === 0)) continue
+    if (!normalizedProductName) continue
 
     const unitValue = nullableNumber(worksheet.getCell(`E${row}`))
     const closingQty = numberCell(worksheet.getCell(`BI${row}`))
