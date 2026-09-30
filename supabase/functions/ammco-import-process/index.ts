@@ -538,7 +538,7 @@ Deno.serve(async (req: Request) => {
       if (error) throw error
     }
 
-    if (allHistoricalChanges.length > 0) {
+    if (allHistoricalChanges.length > 0 && historyMode !== 'append_only') {
       const changeRows = allHistoricalChanges.map((row) => historyMode === 'replace'
         ? { ...row, resolution_status: 'accepted', resolved_at: new Date().toISOString(), resolved_by: userId, resolution_note: 'اعتماد استبدال صريح من المستخدم' }
         : row)
