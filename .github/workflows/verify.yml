@@ -39,9 +39,17 @@ jobs:
       - name: Build
         run: npm run build
 
-      - name: Mirror verified main to Vercel deployment branch
+      - name: Deploy verified main to Vercel production
         if: github.ref == 'refs/heads/main'
+        env:
+          VERCEL_TOKEN: ${{ secrets.VERCEL_TOKEN }}
+          VERCEL_ORG_ID: team_spQBjgWpl9p2ekmTMo1Wm3AI
+          VERCEL_PROJECT_ID: prj_npSXfgHPLl2g4y5drwZueBsZCVV3
         run: |
-          git config user.name "github-actions[bot]"
-          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
-          git push --force origin HEAD:refs/heads/development/excel-intelligence-foundation-20260929
+          if [ -z "$VERCEL_TOKEN" ]; then
+            echo "VERCEL_TOKEN secret is missing"
+            exit 78
+          fi
+          npx vercel pull --yes --environment=production --token="$VERCEL_TOKEN"
+          npx vercel build --prod --token="$VERCEL_TOKEN"
+          npx vercel deploy --prebuilt --prod --token="$VERCEL_TOKEN"
