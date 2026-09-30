@@ -106,6 +106,40 @@ async function renderInventory(){const {branch,from,to}=currentFilters();const i
 async function renderProducts(){const {branch,from,to}=currentFilters();const ids=await approvedIds();let q=supabase.from('inventory_daily').select('branch_id,product_name,sales_qty,closing_qty,closing_value').in('batch_id',ids.length?ids:['00000000-0000-0000-0000-000000000000']).gte('business_date',from).lte('business_date',to);if(branch)q=q.eq('branch_id',branch);const {data,error}=await q;if(error)throw error;const bset=branch?branches.filter(b=>b.id===branch):branches;const matrix=new Map();(data||[]).forEach(r=>{const x=matrix.get(r.product_name)||{};const c=x[r.branch_id]||{sales:0,closing:0,value:0};c.sales+=+r.sales_qty||0;c.closing=+r.closing_qty||c.closing;c.value=+r.closing_value||c.value;x[r.branch_id]=c;matrix.set(r.product_name,x)});const rows=[...matrix.entries()].map(([product,cells])=>{let html=`<td class="row-label">${product}</td>`;for(const b of bset){const c=cells[b.id]||{};html+=`<td class="num">${money(c.sales)}</td><td class="num">${money(c.closing)}</td><td class="num">${money(c.value)}</td>`}return `<tr>${html}</tr>`}).join('');const head=bset.map((b,i)=>`<th colspan="3" class="${i%2?'group-green':'group-blue'}">${b.name}</th>`).join('');const sub=bset.map(()=>'<th>بيع</th><th>رصيد</th><th>قيمة</th>').join('');shell('مصفوفة الأصناف','الصنف × الفروع',filters(from,to,branch)+scope(from,to,branch)+`<section class="table-card matrix"><div class="table-head"><h2>Product Sales & Stock Matrix</h2></div><div class="table-wrap"><table><thead><tr><th rowspan="2">الصنف</th>${head}</tr><tr>${sub}</tr></thead><tbody>${rows}</tbody></table></div></section>`);bindFilters('products')}
 async function renderBranches(){const {data,error}=await supabase.from('branches').select('id,name,code,is_active,created_at,treasury_accounts(id,is_active)').order('created_at');if(error)throw error;const rows=(data||[]).map(b=>({name:b.name,code:b.code,status:b.is_active?'نشط':'متوقف',treasuries:(b.treasury_accounts||[]).filter(x=>x.is_active).length,created_at:new Date(b.created_at).toLocaleString('en-GB')}));const add=profile?.role==='admin'?`<section class="card" style="margin-bottom:14px"><h2>+ إضافة فرع جديد</h2><form id="add-branch" class="filters" style="margin:0"><div class="field"><label>اسم الفرع</label><input name="name" required></div><div class="field"><label>كود الفرع</label><input name="code" dir="ltr" required></div><div></div><div class="field"><label>&nbsp;</label><button class="btn">إنشاء الفرع</button></div></form><div id="branch-msg"></div></section>`:'';shell('إدارة الفروع','إضافة الفروع وإدارة الحالة',add+table('الفروع الحالية',[{key:'name',label:'الفرع'},{key:'code',label:'الكود'},{key:'status',label:'الحالة'},{key:'treasuries',label:'عدد الخزائن',num:1},{key:'created_at',label:'تاريخ الإنشاء'}],rows));document.getElementById('add-branch')?.addEventListener('submit',async e=>{e.preventDefault();const fd=new FormData(e.currentTarget);const {error}=await supabase.rpc('create_branch_with_default_treasury',{p_code:String(fd.get('code')).trim(),p_name:String(fd.get('name')).trim()});document.getElementById('branch-msg').innerHTML=error?`<div class="error">${error.message}</div>`:'<div class="success">تم إنشاء الفرع والخزنة الرئيسية.</div>';if(!error)boot()})}
 async function renderImports(){const {data,error}=await supabase.from('import_batches').select('id,branch_id,original_file_name,period_start,period_end,version,status,uploaded_at,approved_at,branches(name)').order('uploaded_at',{ascending:false}).limit(300);if(error)throw error;const rows=(data||[]).map(r=>({branch_name:Array.isArray(r.branches)?r.branches[0]?.name:r.branches?.name,period:`${r.period_start} — ${r.period_end}`,file:r.original_file_name,version:r.version,status:r.status,uploaded_at:new Date(r.uploaded_at).toLocaleString('en-GB'),approved_at:r.approved_at?new Date(r.approved_at).toLocaleString('en-GB'):''}));shell('سجل الرفع','كل نسخ الشيتات وحالة الاعتماد',table('نسخ الشيتات',[{key:'branch_name',label:'الفرع'},{key:'period',label:'الفترة'},{key:'file',label:'الملف'},{key:'version',label:'الإصدار',num:1},{key:'status',label:'الحالة'},{key:'uploaded_at',label:'وقت الرفع'},{key:'approved_at',label:'وقت الاعتماد'}],rows))}
-function renderUploads(){shell('رفع شيت فرع','يتم الآن نقل المعالجة إلى Supabase Edge Functions',`<div class="notice"><b>واجهة GitHub Pages جاهزة.</b><br>رفع Excel سيُفعّل هنا بعد نقل محلل الشيت من Next.js Server إلى Supabase Edge Function. التقارير والفروع وتسجيل الدخول تعمل بالفعل مباشرة من GitHub Pages.</div><section class="card"><h2>مسار الرفع الجديد</h2><p class="muted">Browser → Supabase Storage → Edge Function → Validation → Review → Approve</p></section>`)}
+function renderUploads(){
+ const branchOpts=branches.map(b=>`<option value="${b.id}">${b.name}</option>`).join('')
+ shell('رفع شيت فرع','رفع آمن مباشرة إلى Supabase Edge Function',`
+  <div id="upload-msg"></div>
+  <section class="card">
+   <div class="notice">ملف .xlsx فقط، بحد أقصى 25MB. يتم التحقق من المستخدم والفرع قبل حفظ الملف.</div>
+   <form id="upload-form" class="filters" style="grid-template-columns:1fr 1fr 1fr 1.2fr auto">
+    <div class="field"><label>الفرع</label><select name="branch_id" required><option value="">اختر الفرع</option>${branchOpts}</select></div>
+    <div class="field"><label>من</label><input type="date" name="period_start" required></div>
+    <div class="field"><label>إلى</label><input type="date" name="period_end" required></div>
+    <div class="field"><label>ملف Excel</label><input type="file" name="file" accept=".xlsx,application/vnd.openxmlformats-officedocument.spreadsheetml.sheet" required></div>
+    <div class="field"><label>&nbsp;</label><button class="btn" id="upload-btn">رفع الملف</button></div>
+   </form>
+   <div class="muted">المسار: Browser → Edge Function → Private Storage → Import Batch. المعالجة التفصيلية تنتقل الآن إلى Edge Function منفصلة.</div>
+  </section>`)
+ document.getElementById('upload-form')?.addEventListener('submit',async e=>{
+  e.preventDefault()
+  const button=document.getElementById('upload-btn'); const msg=document.getElementById('upload-msg')
+  button.disabled=true; button.textContent='جاري الرفع…'; msg.innerHTML=''
+  try{
+   const fd=new FormData(e.currentTarget)
+   const {data:{session:active}}=await supabase.auth.getSession()
+   const res=await fetch(`${SUPABASE_URL}/functions/v1/ammco-import-upload`,{
+    method:'POST',
+    headers:{Authorization:`Bearer ${active.access_token}`,apikey:SUPABASE_KEY},
+    body:fd
+   })
+   const out=await res.json()
+   if(!res.ok) throw new Error(out.error||'تعذر رفع الملف')
+   msg.innerHTML=`<div class="success">تم رفع الإصدار ${out.version} بنجاح وتسجيل النسخة. Batch: ${out.batchId}</div>`
+   e.currentTarget.reset()
+  }catch(err){msg.innerHTML=`<div class="error">${err.message||err}</div>`}
+  finally{button.disabled=false;button.textContent='رفع الملف'}
+ })
+}
 
 boot()
