@@ -38,7 +38,7 @@ async function boot(forceMeta=false){
   if(!session){const {data}=await supabase.auth.getSession();session=data.session}
   if(session&&(forceMeta||bootstrappedUserId!==session.user.id||!profile)){
    const [{data:p},{data:b}]=await Promise.all([
-    supabase.from('profiles').select('full_name,role,is_active').eq('user_id',session.user.id).maybeSingle(),
+    supabase.from('profiles').select('full_name,role,is_active,organization_id').eq('user_id',session.user.id).maybeSingle(),
     supabase.from('branches').select('id,name,code,is_active').eq('is_active',true).order('name')
    ])
    profile=p;branches=b||[];bootstrappedUserId=session.user.id
@@ -1094,13 +1094,33 @@ async function renderExecutive(){
 async function renderTreasury(){
  const cfg=currentFilters(),branch=cfg.branch,from=cfg.from,to=cfg.to
  let accountQ=supabase.from('treasury_accounts').select('id,branch_id,name,code,account_type,is_default,is_active').eq('is_active',true)
- let entryQ=supabase.from('cash_entries').select('id,branch_id,entry_date,direction,description,amount,running_balance,category,canonical_category,expense_group,entry_kind,is_expense,treasury_account_id').gte('entry_date',from).lte('entry_date',to).order('entry_date',{ascending:false})
+ let entryQ=supabase.from('cash_entries').select('id,branch_id,entry_date,direction,description,amount,running_balance,category,canonical_category,expense_group,entry_kind,is_expense,treasury_account_id,destination_id').gte('entry_date',from).lte('entry_date',to).order('entry_date',{ascending:false})
+ let destQ=supabase.from('cash_destinations').select('id,name,destination_type,branch_id,is_active').eq('is_active',true).order('destination_type').order('name')
  if(branch){accountQ=accountQ.eq('branch_id',branch);entryQ=entryQ.eq('branch_id',branch)}
- const rs=await Promise.all([accountQ,entryQ]),accounts=rs[0].data||[],entries=rs[1].data||[]
- if(rs[0].error||rs[1].error)throw rs[0].error||rs[1].error
- window.__treasuryEditData={accounts,entries}
+ const rs=await Promise.all([accountQ,entryQ,destQ]),accounts=rs[0].data||[],entries=rs[1].data||[],destinations=rs[2].data||[]
+ if(rs[0].error||rs[1].error||rs[2].error)throw rs[0].error||rs[1].error||rs[2].error
+ window.__treasuryEditData={accounts,entries,destinations}
  const branchMap=new Map(branches.map(function(b){return [b.id,b.name]}))
  const accountMap=new Map(accounts.map(function(a){return [a.id,a]}))
+ const destinationMap=new Map(destinations.map(function(d){return [d.id,d]}))
+ const typeLabel={bank:'بنك',branch:'فرع',factory:'مصنع',supplier:'مورد',expense:'مصروف',cash:'خزينة',other:'أخرى'}
+ const destinationOptions=function(selected){
+  const groups=new Map()
+  destinations.forEach(function(d){
+   const key=d.destination_type||'other'
+   if(!groups.has(key))groups.set(key,[])
+   groups.get(key).push(d)
+  })
+  let html='<option value="">بدون توجيه</option>'
+  ;['bank','factory','branch','supplier','expense','cash','other'].forEach(function(type){
+   const list=groups.get(type)||[]
+   if(!list.length)return
+   html+='<optgroup label="'+(typeLabel[type]||type)+'">'+list.map(function(d){return '<option value="'+d.id+'" '+(d.id===selected?'selected':'')+'>'+escapeHtml(d.name)+'</option>'}).join('')+'</optgroup>'
+  })
+  html+='<option value="__add__">+ إضافة توجيه جديد</option>'
+  return html
+ }
+ window.__destinationOptionsHtml=destinationOptions
  const totals=new Map()
  accounts.forEach(function(a){totals.set(a.id,{incoming:0,outgoing:0})})
  entries.forEach(function(e){
@@ -1114,48 +1134,141 @@ async function renderTreasury(){
   return {branch_name:branchMap.get(a.branch_id)||'—',name:escapeHtml(a.name),type:a.account_type==='bank'?'بنك':'خزينة',incoming:money(x.incoming),outgoing:money(x.outgoing),net:money(x.incoming-x.outgoing)}
  })
  const entryRows=entries.map(function(e){
-  return {entry_date:e.entry_date||'—',branch_name:branchMap.get(e.branch_id)||'—',account:escapeHtml((accountMap.get(e.treasury_account_id)||{}).name||'غير موجه'),direction:e.direction==='in'?'داخل':'خارج',description:escapeHtml(e.description||'—'),source_category:escapeHtml(e.category||'—'),category:escapeHtml(e.canonical_category||e.entry_kind||'—'),expense:e.is_expense?'مصروف':'غير مصروف',amount:money(e.amount),balance:money(e.running_balance),action:profile?.role==='admin'?'<button class="inline-action" onclick="editTreasuryClassification('+e.id+')">تعديل التصنيف</button>':'—'}
+  const dest=destinationMap.get(e.destination_id)
+  const routing=e.direction==='out'
+   ? (profile?.role==='admin'
+      ? '<select class="destination-inline-select '+(!e.destination_id?'missing':'')+'" data-entry="'+e.id+'" onchange="quickRouteCashEntry('+e.id+',this)">'+destinationOptions(e.destination_id)+'</select>'
+      : escapeHtml(dest?.name||'بدون توجيه'))
+   : (dest?escapeHtml(dest.name):'—')
+  return {
+   entry_date:e.entry_date||'—',
+   branch_name:branchMap.get(e.branch_id)||'—',
+   account:escapeHtml((accountMap.get(e.treasury_account_id)||{}).name||'غير موجه'),
+   direction:e.direction==='in'?'داخل':'خارج',
+   description:escapeHtml(e.description||'—'),
+   source_category:escapeHtml(e.category||'—'),
+   category:escapeHtml(e.canonical_category||e.entry_kind||'—'),
+   destination:routing,
+   expense:e.is_expense?'مصروف':'غير مصروف',
+   amount:money(e.amount),
+   balance:money(e.running_balance),
+   action:profile?.role==='admin'?'<button class="inline-action" onclick="editTreasuryClassification('+e.id+')">تفاصيل / تعديل</button>':'—'
+  }
  })
  const body=filters(from,to,branch)+scope(from,to,branch)+
   table('أرصدة وحركة الحسابات',[
    {key:'branch_name',label:'الفرع'},{key:'name',label:'الحساب'},{key:'type',label:'النوع'},{key:'incoming',label:'داخل',num:1},{key:'outgoing',label:'خارج',num:1},{key:'net',label:'صافي الحركة',num:1}
   ],accountRows)+'<div class="section-gap"></div>'+
   table('تفاصيل حركة الخزينة',[
-   {key:'entry_date',label:'التاريخ'},{key:'branch_name',label:'الفرع'},{key:'account',label:'الخزينة / البنك'},{key:'direction',label:'الحركة'},{key:'description',label:'البيان'},{key:'source_category',label:'تصنيف المصدر'},{key:'category',label:'التوجيه'},{key:'expense',label:'نوع التقرير'},{key:'amount',label:'القيمة',num:1},{key:'balance',label:'الرصيد',num:1},{key:'action',label:'إجراء',filter:false}
+   {key:'entry_date',label:'التاريخ'},{key:'branch_name',label:'الفرع'},{key:'account',label:'الخزينة / البنك'},{key:'direction',label:'الحركة'},{key:'description',label:'البيان'},{key:'source_category',label:'تصنيف المصدر'},{key:'category',label:'البند / التصنيف'},{key:'destination',label:'التوجيه',filter:false},{key:'expense',label:'نوع التقرير'},{key:'amount',label:'القيمة',num:1},{key:'balance',label:'الرصيد',num:1},{key:'action',label:'إجراء',filter:false}
   ],entryRows)
- shell('الخزينة والبنوك','الحركة الفعلية مع تعديل التصنيف الذي يغذي تقرير المصروفات',body)
+ shell('الخزينة والبنوك','اختر وجهة أي حركة صادرة مباشرة من الجدول، أو أضف توجيهًا جديدًا',body)
  bindFilters('treasury')
 }
 
+window.quickRouteCashEntry=async function(id,select){
+ const oldValue=(window.__treasuryEditData?.entries||[]).find(function(e){return Number(e.id)===Number(id)})?.destination_id||''
+ if(select.value==='__add__'){
+  select.value=oldValue
+  openCashDestinationDialog(select,id)
+  return
+ }
+ select.disabled=true
+ try{
+  const result=await supabase.rpc('set_cash_entry_destination',{
+   p_cash_entry_id:id,
+   p_destination_id:select.value||null,
+   p_reason:'توجيه حركة صادرة من شاشة الخزينة'
+  })
+  if(result.error)throw result.error
+  const entry=(window.__treasuryEditData?.entries||[]).find(function(e){return Number(e.id)===Number(id)})
+  if(entry)entry.destination_id=select.value||null
+  select.classList.toggle('missing',!select.value)
+ }catch(err){
+  select.value=oldValue
+  alert('تعذر حفظ التوجيه: '+(err.message||err))
+ }finally{select.disabled=false}
+}
+
+window.openCashDestinationDialog=function(sourceSelect,entryId){
+ document.getElementById('cash-destination-dialog')?.remove()
+ const branchOptions='<option value="">بدون ربط بفرع</option>'+branches.map(function(b){return '<option value="'+b.id+'">'+escapeHtml(b.name)+'</option>'}).join('')
+ const html='<div class="dialog-backdrop" id="cash-destination-dialog"><div class="dialog-card">'+
+  '<div class="dialog-head"><h3>إضافة توجيه جديد</h3><button class="tool-btn" onclick="document.getElementById(\'cash-destination-dialog\').remove()">إغلاق</button></div>'+
+  '<form id="cash-destination-form" class="dialog-form">'+
+   '<div class="field"><label>اسم التوجيه</label><input name="name" required placeholder="مثال: بنك الإسكندرية، مورد أحمد، فرع طنطا"></div>'+
+   '<div class="field"><label>نوع التوجيه</label><select name="type"><option value="bank">بنك</option><option value="factory">مصنع</option><option value="branch">فرع</option><option value="supplier">مورد</option><option value="expense">مصروف</option><option value="cash">خزينة</option><option value="other">أخرى</option></select></div>'+
+   '<div class="field" id="destination-branch-field" style="display:none"><label>الفرع المرتبط</label><select name="branch">'+branchOptions+'</select></div>'+
+   '<button class="btn">إضافة وحفظ</button><div id="cash-destination-msg"></div>'+
+  '</form></div></div>'
+ document.body.insertAdjacentHTML('beforeend',html)
+ const form=document.getElementById('cash-destination-form')
+ const branchField=document.getElementById('destination-branch-field')
+ const toggle=()=>{branchField.style.display=form.type.value==='branch'?'block':'none'}
+ form.type.addEventListener('change',toggle);toggle()
+ form.addEventListener('submit',async function(ev){
+  ev.preventDefault()
+  const msg=document.getElementById('cash-destination-msg')
+  try{
+   msg.innerHTML='<div class="notice">جاري إضافة التوجيه…</div>'
+   const payload={
+    organization_id:profile.organization_id,
+    name:form.name.value.trim(),
+    destination_type:form.type.value,
+    branch_id:form.type.value==='branch'?(form.branch.value||null):null,
+    created_by:session?.user?.id||null,
+    is_active:true
+   }
+   const result=await supabase.from('cash_destinations').insert(payload).select('id,name,destination_type,branch_id,is_active').single()
+   if(result.error)throw result.error
+   const dest=result.data
+   if(!window.__treasuryEditData)window.__treasuryEditData={destinations:[],entries:[],accounts:[]}
+   window.__treasuryEditData.destinations.push(dest)
+   if(sourceSelect){
+    const addOpt=sourceSelect.querySelector('option[value="__add__"]')
+    const opt=document.createElement('option');opt.value=dest.id;opt.textContent=dest.name
+    sourceSelect.insertBefore(opt,addOpt);sourceSelect.value=dest.id
+   }
+   document.getElementById('cash-destination-dialog')?.remove()
+   if(sourceSelect&&entryId)await quickRouteCashEntry(entryId,sourceSelect)
+  }catch(err){msg.innerHTML='<div class="error">'+escapeHtml(err.message||err)+'</div>'}
+ })
+}
 
 window.editTreasuryClassification=function(id){
  const data=window.__treasuryEditData||{},e=(data.entries||[]).find(x=>Number(x.id)===Number(id))
  if(!e)return
  const accounts=(data.accounts||[]).filter(a=>a.branch_id===e.branch_id&&a.is_active)
  const accountOptions='<option value="">غير موجه</option>'+accounts.map(a=>'<option value="'+a.id+'" '+(a.id===e.treasury_account_id?'selected':'')+'>'+escapeHtml(a.name)+'</option>').join('')
+ const destinationOptions=(window.__destinationOptionsHtml?window.__destinationOptionsHtml(e.destination_id):'<option value="">بدون توجيه</option>')
  document.getElementById('treasury-classification-dialog')?.remove()
  const html='<div class="dialog-backdrop" id="treasury-classification-dialog"><div class="dialog-card">'+
- '<div class="dialog-head"><h3>تعديل تصنيف حركة الخزينة #'+id+'</h3><button class="tool-btn" onclick="document.getElementById(\'treasury-classification-dialog\').remove()">إغلاق</button></div>'+
+ '<div class="dialog-head"><h3>تعديل حركة الخزينة #'+id+'</h3><button class="tool-btn" onclick="document.getElementById(\'treasury-classification-dialog\').remove()">إغلاق</button></div>'+
  '<form id="treasury-classification-form" class="dialog-form">'+
  '<div class="locked-source"><span>تصنيف المصدر</span><strong>'+escapeHtml(e.category||'—')+'</strong><span>القيمة</span><strong>'+money(e.amount)+'</strong></div>'+
  '<div class="field"><label>البيان</label><input name="description" value="'+escapeAttr(e.description||'')+'"></div>'+
- '<div class="field"><label>التوجيه النهائي</label><input name="canonical" value="'+escapeAttr(e.canonical_category||'')+'" placeholder="مثال: إيجار، كهرباء، سولار"></div>'+
+ '<div class="field"><label>البند / التصنيف</label><input name="canonical" value="'+escapeAttr(e.canonical_category||'')+'" placeholder="مثال: إيجار، كهرباء، سولار"></div>'+
+ '<div class="field"><label>التوجيه</label><div class="destination-edit-row"><select name="destination">'+destinationOptions+'</select><button type="button" class="btn secondary" id="add-destination-from-edit">+ إضافة توجيه</button></div></div>'+
  '<div class="field"><label>هل تظهر في تقرير المصروفات؟</label><select name="is_expense"><option value="true" '+(e.is_expense?'selected':'')+'>نعم — مصروف</option><option value="false" '+(!e.is_expense?'selected':'')+'>لا — ليست مصروفًا</option></select></div>'+
  '<div class="field"><label>مجموعة المصروف</label><input name="group" value="'+escapeAttr(e.expense_group||'')+'" placeholder="مثال: تشغيل ومرافق"></div>'+
- '<div class="field"><label>الخزينة / البنك</label><select name="account">'+accountOptions+'</select></div>'+
+ '<div class="field"><label>الخزينة / البنك المصدر</label><select name="account">'+accountOptions+'</select></div>'+
  '<div class="field"><label>نوع الحركة عند عدم اعتبارها مصروفًا</label><select name="entry_kind"><option value="other" '+(e.entry_kind==='other'?'selected':'')+'>أخرى</option><option value="collection" '+(e.entry_kind==='collection'?'selected':'')+'>تحصيل</option><option value="bank_deposit" '+(e.entry_kind==='bank_deposit'?'selected':'')+'>إيداع بنكي</option><option value="hq_transfer" '+(e.entry_kind==='hq_transfer'?'selected':'')+'>تحويل مصنع</option><option value="interbranch" '+(e.entry_kind==='interbranch'?'selected':'')+'>تحويل فروع</option><option value="advance" '+(e.entry_kind==='advance'?'selected':'')+'>سلفة</option><option value="custody" '+(e.entry_kind==='custody'?'selected':'')+'>عهدة</option><option value="cash_balance" '+(e.entry_kind==='cash_balance'?'selected':'')+'>رصيد خزينة</option></select></div>'+
- '<div class="field"><label>سبب التعديل — إلزامي</label><textarea name="reason" rows="3" required placeholder="لماذا تم تصحيح التوجيه؟"></textarea></div>'+
- '<button class="btn">حفظ التصنيف وتحديث التقارير</button><div id="treasury-classification-msg"></div>'+
+ '<div class="field"><label>سبب التعديل — إلزامي</label><textarea name="reason" rows="3" required placeholder="لماذا تم التصحيح؟"></textarea></div>'+
+ '<button class="btn">حفظ التعديل</button><div id="treasury-classification-msg"></div>'+
  '</form></div></div>'
  document.body.insertAdjacentHTML('beforeend',html)
  const form=document.getElementById('treasury-classification-form')
  const toggleGroup=()=>{form.group.disabled=form.is_expense.value!=='true'}
  form.is_expense.addEventListener('change',toggleGroup);toggleGroup()
+ form.destination.addEventListener('change',function(){
+  if(this.value==='__add__'){this.value=e.destination_id||'';openCashDestinationDialog(this,id)}
+ })
+ document.getElementById('add-destination-from-edit')?.addEventListener('click',()=>openCashDestinationDialog(form.destination,id))
  form.addEventListener('submit',async ev=>{
   ev.preventDefault()
   const msg=document.getElementById('treasury-classification-msg')
   try{
-   msg.innerHTML='<div class="notice">جاري حفظ التصنيف وتحديث تقرير المصروفات…</div>'
+   msg.innerHTML='<div class="notice">جاري حفظ التعديل…</div>'
    const result=await supabase.rpc('edit_cash_entry_classification',{
     p_cash_entry_id:id,
     p_description:form.description.value,
@@ -1167,6 +1280,12 @@ window.editTreasuryClassification=function(id){
     p_reason:form.reason.value
    })
    if(result.error)throw result.error
+   const destResult=await supabase.rpc('set_cash_entry_destination',{
+    p_cash_entry_id:id,
+    p_destination_id:form.destination.value&&form.destination.value!=='__add__'?form.destination.value:null,
+    p_reason:form.reason.value
+   })
+   if(destResult.error)throw destResult.error
    document.getElementById('treasury-classification-dialog')?.remove()
    await renderTreasury()
   }catch(err){
@@ -1174,7 +1293,6 @@ window.editTreasuryClassification=function(id){
   }
  })
 }
-
 
 async function renderAccountingInputs(){
  if(profile?.role!=='admin'){shell('إدخالات المحاسب والتوجيه','', '<div class="error">هذه الصفحة للمدير فقط.</div>');return}
