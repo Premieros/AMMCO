@@ -1452,3 +1452,18 @@ th, td { padding: 10px 11px; }
   border-color:#5b9bd5;
   background:#eef6fd;
 }
+
+.smart-table-card .enterprise-table thead tr:first-child th {
+  background:#1f4e78;
+  color:#fff;
+  border-color:#406b8e;
+}
+.smart-table-card .column-filter-row th {
+  background:#d9eaf7;
+}
+.smart-table-card .enterprise-table tbody tr:nth-child(even) td {
+  background:#f8fafc;
+}
+.smart-table-card .enterprise-table tbody tr:hover td {
+  background:#fff7d6;
+}
