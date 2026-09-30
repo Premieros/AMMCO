@@ -74,8 +74,31 @@ function filters(from,to,branch){return `<form id="filters" class="filters compa
 </form>`}
 function bindFilters(path){document.getElementById('filters')?.addEventListener('submit',e=>{e.preventDefault();const f=new FormData(e.currentTarget);location.hash=`#/${path}?branch=${f.get('branch')||''}&from=${f.get('from')}&to=${f.get('to')}`})}
 function scope(from,to,branch){return `<div class="scope report-meta"><span><b>${branches.find(b=>b.id===branch)?.name||'كل الفروع'}</b></span><span>${from} → ${to}</span><span>Approved</span></div>`}
-function table(title,cols,rows,totalRow=''){return `<section class="table-card"><div class="table-head"><div><h2>${title}</h2><small>${rows.length} صف</small></div><div class="table-tools"><input class="search" placeholder="بحث…" oninput="filterTable(this)"><button class="tool-btn" type="button" onclick="exportVisibleTable(this)">CSV</button><button class="tool-btn" type="button" onclick="window.print()">طباعة</button></div></div><div class="table-wrap"><table><thead><tr>${cols.map(c=>`<th>${c.label}</th>`).join('')}</tr></thead><tbody>${rows.map(r=>`<tr>${cols.map(c=>`<td class="${c.num?'num':''} ${c.key==='branch_name'?'row-label':''}">${r[c.key]??'-'}</td>`).join('')}</tr>`).join('')}${totalRow}</tbody></table></div></section>`}
-window.filterTable=input=>{const q=input.value.trim().toLowerCase();const tbody=input.closest('.table-card').querySelector('tbody');[...tbody.rows].forEach(r=>r.style.display=r.innerText.toLowerCase().includes(q)?'':'none')}
+const escapeHtml=v=>String(v??'').replace(/[&<>"']/g,m=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[m]))
+const escapeAttr=v=>escapeHtml(v)
+function table(title,cols,rows,totalRow=''){
+ const filterRow=cols.map((col,index)=>{
+  if(col.filter===false)return '<th></th>'
+  const values=[...new Set(rows.map(r=>String(r[col.key]??'').replace(/<[^>]*>/g,'').trim()).filter(Boolean))]
+  if(values.length>0&&values.length<=24){
+   return `<th><select class="col-filter" data-col="${index}" onchange="applyTableFilters(this)"><option value="">الكل</option>${values.sort((a,b)=>a.localeCompare(b,'ar',{numeric:true})).map(v=>`<option value="${escapeAttr(v)}">${escapeHtml(v)}</option>`).join('')}</select></th>`
+  }
+  return `<th><input class="col-filter" data-col="${index}" placeholder="فلتر…" oninput="applyTableFilters(this)"></th>`
+ }).join('')
+ return `<section class="table-card"><div class="table-head"><div><h2>${title}</h2><small>${rows.length} صف</small></div><div class="table-tools"><input class="search" placeholder="بحث…" oninput="applyTableFilters(this)"><button class="tool-btn" type="button" onclick="clearTableFilters(this)">مسح الفلاتر</button><button class="tool-btn" type="button" onclick="exportVisibleTable(this)">CSV</button><button class="tool-btn" type="button" onclick="window.print()">طباعة</button></div></div><div class="table-wrap"><table><thead><tr>${cols.map(c=>`<th>${c.label}<span class="filter-mark">⌄</span></th>`).join('')}</tr><tr class="column-filter-row">${filterRow}</tr></thead><tbody>${rows.map(r=>`<tr>${cols.map(c=>`<td class="${c.num?'num':''} ${c.key==='branch_name'?'row-label':''}">${r[c.key]??'-'}</td>`).join('')}</tr>`).join('')}${totalRow}</tbody></table></div></section>`
+}
+window.applyTableFilters=source=>{
+ const card=source.closest('.table-card'),q=(card.querySelector('.search')?.value||'').trim().toLowerCase(),filters=[...card.querySelectorAll('.col-filter')]
+ const rows=[...card.querySelectorAll('tbody tr:not(.total)')]
+ rows.forEach(row=>{
+  const cells=[...row.children]
+  const globalOk=!q||row.innerText.toLowerCase().includes(q)
+  const colsOk=filters.every(f=>{const v=(f.value||'').trim().toLowerCase();if(!v)return true;const cell=(cells[Number(f.dataset.col)]?.innerText||'').trim().toLowerCase();return f.tagName==='SELECT'?cell===v:cell.includes(v)})
+  row.style.display=globalOk&&colsOk?'':'none'
+ })
+}
+window.filterTable=input=>window.applyTableFilters(input)
+window.clearTableFilters=button=>{const card=button.closest('.table-card');card.querySelectorAll('.search,.col-filter').forEach(el=>el.value='');window.applyTableFilters(card.querySelector('.search'))}
 window.resetReportFilters=()=>{const r=route().split('?')[0];location.hash=`#/${r}`}
 window.exportVisibleTable=button=>{
  const card=button.closest('.table-card'),rows=[...card.querySelectorAll('tr')].filter(r=>r.style.display!=='none')
