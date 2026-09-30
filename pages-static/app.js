@@ -5,10 +5,10 @@ const SUPABASE_URL='https://yumeijsyiphzdsulsubf.supabase.co'
 const SUPABASE_KEY='eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6Inl1bWVpanN5aXBoemRzdWxzdWJmIiwicm9sZSI6ImFub24iLCJpYXQiOjE3OTA2ODk1ODAsImV4cCI6MjEwNjI2NTU4MH0.Hpy2VZpttnQGdrx6_6Y1c9w4iHG2HhopvFdrohk3BBE'
 const supabase=createClient(SUPABASE_URL,SUPABASE_KEY,{auth:{persistSession:true,autoRefreshToken:true,detectSessionInUrl:true}})
 const app=document.getElementById('app')
-const fmt=new Intl.NumberFormat('en-US',{maximumFractionDigits:2})
-const money=v=>fmt.format(Number(v||0))
-const compactFmt=new Intl.NumberFormat('en-US',{notation:'compact',maximumFractionDigits:2})
-const compactMoney=v=>compactFmt.format(Number(v||0))
+const fmt=new Intl.NumberFormat('en-US',{maximumFractionDigits:0})
+const money=v=>fmt.format(Math.round(Number(v||0)))
+const qtyFmt=new Intl.NumberFormat('en-US',{maximumFractionDigits:2})
+const qty=v=>qtyFmt.format(Number(v||0))
 const pct=v=>`${new Intl.NumberFormat('en-US',{maximumFractionDigits:1}).format(Number(v||0)*100)}%`
 const route=()=>location.hash.replace(/^#\/?/,'')||'dashboard'
 const qs=()=>new URLSearchParams(location.hash.includes('?')?location.hash.split('?')[1]:'')
@@ -49,8 +49,13 @@ function shell(title,subtitle,body){
    <a class="${r==='monthly'?'active':''}" href="#/monthly">التحليل الشهري وYTD</a>
    <a class="${r==='banks'?'active':''}" href="#/banks">البنوك وYTD</a>
   </nav>
-  <div class="nav-title">البيانات</div><nav class="nav">
+  <div class="nav-title">التشغيل والمراجعة</div><nav class="nav">
+   <a class="${r==='treasury'?'active':''}" href="#/treasury">الخزينة والبنوك</a>
+   <a class="${r==='accounting-inputs'?'active':''}" href="#/accounting-inputs">إدخالات المحاسب والتوجيه</a>
+  </nav>
+  <div class="nav-title">الإدارة</div><nav class="nav">
    <a class="${r==='branches'?'active':''}" href="#/branches">إدارة الفروع</a>
+   ${profile?.role==='admin'?`<a class="${r==='users'?'active':''}" href="#/users">المستخدمون والصلاحيات</a>`:''}
    <a class="${r==='imports'?'active':''}" href="#/imports">سجل الرفع</a>
    <a class="${r==='uploads'?'active':''}" href="#/uploads">رفع شيت</a>
   </nav>
@@ -85,6 +90,9 @@ async function render(){
  const r=route().split('?')[0]
  try{
   if(r==='branches')return renderBranches()
+  if(r==='users')return renderUsers()
+  if(r==='treasury')return renderTreasury()
+  if(r==='accounting-inputs')return renderAccountingInputs()
   if(r==='sales')return renderSales()
   if(r==='expenses')return renderExpenses()
   if(r==='expense-matrix')return renderExpenseMatrix()
@@ -123,10 +131,10 @@ async function renderDashboard(){
  const rows=rawRows.map(x=>({...x,net:money(x.net),coll:money(x.coll),disc:money(x.disc),exp:money(x.exp),debt:money(x.debt)}))
  const totalRow=`<tr class="total"><th>إجمالي الشركة</th><th class="num">${money(totals.net)}</th><th class="num">${money(totals.coll)}</th><th class="num">${money(totals.disc)}</th><th class="num">${money(totals.exp)}</th><th class="num">${money(companyDebt)}</th></tr>`
  shell('مركز الإدارة','ملخص أداء الفروع',filters(from,to,branch)+scope(from,to,branch)+`<section class="kpis dashboard-kpis">
-  <div class="kpi"><span>صافي المبيعات</span><strong>${compactMoney(totals.net)}</strong><small>${money(totals.net)}</small></div>
-  <div class="kpi"><span>التحصيل</span><strong>${compactMoney(totals.coll)}</strong><small>${money(totals.coll)}</small></div>
-  <div class="kpi"><span>الخصومات</span><strong>${compactMoney(totals.disc)}</strong><small>${money(totals.disc)}</small></div>
-  <div class="kpi"><span>المصروفات</span><strong>${compactMoney(totals.exp)}</strong><small>${money(totals.exp)}</small></div>
+  <div class="kpi"><span>صافي المبيعات</span><strong>${money(totals.net)}</strong></div>
+  <div class="kpi"><span>التحصيل</span><strong>${money(totals.coll)}</strong></div>
+  <div class="kpi"><span>الخصومات</span><strong>${money(totals.disc)}</strong></div>
+  <div class="kpi"><span>المصروفات</span><strong>${money(totals.exp)}</strong></div>
  </section>`+table('مقارنة الفروع',[{key:'branch_name',label:'الفرع'},{key:'net',label:'صافي البيع',num:1},{key:'coll',label:'التحصيل',num:1},{key:'disc',label:'الخصم',num:1},{key:'exp',label:'المصروفات',num:1},{key:'debt',label:'مديونية آخر',num:1}],rows,totalRow));bindFilters('dashboard')
 }
 async function renderExecutive(){const {branch,from,to}=currentFilters();const daily=await loadDaily(branch,from,to);const by=new Map();daily.forEach(r=>{const k=r.branch_id;const x=by.get(k)||{branch_name:r.branch_name,gross:0,disc:0,net:0,coll:0,open:+r.opening_receivables||0,debt:0,exp:0};x.gross+=+r.gross_sales||0;x.disc+=+r.discounts||0;x.net+=+r.net_sales||0;x.coll+=+r.collections||0;x.exp+=+r.expenses||0;x.debt=+r.closing_receivables||x.debt;by.set(k,x)});const rows=[...by.values()].map(x=>({...x,gross:money(x.gross),disc:money(x.disc),net:money(x.net),coll:money(x.coll),open:money(x.open),debt:money(x.debt),exp:money(x.exp)}));shell('التقرير التنفيذي','مقارنة الإدارة حسب الفروع',filters(from,to,branch)+scope(from,to,branch)+table('الملخص التنفيذي',[{key:'branch_name',label:'الفرع'},{key:'gross',label:'قبل الخصم',num:1},{key:'disc',label:'الخصم',num:1},{key:'net',label:'صافي البيع',num:1},{key:'coll',label:'التحصيل',num:1},{key:'open',label:'مديونية أول',num:1},{key:'debt',label:'مديونية آخر',num:1},{key:'exp',label:'المصروفات',num:1}],rows));bindFilters('executive')}
