@@ -11,9 +11,9 @@ const supabase = createClient(SUPABASE_URL, SUPABASE_KEY, {
 
 const app = document.getElementById('app')
 
-// Formatting Utilities (One Source)
+// Formatting Utilities (One Source = One Number)
 const numFmt = new Intl.NumberFormat('en-US', { maximumFractionDigits: 0 })
-const money = v => numFmt.format(Math.round(Number(v || 0)))
+const money = v => `${numFmt.format(Math.round(Number(v || 0)))} EGP`
 const qtyFmt = new Intl.NumberFormat('en-US', { maximumFractionDigits: 2 })
 const qty = v => qtyFmt.format(Number(v || 0))
 const pct = v => `${new Intl.NumberFormat('en-US', { maximumFractionDigits: 1 }).format(Number(v || 0) * 100)}%`
@@ -66,10 +66,70 @@ function normalizeCategory(raw) {
   return 'أخرى'
 }
 
-function isDoubleProduct(name, boxCount) {
-  if (boxCount === 12) return true
-  const n = String(name || '').toLowerCase()
-  return n.includes('دبل') || n.includes('double') || n.includes('12')
+// Strict Double Definition: Packing = 12 AND Price = 570
+function evaluateDoubleProduct(params) {
+  const packing = params.boxCount ?? params.packagingCount ?? null
+  const price = params.wholesalePrice ?? params.retailPrice ?? params.unitPrice ?? null
+  const name = String(params.productName || '').trim()
+  const nameHasDouble = /دبل|double|مزدوج|2x/i.test(name)
+
+  if (packing == null || price == null) {
+    if (nameHasDouble || Number(packing) === 12 || Math.round(Number(price || 0)) === 570) {
+      return {
+        isDouble: false,
+        auditStatus: 'Needs Review',
+        reason: `بيانات غير مكتملة (تعبئة: ${packing ?? 'مفقودة'}، سعر: ${price ?? 'مفقود'})`,
+        packing,
+        price,
+      }
+    }
+    return {
+      isDouble: false,
+      auditStatus: 'Regular Item',
+      reason: 'صنف عادي',
+      packing,
+      price,
+    }
+  }
+
+  const isPacking12 = Number(packing) === 12
+  const isPrice570 = Math.round(Number(price)) === 570
+
+  // Condition: Must meet BOTH Packing = 12 AND Price = 570
+  if (isPacking12 && isPrice570) {
+    return {
+      isDouble: true,
+      auditStatus: 'Correct Double',
+      reason: 'تعبئة 12 عبوة وسعر 570 EGP (مطابق تماماً للقاعدة)',
+      packing,
+      price,
+    }
+  }
+
+  if (nameHasDouble || isPacking12 || isPrice570) {
+    const issues = []
+    if (!isPacking12) issues.push(`التعبئة ${packing} عبوة (ليست 12)`)
+    if (!isPrice570) issues.push(`السعر ${price} EGP (ليس 570)`)
+    return {
+      isDouble: false,
+      auditStatus: 'False Double',
+      reason: issues.join(' و '),
+      packing,
+      price,
+    }
+  }
+
+  return {
+    isDouble: false,
+    auditStatus: 'Regular Item',
+    reason: 'صنف عادي',
+    packing,
+    price,
+  }
+}
+
+function isDoubleProduct(name, boxCount, price) {
+  return evaluateDoubleProduct({ productName: name, boxCount, unitPrice: price }).isDouble
 }
 
 // -------------------------------------------------------------------
@@ -156,7 +216,9 @@ async function loadIntelligenceData(filters) {
   let equivSalesQty = 0, rawSalesQty = 0
   ;(invRows || []).forEach(r => {
     const p = productMap.get(r.product_id)
-    const factor = isDoubleProduct(r.product_name, p?.box_count) ? 2 : 1
+    const packing = p?.box_count ?? p?.packaging_count ?? null
+    const price = p?.wholesale_carton_price ?? p?.retail_carton_price ?? p?.carton_price ?? r.unit_value ?? null
+    const factor = isDoubleProduct(r.product_name, packing, price) ? 2 : 1
     const q = Number(r.sales_qty || 0)
     rawSalesQty += q
     equivSalesQty += (q * factor)
@@ -221,12 +283,15 @@ async function loadIntelligenceData(filters) {
     const { data: pInvs } = await pInvQ
     ;(pInvs || []).forEach(r => {
       const p = productMap.get(r.product_id)
-      const factor = isDoubleProduct(r.product_name, p?.box_count) ? 2 : 1
+      const packing = p?.box_count ?? p?.packaging_count ?? null
+      const price = p?.wholesale_carton_price ?? p?.retail_carton_price ?? p?.carton_price ?? r.unit_value ?? null
+      const factor = isDoubleProduct(r.product_name, packing, price) ? 2 : 1
       prevEquivQty += (Number(r.sales_qty || 0) * factor)
     })
   }
 
-  const avgCartonPrice = equivSalesQty > 0 ? (netSales / equivSalesQty) : 0
+  const avgCartonPrice = rawSalesQty > 0 ? (netSales / rawSalesQty) : 0
+  const avgStandardPrice = equivSalesQty > 0 ? (netSales / equivSalesQty) : 0
   const prevAvgPrice = prevEquivQty > 0 ? (prevNetSales / prevEquivQty) : 0
   const netResult = netSales - totalExpenses
   const prevNetResult = prevNetSales - prevTotalExpenses
@@ -239,14 +304,16 @@ async function loadIntelligenceData(filters) {
   // Sort daily points
   const timelinePoints = [...dailyTimeline.values()].sort((a, b) => a.date.localeCompare(b.date))
   timelinePoints.forEach(p => {
-    p.avgPrice = p.equivQty > 0 ? (p.sales / p.equivQty) : 0
+    p.avgPrice = p.qty > 0 ? (p.sales / p.qty) : (p.equivQty > 0 ? (p.sales / p.equivQty) : 0)
   })
 
   // Branch Performance rows
   const branchListResult = [...branchAgg.values()].map(b => ({
     ...b,
     sharePct: netSales > 0 ? (b.sales / netSales) : 0,
-    avgPrice: b.equivQty > 0 ? (b.sales / b.equivQty) : 0,
+    avgPrice: b.qty > 0 ? (b.sales / b.qty) : (b.equivQty > 0 ? (b.sales / b.equivQty) : 0),
+    avgCartonPrice: b.qty > 0 ? (b.sales / b.qty) : 0,
+    avgStandardPrice: b.equivQty > 0 ? (b.sales / b.equivQty) : 0,
     expenseRatio: b.sales > 0 ? (b.expenses / b.sales) : 0
   })).sort((a, b) => b.sales - a.sales)
 
@@ -254,9 +321,11 @@ async function loadIntelligenceData(filters) {
     kpis: {
       netSales,
       prevNetSales,
+      rawSalesQty,
       equivSalesQty,
       prevEquivQty,
       avgCartonPrice,
+      avgStandardPrice,
       prevAvgPrice,
       totalExpenses,
       prevTotalExpenses,
@@ -841,6 +910,12 @@ function renderSmartTable(title, cols, rows, totalRow = '', groupByOptions = [])
     </tr>
   `).join('')
 
+  const tfootHtml = totalRow ? `
+    <tfoot class="smart-table-tfoot" style="position:sticky; bottom:0; z-index:15;">
+      ${totalRow}
+    </tfoot>
+  ` : ''
+
   return `
     <div class="table-card" data-report-title="${escapeAttr(title)}">
       <div class="table-head">
@@ -861,8 +936,8 @@ function renderSmartTable(title, cols, rows, totalRow = '', groupByOptions = [])
           </thead>
           <tbody>
             ${rowsHtml}
-            ${totalRow}
           </tbody>
+          ${tfootHtml}
         </table>
       </div>
     </div>
@@ -975,8 +1050,12 @@ async function renderSales() {
   const prodSales = new Map()
   data.rawInventory.forEach(r => {
     const p = data.productMap.get(r.product_id)
-    const factor = isDoubleProduct(r.product_name, p?.box_count) ? 2 : 1
+    const packing = p?.box_count ?? p?.packaging_count ?? null
+    const price = p?.wholesale_carton_price ?? p?.retail_carton_price ?? p?.carton_price ?? r.unit_value ?? null
+    const factor = isDoubleProduct(r.product_name, packing, price) ? 2 : 1
     const q = Number(r.sales_qty || 0)
+    const unitPrice = price ? Number(price) : (r.unit_value ? Number(r.unit_value) : 0)
+    const salesVal = q * unitPrice
     const key = r.product_id || r.product_name
     if (!prodSales.has(key)) {
       prodSales.set(key, {
@@ -984,42 +1063,59 @@ async function renderSales() {
         isDouble: factor === 2,
         rawQty: 0,
         equivQty: 0,
-        estimatedVal: 0
+        salesVal: 0,
+        unitPrice: unitPrice
       })
     }
     const itm = prodSales.get(key)
     itm.rawQty += q
     itm.equivQty += (q * factor)
-    itm.estimatedVal += (q * factor * data.kpis.avgCartonPrice)
+    itm.salesVal += salesVal
   })
 
   const tableCols = [
     { key: 'name', label: 'الصنف' },
     { key: 'doubleStatus', label: 'نوع الصنف' },
-    { key: 'rawQty', label: 'الكمية الفعلية (كرتونة)', num: true },
-    { key: 'equivQty', label: 'الكمية الموحدة (Double×2)', num: true },
-    { key: 'avgPrice', label: 'متوسط السعر المعتمد', num: true },
-    { key: 'val', label: 'القيمة التقديرية للمبيعات', num: true }
+    { key: 'rawQty', label: 'الكمية الفعلية (Cartons)', num: true },
+    { key: 'equivQty', label: 'الكمية الموحدة (Standard Qty)', num: true },
+    { key: 'avgPrice', label: 'متوسط سعر الكرتونة (EGP)', num: true },
+    { key: 'val', label: 'قيمة المبيعات (EGP)', num: true }
   ]
 
   const rows = [...prodSales.values()].map(p => ({
     name: p.name,
-    doubleStatus: p.isDouble ? '<span class="chip" style="background:#fef3c7; color:#92400e; font-weight:800;">Double × 2</span>' : '<span class="chip">عادي</span>',
-    rawQty: qty(p.rawQty),
-    equivQty: qty(p.equivQty),
-    avgPrice: `${money(data.kpis.avgCartonPrice)} ج.م`,
-    val: `${money(p.equivQty * data.kpis.avgCartonPrice)} ج.م`
+    doubleStatus: p.isDouble ? '<span class="chip" style="background:#fef3c7; color:#92400e; font-weight:800;">Double (12 / 570)</span>' : '<span class="chip">عادي</span>',
+    rawQty: `${qty(p.rawQty)} كرتونة`,
+    equivQty: `${qty(p.equivQty)} كرتونة موحدة`,
+    avgPrice: `${money(p.rawQty > 0 ? p.salesVal / p.rawQty : p.unitPrice)}`,
+    val: `${money(p.salesVal)}`
   }))
+
+  const tSalesRawQty = [...prodSales.values()].reduce((acc, p) => acc + p.rawQty, 0)
+  const tSalesEquivQty = [...prodSales.values()].reduce((acc, p) => acc + p.equivQty, 0)
+  const tSalesVal = data.kpis.netSales
+  const salesAvgPrice = tSalesRawQty > 0 ? (tSalesVal / tSalesRawQty) : data.kpis.avgCartonPrice
+
+  const totalRow = `
+    <tr class="total">
+      <th class="sticky-col">الإجمالي العام (${rows.length} صنف)</th>
+      <th>—</th>
+      <th class="num">${qty(tSalesRawQty)} كرتونة</th>
+      <th class="num">${qty(tSalesEquivQty)} كرتونة موحدة</th>
+      <th class="num">${money(salesAvgPrice)}</th>
+      <th class="num">${money(tSalesVal)}</th>
+    </tr>
+  `
 
   const bodyHtml = `
     ${renderUnifiedFilterBar(filters)}
     <div class="kpis-8-grid" style="grid-template-columns: repeat(4, 1fr);">
-      ${renderKPICard('إجمالي المبيعات', data.kpis.netSales, null, 'currency', false, 'صافي الإيرادات')}
-      ${renderKPICard('الكمية الموحدة', data.kpis.equivSalesQty, null, 'qty', false, 'مع احتساب دبل × 2')}
-      ${renderKPICard('متوسط سعر البيع', data.kpis.avgCartonPrice, null, 'currency', false, 'المبيعات ÷ الكمية')}
-      ${renderKPICard('إجمالي الخصومات', data.discounts, null, 'currency', true, `نسبة الخصم: ${pct(data.grossSales ? data.discounts / data.grossSales : 0)}`)}
+      ${renderKPICard('صافي المبيعات', data.kpis.netSales, null, 'currency', false, 'صافي الإيرادات بعد الخصم')}
+      ${renderKPICard('الكمية الفعلية (Cartons)', data.kpis.rawSalesQty, null, 'qty', false, 'إجمالي عدد الكراتين الفعلي')}
+      ${renderKPICard('الكمية الموحدة (Standard Qty)', data.kpis.equivSalesQty, null, 'qty', false, 'مع مضاعفة Double المعتمد × 2')}
+      ${renderKPICard('متوسط سعر الكرتونة الفعلي', data.kpis.avgCartonPrice, null, 'currency', false, 'صافي المبيعات ÷ الكراتين الفعلية')}
     </div>
-    ${renderSmartTable('جدول تفصيلي بمبيعات الأصناف والكميات المكافئة', tableCols, rows)}
+    ${renderSmartTable('جدول تفصيلي بمبيعات الأصناف والكميات المكافئة', tableCols, rows, totalRow)}
   `
 
   renderShell('المبيعات والأصناف', 'تحليل كميات المبيعات، متوسط سعر البيع، وقاعدة Double x2', bodyHtml)
@@ -1056,6 +1152,17 @@ async function renderExpenses() {
     desc: e.description || e.expense_group || '—'
   }))
 
+  const tExpensesAmt = data.rawExpenses.reduce((acc, e) => acc + Number(e.amount || 0), 0)
+  const totalRow = `
+    <tr class="total">
+      <th class="sticky-col">الإجمالي العام (${data.rawExpenses.length} حركة مصروف)</th>
+      <th>—</th>
+      <th>—</th>
+      <th class="num">${money(tExpensesAmt)} ج.م</th>
+      <th>—</th>
+    </tr>
+  `
+
   const bodyHtml = `
     ${renderUnifiedFilterBar(filters)}
     <div class="kpis-8-grid" style="grid-template-columns: repeat(4, 1fr);">
@@ -1070,7 +1177,7 @@ async function renderExpenses() {
       <div class="cat-grid">${catCards}</div>
     </div>
 
-    ${renderSmartTable('سجل حركات المصروفات التفصيلي والمطابق للشيت', tableCols, rows)}
+    ${renderSmartTable('سجل حركات المصروفات التفصيلي والمطابق للشيت', tableCols, rows, totalRow)}
   `
 
   renderShell('تحليل المصروفات والتكاليف', 'متابعة المصروفات حسب التصنيفات، الفروع، والمطابقة مع الخزينة', bodyHtml)
@@ -1104,10 +1211,28 @@ async function renderBranches() {
     action: `<button class="btn secondary" style="padding:3px 8px; font-size:10px;" onclick="window.drillDownBranch('${b.id}')">عرض التحليلات</button>`
   }))
 
+  const tBranchSales = data.branchList.reduce((acc, b) => acc + b.sales, 0)
+  const tBranchEquiv = data.branchList.reduce((acc, b) => acc + b.equivQty, 0)
+  const tBranchExp = data.branchList.reduce((acc, b) => acc + b.expenses, 0)
+  const tBranchRatio = tBranchSales > 0 ? (tBranchExp / tBranchSales) : 0
+
+  const totalRow = `
+    <tr class="total">
+      <th class="sticky-col">—</th>
+      <th class="sticky-col">الإجمالي العام (${data.branchList.length} فرع)</th>
+      <th>${data.branchList.filter(b => b.hasData).length} تم الرفع</th>
+      <th class="num">${money(tBranchSales)} ج.م</th>
+      <th class="num">${qty(tBranchEquiv)}</th>
+      <th class="num">${money(tBranchExp)} ج.م</th>
+      <th class="num">${pct(tBranchRatio)}</th>
+      <th>—</th>
+    </tr>
+  `
+
   const bodyHtml = `
     ${renderUnifiedFilterBar(filters)}
     ${renderBranchBarsSection(data.branchList)}
-    ${renderSmartTable('بيانات الفروع وحالة الالتزام برفع الملفات', tableCols, rows)}
+    ${renderSmartTable('بيانات الفروع وحالة الالتزام برفع الملفات', tableCols, rows, totalRow)}
   `
 
   renderShell('إدارة وأداء الفروع', 'متابعة الفروع، حصص السوق، ومعدلات كفاءة التشغيل', bodyHtml)
@@ -1128,19 +1253,32 @@ async function renderProducts() {
   ]
 
   const rows = data.products.map(p => {
-    const isDbl = isDoubleProduct(p.name, p.box_count)
+    const packing = p.box_count ?? p.packaging_count ?? null
+    const price = p.wholesale_carton_price ?? p.retail_carton_price ?? p.carton_price ?? null
+    const isDbl = isDoubleProduct(p.name, packing, price)
     return {
       code: p.code || '—',
       name: p.name,
-      box: `${p.box_count || 1} عبوة`,
-      isDouble: isDbl ? '<span class="chip" style="background:#fef3c7; color:#92400e; font-weight:800;">Double × 2</span>' : '<span class="chip">عادي (×1)</span>',
-      sales: qty(data.rawInventory.filter(i => i.product_id === p.id).reduce((acc, i) => acc + Number(i.sales_qty || 0), 0))
+      box: `${packing || 1} عبوة`,
+      isDouble: isDbl ? '<span class="chip" style="background:#fef3c7; color:#92400e; font-weight:800;">Double (12 / 570)</span>' : '<span class="chip">عادي (×1)</span>',
+      sales: `${qty(data.rawInventory.filter(i => i.product_id === p.id).reduce((acc, i) => acc + Number(i.sales_qty || 0), 0))} كرتونة`
     }
   })
 
+  const totalProdSales = data.rawInventory.reduce((acc, i) => acc + Number(i.sales_qty || 0), 0)
+  const totalRow = `
+    <tr class="total">
+      <th class="sticky-col">—</th>
+      <th class="sticky-col">إجمالي الأصناف (${data.products.length} صنف نشط)</th>
+      <th>—</th>
+      <th>—</th>
+      <th class="num">${qty(totalProdSales)} كرتونة</th>
+    </tr>
+  `
+
   const bodyHtml = `
     ${renderUnifiedFilterBar(filters)}
-    ${renderSmartTable('مصفوفة الأصناف وقواعد احتساب الكميات الموحدة', tableCols, rows)}
+    ${renderSmartTable('مصفوفة الأصناف وقواعد احتساب الكميات الموحدة', tableCols, rows, totalRow)}
   `
 
   renderShell('الأصناف والمخزون', 'قاعدة الأصناف الموحدة، مصفوفة التحويل، ومتابعة الكميات', bodyHtml)
@@ -1157,6 +1295,26 @@ async function renderTreasury() {
   const cashOut = data.kpis.totalExpenses
   const closingCash = openingCash + cashIn - cashOut
 
+  const treasuryCols = [
+    { key: 'item', label: 'البيان' },
+    { key: 'in', label: 'الوارد / المقبوض', num: true },
+    { key: 'out', label: 'المنصرف / المدفوع', num: true },
+    { key: 'balance', label: 'الرصيد التراكمي', num: true }
+  ]
+  const treasuryRows = [
+    { item: 'رصيد أول المدة التقديري', in: `${money(openingCash)} ج.م`, out: '—', balance: `${money(openingCash)} ج.م` },
+    { item: 'متحصلات المبيعات والعملاء', in: `${money(cashIn)} ج.م`, out: '—', balance: `${money(openingCash + cashIn)} ج.م` },
+    { item: 'إجمالي المصروفات التشغيلية', in: '—', out: `${money(cashOut)} ج.م`, balance: `${money(closingCash)} ج.م` }
+  ]
+  const treasuryTotalRow = `
+    <tr class="total">
+      <th class="sticky-col">صافي الرصيد الختامي للخزينة</th>
+      <th class="num">${money(openingCash + cashIn)} ج.م</th>
+      <th class="num">${money(cashOut)} ج.م</th>
+      <th class="num">${money(closingCash)} ج.م</th>
+    </tr>
+  `
+
   const bodyHtml = `
     ${renderUnifiedFilterBar(filters)}
     <div class="kpis-8-grid" style="grid-template-columns: repeat(4, 1fr);">
@@ -1165,10 +1323,7 @@ async function renderTreasury() {
       ${renderKPICard('المصروفات النقدية المنصرفة', cashOut, null, 'currency', true, 'من واقع يوميات الصرف')}
       ${renderKPICard('رصيد الخزينة الختامي', closingCash, null, 'currency', false, 'المطابقة الحالية')}
     </div>
-    <div class="card" style="padding:15px; margin-top:12px;">
-      <h3 style="margin-top:0; font-size:13px; color:#17324d;">سجل قيود الخزينة ومطابقة السيولة النقدية</h3>
-      <p style="font-size:11px; color:#64748b;">يتم تسجيل ومطابقة المقبوضات والمدفوعات آلياً مع شيتات الفروع وسجل القيود المحاسبية.</p>
-    </div>
+    ${renderSmartTable('ملخص حركة السيولة والخزينة النقدية', treasuryCols, treasuryRows, treasuryTotalRow)}
   `
 
   renderShell('الخزينة والمقبوضات', 'متابعة السيولة، حركة النقدية اليومية، وتدقيق قيود الخزينة', bodyHtml)
@@ -1224,7 +1379,7 @@ async function renderImports() {
     { key: 'branch', label: 'الفرع' },
     { key: 'period', label: 'فترة الشيت' },
     { key: 'status', label: 'حالة المطابقة' },
-    { key: 'rows', label: 'عدد السجلات' }
+    { key: 'rows', label: 'عدد السجلات', num: true }
   ]
 
   const rows = (batches || []).map(b => ({
@@ -1235,11 +1390,22 @@ async function renderImports() {
     rows: qty(b.row_count || 0)
   }))
 
+  const tBatchRows = (batches || []).reduce((acc, b) => acc + Number(b.row_count || 0), 0)
+  const totalRow = `
+    <tr class="total">
+      <th class="sticky-col">إجمالي الدفعات (${(batches || []).length} دفعة)</th>
+      <th>—</th>
+      <th>—</th>
+      <th>${(batches || []).filter(b => b.status === 'approved').length} معتمد</th>
+      <th class="num">${qty(tBatchRows)} سجل</th>
+    </tr>
+  `
+
   const bodyHtml = `
     <div style="margin-bottom:12px;">
       <a href="#/uploads" class="btn" style="padding:6px 14px; text-decoration:none; display:inline-block;">+ رفع شيتات فروع جديدة</a>
     </div>
-    ${renderSmartTable('سجل دفعات الشيتات المرفوعة ومطابقة البيانات', tableCols, rows)}
+    ${renderSmartTable('سجل دفعات الشيتات المرفوعة ومطابقة البيانات', tableCols, rows, totalRow)}
   `
 
   renderShell('مراجعة وتدقيق البيانات', 'سجل دفعات الشيتات، التأكد من عدم التكرار، وتدقيق البيانات', bodyHtml)

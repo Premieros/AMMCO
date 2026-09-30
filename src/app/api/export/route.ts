@@ -190,7 +190,7 @@ export async function GET(req: NextRequest) {
           p.rawQty,
           p.standardizedQty,
           p.salesValue,
-          p.avgPrice,
+          p.avgCartonPrice || p.avgPrice,
           p.closingStockQty,
           p.closingStockValue,
         ])
@@ -202,6 +202,30 @@ export async function GET(req: NextRequest) {
         row.getCell(7).numFmt = '#,##0'
         row.getCell(8).numFmt = '#,##0.00'
       }
+
+      // Products Total Row
+      const prodTotalRow = worksheet.addRow([
+        `الإجمالي العام (${data.products.length} صنف)`,
+        '—',
+        data.currentSummary.salesQty,
+        data.currentSummary.standardizedQty,
+        data.currentSummary.netSales,
+        data.currentSummary.avgCartonPrice || data.currentSummary.avgUnitPrice,
+        data.products.reduce((acc, p) => acc + (p.closingStockQty || 0), 0),
+        data.currentSummary.inventoryValue,
+      ])
+      prodTotalRow.height = 26
+      prodTotalRow.font = { name: 'Arial', size: 10, bold: true }
+      prodTotalRow.eachCell((cell) => {
+        cell.fill = { type: 'pattern', pattern: 'solid', fgColor: { argb: 'FFCCFBF1' } }
+        cell.border = { top: { style: 'double', color: { argb: 'FF0F766E' } }, bottom: { style: 'double', color: { argb: 'FF0F766E' } } }
+      })
+      prodTotalRow.getCell(3).numFmt = '#,##0'
+      prodTotalRow.getCell(4).numFmt = '#,##0'
+      prodTotalRow.getCell(5).numFmt = '#,##0.00'
+      prodTotalRow.getCell(6).numFmt = '#,##0.00'
+      prodTotalRow.getCell(7).numFmt = '#,##0'
+      prodTotalRow.getCell(8).numFmt = '#,##0.00'
     } else {
       // Default: Branches Matrix
       const headers = [
@@ -245,6 +269,30 @@ export async function GET(req: NextRequest) {
         row.getCell(7).numFmt = '#,##0.00'
         row.getCell(8).numFmt = '#,##0.00'
       }
+
+      // Branch Total Row
+      const branchTotalRow = worksheet.addRow([
+        'إجمالي الشركة',
+        data.currentSummary.netSales,
+        data.currentSummary.salesQty,
+        data.currentSummary.expenses,
+        `${(data.currentSummary.expenseToSalesRate * 100).toFixed(1)}%`,
+        data.currentSummary.netResult,
+        data.currentSummary.collections,
+        data.currentSummary.closingReceivables,
+      ])
+      branchTotalRow.height = 26
+      branchTotalRow.font = { name: 'Arial', size: 10, bold: true }
+      branchTotalRow.eachCell((cell) => {
+        cell.fill = { type: 'pattern', pattern: 'solid', fgColor: { argb: 'FFE2E8F0' } }
+        cell.border = { top: { style: 'double', color: { argb: 'FF334155' } }, bottom: { style: 'double', color: { argb: 'FF334155' } } }
+      })
+      branchTotalRow.getCell(2).numFmt = '#,##0.00'
+      branchTotalRow.getCell(3).numFmt = '#,##0'
+      branchTotalRow.getCell(4).numFmt = '#,##0.00'
+      branchTotalRow.getCell(6).numFmt = '#,##0.00'
+      branchTotalRow.getCell(7).numFmt = '#,##0.00'
+      branchTotalRow.getCell(8).numFmt = '#,##0.00'
     }
 
     // Auto-fit column widths

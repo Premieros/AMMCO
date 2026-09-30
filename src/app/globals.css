@@ -2541,29 +2541,32 @@ th, td { padding: 10px 11px; }
   width: 100%;
   border-collapse: separate;
   border-spacing: 0;
-  font-size: 11px;
+  font-size: 13px;
+  line-height: 1.4;
 }
 .excel-table thead th {
   position: sticky;
   top: 0;
   z-index: 20;
   background: #f8fafc;
-  color: #475569;
-  font-size: 10px;
+  color: #1e293b;
+  font-size: 12px;
   font-weight: 800;
-  padding: 8px 10px;
-  border-bottom: 1px solid #cbd5e1;
+  padding: 10px 12px;
+  border-bottom: 2px solid #cbd5e1;
   border-inline-end: 1px solid #e2e8f0;
   white-space: nowrap;
 }
 .excel-table tbody td {
-  padding: 7px 10px;
-  border-bottom: 1px solid #f1f5f9;
+  padding: 9px 12px;
+  font-size: 13px;
+  color: #0f172a;
+  border-bottom: 1px solid #e2e8f0;
   border-inline-end: 1px solid #f1f5f9;
   white-space: nowrap;
 }
 .excel-table tbody tr:hover td {
-  background: #f8fafc;
+  background: #f1f5f9;
 }
 
 .sticky-first-col {
@@ -2576,6 +2579,24 @@ th, td { padding: 10px 11px; }
 .excel-table thead th.sticky-first-col {
   z-index: 30;
   background: #f8fafc;
+}
+.excel-table tfoot.excel-table-tfoot th {
+  position: sticky;
+  bottom: 0;
+  z-index: 25;
+  background: #e2e8f0;
+  color: #0f172a;
+  font-size: 13px;
+  font-weight: 900;
+  padding: 11px 12px;
+  border-top: 2px solid #475569;
+  border-bottom: 2px solid #475569;
+  border-inline-end: 1px solid #cbd5e1;
+  white-space: nowrap;
+}
+.excel-table tfoot.excel-table-tfoot th.sticky-first-col {
+  z-index: 35;
+  background: #cbd5e1;
 }
 .cell-numeric {
   direction: ltr;

@@ -193,9 +193,18 @@ export default async function ExpensesPage({
             { key: 'branch_name', label: 'الفرع' },
           ]}
           topTotals={{
-            'إجمالي المصروفات': `${money(cur.expenses)} ج.م`,
+            'إجمالي المصروفات': `${money(cur.expenses)} EGP`,
             'نسبة للمبيعات': pct(cur.expenseToSalesRate),
-            'عدد الحركات': displayExpenses.length,
+            'عدد الحركات': `${displayExpenses.length} حركة`,
+          }}
+          bottomTotals={{
+            entry_date: `الإجمالي العام (${displayExpenses.length} حركة)`,
+            branch_name: '—',
+            source_code: '—',
+            description: '—',
+            canonicalCategory: '—',
+            expense_group: '—',
+            amount: `${money(cur.expenses)} EGP`,
           }}
           columns={[
             { key: 'entry_date', label: 'التاريخ', sortable: true },
@@ -206,8 +215,8 @@ export default async function ExpensesPage({
               <span className="pill-badge pill-blue">{r.canonicalCategory}</span>
             )},
             { key: 'expense_group', label: 'المجموعة الأصلية', hideByDefault: true },
-            { key: 'amount', label: 'المبلغ (ج.م)', numeric: true, sortable: true, render: (r) => (
-              <strong>{money(Number(r.amount ?? 0))}</strong>
+            { key: 'amount', label: 'المبلغ (EGP)', numeric: true, sortable: true, render: (r) => (
+              <strong>{money(Number(r.amount ?? 0))} EGP</strong>
             )},
           ]}
         />

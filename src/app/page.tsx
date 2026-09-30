@@ -96,32 +96,32 @@ export default async function DashboardPage({
       <section className="dashboard-kpis-grid">
         {/* 1. Net Sales */}
         <KPICard
-          label="إجمالي المبيعات"
+          label="صافي المبيعات"
           currentValue={cur.netSales}
           previousValue={prev.netSales}
           format="currency"
           showPrevious={showCompare}
-          subtitle={`قبل الخصم: ${new Intl.NumberFormat('en-US', { maximumFractionDigits: 0 }).format(cur.grossSales)} ج.م`}
+          subtitle={`قبل الخصم: ${new Intl.NumberFormat('en-US', { maximumFractionDigits: 0 }).format(cur.grossSales)} EGP`}
         />
 
-        {/* 2. Total Sales Qty */}
+        {/* 2. Total Actual Sales Cartons */}
         <KPICard
-          label="إجمالي كمية المبيعات"
+          label="كمية المبيعات الفعلية (Cartons)"
           currentValue={cur.salesQty}
           previousValue={prev.salesQty}
           format="number"
           showPrevious={showCompare}
-          subtitle={`الموحدة (x2 للـ Double): ${new Intl.NumberFormat('en-US').format(cur.standardizedQty)}`}
+          subtitle={`الكمية الموحدة (Double×2): ${new Intl.NumberFormat('en-US').format(cur.standardizedQty)} كرتونة موحدة`}
         />
 
         {/* 3. Average Price per Carton */}
         <KPICard
-          label="متوسط سعر الكرتونة"
-          currentValue={cur.avgUnitPrice}
-          previousValue={prev.avgUnitPrice}
+          label="متوسط سعر الكرتونة الفعلي"
+          currentValue={cur.avgCartonPrice || cur.avgUnitPrice}
+          previousValue={prev.avgCartonPrice || prev.avgUnitPrice}
           format="currency"
           showPrevious={showCompare}
-          subtitle="محسوب من الكمية الموحدة"
+          subtitle="صافي المبيعات ÷ عدد الكراتين الفعلي"
         />
 
         {/* 4. Total Expenses (INVERTED sentiment: increase is RED, decrease is GREEN) */}

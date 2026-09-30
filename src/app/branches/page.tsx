@@ -64,7 +64,7 @@ export default async function BranchesPage({
   const matrixMetrics: MatrixMetric[] = [
     {
       id: 'net_sales',
-      label: 'صافي المبيعات (ج.م)',
+      label: 'صافي المبيعات (EGP)',
       isCurrency: true,
       calcBranch: (b: (typeof data.branchPerformance)[0]) => b.netSales,
       calcTotal: () => data.currentSummary.netSales,
@@ -72,7 +72,7 @@ export default async function BranchesPage({
     },
     {
       id: 'gross_sales',
-      label: 'البيع قبل الخصم (ج.م)',
+      label: 'البيع قبل الخصم (EGP)',
       isCurrency: true,
       calcBranch: (b: (typeof data.branchPerformance)[0]) => b.grossSales,
       calcTotal: () => data.currentSummary.grossSales,
@@ -80,7 +80,7 @@ export default async function BranchesPage({
     },
     {
       id: 'discounts',
-      label: 'إجمالي الخصومات (ج.م)',
+      label: 'إجمالي الخصومات (EGP)',
       isCurrency: true,
       calcBranch: (b: (typeof data.branchPerformance)[0]) => b.discounts,
       calcTotal: () => data.currentSummary.discounts,
@@ -95,22 +95,30 @@ export default async function BranchesPage({
     },
     {
       id: 'sales_qty',
-      label: 'كمية المبيعات (كرتونة)',
+      label: 'الكمية الفعلية (Cartons)',
       isNumber: true,
       calcBranch: (b: (typeof data.branchPerformance)[0]) => b.salesQty,
       calcTotal: () => data.currentSummary.salesQty,
       drillUrl: (branchId?: string) => `/inventory-movement?from=${data.from}&to=${data.to}${branchId ? `&branch=${branchId}` : ''}`,
     },
     {
+      id: 'standardized_qty',
+      label: 'الكمية الموحدة (Standard Qty)',
+      isNumber: true,
+      calcBranch: (b: (typeof data.branchPerformance)[0]) => b.standardizedQty,
+      calcTotal: () => data.currentSummary.standardizedQty,
+      drillUrl: (branchId?: string) => `/sales?from=${data.from}&to=${data.to}${branchId ? `&branch=${branchId}` : ''}`,
+    },
+    {
       id: 'avg_price',
-      label: 'متوسط سعر الكرتونة (ج.م)',
+      label: 'متوسط سعر الكرتونة الفعلي (EGP)',
       isCurrency: true,
-      calcBranch: (b: (typeof data.branchPerformance)[0]) => b.avgPrice,
-      calcTotal: () => data.currentSummary.avgUnitPrice,
+      calcBranch: (b: (typeof data.branchPerformance)[0]) => b.avgCartonPrice || b.avgPrice,
+      calcTotal: () => data.currentSummary.avgCartonPrice || data.currentSummary.avgUnitPrice,
     },
     {
       id: 'expenses',
-      label: 'إجمالي المصروفات (ج.م)',
+      label: 'إجمالي المصروفات (EGP)',
       isCurrency: true,
       calcBranch: (b: (typeof data.branchPerformance)[0]) => b.expenses,
       calcTotal: () => data.currentSummary.expenses,

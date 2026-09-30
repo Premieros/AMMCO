@@ -19,6 +19,8 @@ export interface MetricSummary {
   salesQty: number
   standardizedQty: number
   avgUnitPrice: number
+  avgCartonPrice: number
+  avgStandardPrice: number
   expenses: number
   netResult: number
   expenseToSalesRate: number
@@ -51,6 +53,8 @@ export interface BranchPerformanceRow {
   salesQty: number
   standardizedQty: number
   avgPrice: number
+  avgCartonPrice: number
+  avgStandardPrice: number
   expenses: number
   expenseToSalesRate: number
   companySharePct: number
@@ -65,27 +69,138 @@ export interface ProductPerformanceRow {
   productId: string
   productName: string
   isDouble: boolean
+  auditStatus: 'Correct Double' | 'False Double' | 'Missing Data' | 'Needs Review' | 'Regular Item'
+  auditReason: string
+  packingCount: number | null
+  cartonPrice: number | null
   rawQty: number
   standardizedQty: number
   salesValue: number
   avgPrice: number
+  avgCartonPrice: number
+  avgStandardPrice: number
   discounts: number
   discountRate: number
   closingStockQty: number
   closingStockValue: number
 }
 
-// Helper to determine if a product is a double item (requires x2 multiplier)
-export function isDoubleProduct(productName: string): boolean {
-  if (!productName) return false
-  const lower = productName.toLowerCase()
-  return (
-    lower.includes('double') ||
-    lower.includes('دابل') ||
-    lower.includes('مزدوج') ||
-    lower.includes('2x') ||
-    lower.includes('دبل')
-  )
+export interface DoubleAuditRow {
+  productName: string
+  branchName: string
+  businessDate: string
+  packingCount: number | null
+  cartonPrice: number | null
+  systemConsideredDouble: boolean
+  matchesStrictRule: boolean
+  auditStatus: 'Correct Double' | 'False Double' | 'Missing Data' | 'Needs Review' | 'Regular Item'
+  reason: string
+}
+
+// Strict Double Definition: Packing = 12 AND Price = 570
+export function evaluateDoubleProduct(params: {
+  productName?: string | null
+  boxCount?: number | null
+  packagingCount?: number | null
+  unitPrice?: number | null
+  wholesalePrice?: number | null
+  retailPrice?: number | null
+}): {
+  isDouble: boolean
+  auditStatus: 'Correct Double' | 'False Double' | 'Missing Data' | 'Needs Review' | 'Regular Item'
+  reason: string
+  packing: number | null
+  price: number | null
+} {
+  const packing = params.boxCount ?? params.packagingCount ?? null
+  const price = params.wholesalePrice ?? params.retailPrice ?? params.unitPrice ?? null
+  const name = (params.productName || '').trim()
+  const nameHasDouble = /دبل|double|مزدوج|2x/i.test(name)
+
+  if (packing == null || price == null) {
+    if (nameHasDouble || packing === 12 || Math.round(Number(price || 0)) === 570) {
+      return {
+        isDouble: false,
+        auditStatus: 'Needs Review',
+        reason: `بيانات غير مكتملة (تعبئة: ${packing ?? 'مفقودة'}، سعر: ${price ?? 'مفقود'})`,
+        packing,
+        price,
+      }
+    }
+    return {
+      isDouble: false,
+      auditStatus: 'Regular Item',
+      reason: 'صنف عادي',
+      packing,
+      price,
+    }
+  }
+
+  const isPacking12 = Number(packing) === 12
+  const isPrice570 = Math.round(Number(price)) === 570
+
+  // Condition: Must meet BOTH Packing = 12 AND Price = 570
+  if (isPacking12 && isPrice570) {
+    return {
+      isDouble: true,
+      auditStatus: 'Correct Double',
+      reason: 'تعبئة 12 عبوة وسعر 570 EGP (مطابق تماماً للقاعدة)',
+      packing,
+      price,
+    }
+  }
+
+  if (nameHasDouble || isPacking12 || isPrice570) {
+    const issues: string[] = []
+    if (!isPacking12) issues.push(`التعبئة ${packing} عبوة (ليست 12)`)
+    if (!isPrice570) issues.push(`السعر ${price} EGP (ليس 570)`)
+    return {
+      isDouble: false,
+      auditStatus: 'False Double',
+      reason: issues.join(' و '),
+      packing,
+      price,
+    }
+  }
+
+  return {
+    isDouble: false,
+    auditStatus: 'Regular Item',
+    reason: 'صنف عادي',
+    packing,
+    price,
+  }
+}
+
+// Backward compatible helper that enforces strict rule
+export function isDoubleProduct(
+  productName?: string | null,
+  boxCount?: number | null,
+  price?: number | null
+): boolean {
+  return evaluateDoubleProduct({ productName, boxCount, unitPrice: price }).isDouble
+}
+
+// Standard Formatting Helpers (One Source = One Number)
+const numFmt = new Intl.NumberFormat('en-US', { maximumFractionDigits: 0 })
+const decimalFmt = new Intl.NumberFormat('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 })
+const qtyFmt = new Intl.NumberFormat('en-US', { maximumFractionDigits: 2 })
+
+export function formatEGP(val: number, withDecimals = false): string {
+  const numStr = withDecimals ? decimalFmt.format(Number(val || 0)) : numFmt.format(Math.round(Number(val || 0)))
+  return `${numStr} EGP`
+}
+
+export function formatPct(val: number): string {
+  return `${(Number(val || 0) * 100).toFixed(1)}%`
+}
+
+export function formatCartons(val: number): string {
+  return `${qtyFmt.format(Number(val || 0))} كرتونة`
+}
+
+export function formatStandardQty(val: number): string {
+  return `${qtyFmt.format(Number(val || 0))} كرتونة موحدة (Double×2)`
 }
 
 // Calculate standard date range defaults
@@ -210,12 +325,14 @@ export async function getUnifiedIntelligenceData(
     { data: warehouseData },
     { data: inventoryData },
     { data: expenseData },
+    { data: productsData },
   ] = await Promise.all([
     dailyQuery,
     prevDailyQuery,
     warehouseQuery,
     inventoryQuery,
     expensesQuery,
+    supabase.from('products').select('*'),
   ])
 
   const daily = dailyData ?? []
@@ -223,35 +340,102 @@ export async function getUnifiedIntelligenceData(
   const warehouse = warehouseData ?? []
   const inventory = inventoryData ?? []
   const expensesList = expenseData ?? []
+  const rawProducts = productsData ?? []
 
-  // Calculate Product Aggregates with Double support
+  // Build master product index for accurate packing count and price lookup
+  const productMasterMap = new Map<string, (typeof rawProducts)[0]>()
+  for (const p of rawProducts) {
+    if (p.id) productMasterMap.set(p.id, p)
+    if (p.barcode) productMasterMap.set(p.barcode.trim(), p)
+    if (p.name) productMasterMap.set(p.name.trim().toLowerCase(), p)
+  }
+
+  // Calculate Product Aggregates with strict Double support (Packing = 12 AND Price = 570)
   const productMap = new Map<string, ProductPerformanceRow>()
+  const branchProductClosing = new Map<string, Map<string, { date: string; closingQty: number; closingVal: number }>>()
+  const doubleAuditList: DoubleAuditRow[] = []
   let totalRawQty = 0
   let totalStandardizedQty = 0
 
   for (const item of inventory) {
     const rawQty = Number(item.sales_qty ?? 0)
-    const isDouble = isDoubleProduct(item.product_name)
+    const master = (item.product_id ? productMasterMap.get(item.product_id) : null) ??
+                   productMasterMap.get(item.product_name.trim().toLowerCase())
+
+    const packing = master?.box_count ?? master?.packaging_count ?? null
+    const price = master?.wholesale_carton_price ?? master?.retail_carton_price ?? (item.unit_value ? Number(item.unit_value) : null)
+
+    const audit = evaluateDoubleProduct({
+      productName: item.product_name,
+      boxCount: master?.box_count,
+      packagingCount: master?.packaging_count,
+      unitPrice: item.unit_value,
+      wholesalePrice: master?.wholesale_carton_price,
+      retailPrice: master?.retail_carton_price,
+    })
+
+    const isDouble = audit.isDouble
+    // Crucial rule: ONLY double actual cartons if it meets Packing = 12 AND Price = 570
     const stdQty = isDouble ? rawQty * 2 : rawQty
-    const unitPrice = Number(item.unit_value ?? 0)
+    const unitPrice = Number(item.unit_value ?? price ?? 0)
     const salesVal = rawQty * unitPrice
+    // True closing stock directly from column BI (closing_qty) in daily workbook sheet
     const closingQty = Number(item.closing_qty ?? 0)
     const closingVal = Number(item.closing_value ?? (closingQty * unitPrice))
 
     totalRawQty += rawQty
     totalStandardizedQty += stdQty
 
+    // Collect double audit row if item has double traits, packing=12, or price=570
+    const nameHasDouble = /دبل|double|مزدوج|2x/i.test(item.product_name)
+    if (isDouble || nameHasDouble || packing === 12 || Math.round(Number(price || 0)) === 570) {
+      doubleAuditList.push({
+        productName: item.product_name,
+        branchName: branchMap.get(item.branch_id ?? '') ?? 'المركز الرئيسي',
+        businessDate: item.business_date ?? '',
+        packingCount: packing,
+        cartonPrice: price,
+        systemConsideredDouble: isDouble,
+        matchesStrictRule: isDouble,
+        auditStatus: audit.auditStatus,
+        reason: audit.reason,
+      })
+    }
+
     const key = item.product_id ?? item.product_name.trim().toLowerCase()
+
+    // Track latest closing stock per branch per product
+    const branchId = item.branch_id || 'default'
+    let branchMapForProd = branchProductClosing.get(key)
+    if (!branchMapForProd) {
+      branchMapForProd = new Map()
+      branchProductClosing.set(key, branchMapForProd)
+    }
+    const existingBranchEntry = branchMapForProd.get(branchId)
+    if (!existingBranchEntry || (item.business_date && item.business_date >= existingBranchEntry.date)) {
+      branchMapForProd.set(branchId, {
+        date: item.business_date || '',
+        closingQty,
+        closingVal,
+      })
+    }
+
     const existing = productMap.get(key)
     if (!existing) {
       productMap.set(key, {
         productId: item.product_id ?? key,
         productName: item.product_name,
         isDouble,
+        auditStatus: audit.auditStatus,
+        auditReason: audit.reason,
+        packingCount: packing,
+        cartonPrice: price,
         rawQty,
         standardizedQty: stdQty,
         salesValue: salesVal,
-        avgPrice: stdQty > 0 ? salesVal / stdQty : unitPrice,
+        avgPrice: rawQty > 0 ? salesVal / rawQty : unitPrice,
+        avgCartonPrice: rawQty > 0 ? salesVal / rawQty : unitPrice,
+        avgStandardPrice: stdQty > 0 ? salesVal / stdQty : unitPrice,
         discounts: 0,
         discountRate: 0,
         closingStockQty: closingQty,
@@ -261,10 +445,24 @@ export async function getUnifiedIntelligenceData(
       existing.rawQty += rawQty
       existing.standardizedQty += stdQty
       existing.salesValue += salesVal
-      existing.avgPrice = existing.standardizedQty > 0 ? existing.salesValue / existing.standardizedQty : existing.avgPrice
-      // Update with latest closing stock
-      existing.closingStockQty = closingQty
-      existing.closingStockValue = closingVal
+      existing.avgCartonPrice = existing.rawQty > 0 ? existing.salesValue / existing.rawQty : (existing.cartonPrice ?? 0)
+      existing.avgStandardPrice = existing.standardizedQty > 0 ? existing.salesValue / existing.standardizedQty : existing.avgCartonPrice
+      existing.avgPrice = existing.avgCartonPrice
+    }
+  }
+
+  // Finalize accurate company closing stock per product by summing branch snapshots
+  for (const [key, prod] of productMap.entries()) {
+    const bMap = branchProductClosing.get(key)
+    if (bMap) {
+      let sumClosingQty = 0
+      let sumClosingVal = 0
+      for (const entry of bMap.values()) {
+        sumClosingQty += entry.closingQty
+        sumClosingVal += entry.closingVal
+      }
+      prod.closingStockQty = sumClosingQty
+      prod.closingStockValue = sumClosingVal
     }
   }
 
@@ -316,7 +514,9 @@ export async function getUnifiedIntelligenceData(
     discountRate: grossSales > 0 ? discounts / grossSales : 0,
     salesQty: effectiveSalesQty,
     standardizedQty: effectiveStandardizedQty,
-    avgUnitPrice: effectiveStandardizedQty > 0 ? netSales / effectiveStandardizedQty : 0,
+    avgUnitPrice: effectiveSalesQty > 0 ? netSales / effectiveSalesQty : (effectiveStandardizedQty > 0 ? netSales / effectiveStandardizedQty : 0),
+    avgCartonPrice: effectiveSalesQty > 0 ? netSales / effectiveSalesQty : 0,
+    avgStandardPrice: effectiveStandardizedQty > 0 ? netSales / effectiveStandardizedQty : 0,
     expenses,
     netResult: netSales - expenses,
     expenseToSalesRate: netSales > 0 ? expenses / netSales : 0,
@@ -344,6 +544,8 @@ export async function getUnifiedIntelligenceData(
     salesQty: 0,
     standardizedQty: 0,
     avgUnitPrice: 0,
+    avgCartonPrice: 0,
+    avgStandardPrice: 0,
     expenses: prevExpenses,
     netResult: prevNetSales - prevExpenses,
     expenseToSalesRate: prevNetSales > 0 ? prevExpenses / prevNetSales : 0,
@@ -404,6 +606,8 @@ export async function getUnifiedIntelligenceData(
       salesQty: 0,
       standardizedQty: 0,
       avgPrice: 0,
+      avgCartonPrice: 0,
+      avgStandardPrice: 0,
       expenses: 0,
       expenseToSalesRate: 0,
       companySharePct: 0,
@@ -445,7 +649,9 @@ export async function getUnifiedIntelligenceData(
     row.discountRate = row.grossSales > 0 ? row.discounts / row.grossSales : 0
     row.expenseToSalesRate = row.netSales > 0 ? row.expenses / row.netSales : 0
     row.companySharePct = netSales > 0 ? (row.netSales / netSales) * 100 : 0
-    row.avgPrice = row.standardizedQty > 0 ? row.netSales / row.standardizedQty : 0
+    row.avgCartonPrice = row.salesQty > 0 ? row.netSales / row.salesQty : 0
+    row.avgStandardPrice = row.standardizedQty > 0 ? row.netSales / row.standardizedQty : 0
+    row.avgPrice = row.avgCartonPrice > 0 ? row.avgCartonPrice : row.avgStandardPrice
     return row
   }).sort((a, b) => b.netSales - a.netSales)
 
@@ -461,6 +667,7 @@ export async function getUnifiedIntelligenceData(
     branchPerformance,
     products: [...productMap.values()].sort((a, b) => b.salesValue - a.salesValue),
     expensesList,
+    doubleAuditList,
   }
 }
 

@@ -67,6 +67,10 @@ export default async function SalesPage({
 
   const { data: rawSalesRows } = await tableQuery
 
+  // Build product lookup map from unified intelligence data
+  const productMasterMap = new Map(data.products.map((p) => [p.productId, p]))
+  const productByNameMap = new Map(data.products.map((p) => [p.productName.trim().toLowerCase(), p]))
+
   // Group detailed sales items into branch-product records
   type AggregatedRow = {
     id: string
@@ -88,9 +92,13 @@ export default async function SalesPage({
     const bName = Array.isArray(row.branches) ? row.branches[0]?.name : (row.branches as { name: string } | null)?.name ?? 'فرع'
     const key = `${row.branch_id}::${row.product_name}`
     const qty = Number(row.sales_qty ?? 0)
-    const isDouble = isDoubleProduct(row.product_name)
+
+    // Strict Double Definition lookup
+    const prodMeta = (row.product_id ? productMasterMap.get(row.product_id) : null) ??
+                     productByNameMap.get(row.product_name.trim().toLowerCase())
+    const isDouble = prodMeta?.isDouble ?? false
     const stdQty = isDouble ? qty * 2 : qty
-    const unitPrice = Number(row.unit_value ?? 0)
+    const unitPrice = prodMeta?.cartonPrice ?? Number(row.unit_value ?? 0)
     const val = qty * unitPrice
 
     const existing = rowsMap.get(key)
@@ -113,11 +121,15 @@ export default async function SalesPage({
       existing.rawQty += qty
       existing.standardizedQty += stdQty
       existing.salesValue += val
-      existing.unitPrice = existing.standardizedQty > 0 ? existing.salesValue / existing.standardizedQty : existing.unitPrice
+      existing.unitPrice = existing.rawQty > 0 ? existing.salesValue / existing.rawQty : existing.unitPrice
     }
   }
 
   const tableRows = [...rowsMap.values()].sort((a, b) => b.salesValue - a.salesValue)
+  const totalTableRawQty = tableRows.reduce((sum, r) => sum + r.rawQty, 0)
+  const totalTableStdQty = tableRows.reduce((sum, r) => sum + r.standardizedQty, 0)
+  const totalTableSalesVal = tableRows.reduce((sum, r) => sum + r.salesValue, 0)
+  const tableAvgCartonPrice = totalTableRawQty > 0 ? totalTableSalesVal / totalTableRawQty : 0
 
   // Find Extremes (أعلى وأقل القيم كبيانات وليس كتقييم إداري)
   const topProduct = data.products[0]
@@ -240,27 +252,36 @@ export default async function SalesPage({
             { key: 'productName', label: 'الصنف' },
           ]}
           topTotals={{
-            'إجمالي المبيعات': `${money(cur.netSales)} ج.م`,
-            'الكمية الفعلية': num(cur.salesQty),
-            'الكمية الموحدة (x2)': num(cur.standardizedQty),
-            'إجمالي الخصم': `${money(cur.discounts)} ج.م`,
+            'إجمالي المبيعات': `${money(cur.netSales)} EGP`,
+            'الكمية الفعلية (كرتونة)': `${num(cur.salesQty)} كرتونة`,
+            'الكمية الموحدة (Double×2)': `${num(cur.standardizedQty)} كرتونة موحدة`,
+            'إجمالي الخصم': `${money(cur.discounts)} EGP`,
+          }}
+          bottomTotals={{
+            productName: `الإجمالي العام (${tableRows.length} صنف)`,
+            branchName: '—',
+            rawQty: `${num(totalTableRawQty)} كرتونة`,
+            isDouble: '—',
+            standardizedQty: `${num(totalTableStdQty)} كرتونة موحدة`,
+            salesValue: `${money(totalTableSalesVal)} EGP`,
+            unitPrice: `${money(tableAvgCartonPrice)} EGP`,
           }}
           columns={[
             { key: 'productName', label: 'الصنف', sortable: true },
             { key: 'branchName', label: 'الفرع', sortable: true },
-            { key: 'rawQty', label: 'الكمية الفعلية', numeric: true, sortable: true, render: (r) => num(r.rawQty) },
-            { key: 'isDouble', label: 'Double', render: (r) => (
+            { key: 'rawQty', label: 'الكمية الفعلية (Cartons)', numeric: true, sortable: true, render: (r) => `${num(r.rawQty)} كرتونة` },
+            { key: 'isDouble', label: 'Double (12 عبوة / 570 EGP)', render: (r) => (
               <span className={`pill-badge ${r.isDouble.includes('نعم') ? 'pill-blue' : 'pill-gray'}`}>
                 {r.isDouble}
               </span>
             )},
-            { key: 'standardizedQty', label: 'الكمية الموحدة', numeric: true, sortable: true, render: (r) => (
-              <strong>{num(r.standardizedQty)}</strong>
+            { key: 'standardizedQty', label: 'الكمية الموحدة (Standard Qty)', numeric: true, sortable: true, render: (r) => (
+              <strong>{num(r.standardizedQty)} كرتونة موحدة</strong>
             )},
-            { key: 'salesValue', label: 'قيمة المبيعات (ج.م)', numeric: true, sortable: true, render: (r) => (
-              <strong>{money(r.salesValue)}</strong>
+            { key: 'salesValue', label: 'قيمة المبيعات (EGP)', numeric: true, sortable: true, render: (r) => (
+              <strong>{money(r.salesValue)} EGP</strong>
             )},
-            { key: 'unitPrice', label: 'متوسط سعر البيع', numeric: true, sortable: true, render: (r) => money(r.unitPrice) },
+            { key: 'unitPrice', label: 'متوسط سعر الكرتونة (EGP)', numeric: true, sortable: true, render: (r) => `${money(r.unitPrice)} EGP` },
           ]}
         />
       </section>

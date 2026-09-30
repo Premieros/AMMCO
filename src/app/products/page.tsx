@@ -264,16 +264,26 @@ export default async function ProductsPage({
           }))}
           rowHrefKey="drillHref"
           topTotals={{
-            'عدد الأصناف': data.products.length,
-            'إجمالي المبيعات': `${money(data.currentSummary.netSales)} ج.م`,
-            'الكمية الفعلية': num(data.currentSummary.salesQty),
-            'الكمية الموحدة': num(data.currentSummary.standardizedQty),
+            'عدد الأصناف': `${data.products.length} صنف`,
+            'إجمالي المبيعات': `${money(data.currentSummary.netSales)} EGP`,
+            'الكمية الفعلية (كرتونة)': `${num(data.currentSummary.salesQty)} كرتونة`,
+            'الكمية الموحدة (Double×2)': `${num(data.currentSummary.standardizedQty)} كرتونة موحدة`,
+          }}
+          bottomTotals={{
+            productName: `الإجمالي العام (${data.products.length} صنف)`,
+            isDouble: '—',
+            rawQty: `${num(data.currentSummary.salesQty)} كرتونة`,
+            standardizedQty: `${num(data.currentSummary.standardizedQty)} كرتونة موحدة`,
+            salesValue: `${money(data.currentSummary.netSales)} EGP`,
+            avgPrice: `${money(data.currentSummary.avgUnitPrice)} EGP`,
+            closingStockQty: `${num(data.products.reduce((acc, p) => acc + (p.closingStockQty || 0), 0))} كرتونة`,
+            closingStockValue: `${money(data.currentSummary.inventoryValue)} EGP`,
           }}
           columns={[
             { key: 'productName', label: 'اسم الصنف', sortable: true },
             {
               key: 'isDouble',
-              label: 'Double',
+              label: 'Double (12 عبوة / 570 EGP)',
               render: (r) => (
                 <span className={`pill-badge ${r.isDouble ? 'pill-blue' : 'pill-gray'}`}>
                   {r.isDouble ? 'نعم (×2)' : 'عادي'}
@@ -282,45 +292,45 @@ export default async function ProductsPage({
             },
             {
               key: 'rawQty',
-              label: 'الكمية الفعلية',
+              label: 'الكمية الفعلية (Cartons)',
               numeric: true,
               sortable: true,
-              render: (r) => num(r.rawQty),
+              render: (r) => `${num(r.rawQty)} كرتونة`,
             },
             {
               key: 'standardizedQty',
-              label: 'الكمية الموحدة (x2)',
+              label: 'الكمية الموحدة (Standard Qty)',
               numeric: true,
               sortable: true,
-              render: (r) => <strong>{num(r.standardizedQty)}</strong>,
+              render: (r) => <strong>{num(r.standardizedQty)} كرتونة موحدة</strong>,
             },
             {
               key: 'salesValue',
-              label: 'قيمة المبيعات (ج.م)',
+              label: 'قيمة المبيعات (EGP)',
               numeric: true,
               sortable: true,
-              render: (r) => <strong>{money(r.salesValue)}</strong>,
+              render: (r) => <strong>{money(r.salesValue)} EGP</strong>,
             },
             {
               key: 'avgPrice',
-              label: 'متوسط السعر الموحد',
+              label: 'متوسط سعر الكرتونة (EGP)',
               numeric: true,
               sortable: true,
-              render: (r) => money(r.avgPrice),
+              render: (r) => `${money(r.avgPrice)} EGP`,
             },
             {
               key: 'closingStockQty',
-              label: 'رصيد آخر المخزون (فعلي)',
+              label: 'رصيد آخر المخزون (كرتونة - عمود BI)',
               numeric: true,
               sortable: true,
-              render: (r) => <strong>{num(r.closingStockQty)}</strong>,
+              render: (r) => <strong>{num(r.closingStockQty)} كرتونة</strong>,
             },
             {
               key: 'closingStockValue',
-              label: 'قيمة رصيد آخر',
+              label: 'قيمة رصيد آخر (EGP)',
               numeric: true,
               sortable: true,
-              render: (r) => money(r.closingStockValue),
+              render: (r) => `${money(r.closingStockValue)} EGP`,
             },
           ]}
         />

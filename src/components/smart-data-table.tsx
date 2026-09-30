@@ -32,6 +32,7 @@ interface SmartDataTableProps<T> {
   onExportExcel?: () => void
   groupByOptions?: { key: keyof T | string; label: string }[]
   topTotals?: Record<string, string | number>
+  bottomTotals?: Record<string, string | number | React.ReactNode>
 }
 
 export function SmartDataTable<T extends Record<string, any>>({
@@ -43,6 +44,7 @@ export function SmartDataTable<T extends Record<string, any>>({
   onExportExcel,
   groupByOptions = [],
   topTotals,
+  bottomTotals,
 }: SmartDataTableProps<T>) {
   const [searchTerm, setSearchTerm] = useState('')
   const [sortKey, setSortKey] = useState<string>('')
@@ -386,6 +388,31 @@ export function SmartDataTable<T extends Record<string, any>>({
               })
             )}
           </tbody>
+
+          {(bottomTotals || topTotals) && (
+            <tfoot className="excel-table-tfoot">
+              <tr className="totals-row">
+                {activeCols.map((col, idx) => {
+                  const k = String(col.key)
+                  const isFirstCol = idx === 0
+                  const directVal = bottomTotals ? bottomTotals[k] : undefined
+                  const matchedTopVal = topTotals ? (topTotals[col.label] ?? topTotals[k]) : undefined
+                  const val = directVal ?? matchedTopVal
+
+                  return (
+                    <th
+                      key={`total-${k}`}
+                      className={`total-cell ${isFirstCol ? 'sticky-first-col' : ''} ${
+                        col.numeric ? 'cell-numeric' : ''
+                      }`}
+                    >
+                      {val !== undefined ? val : (isFirstCol ? 'الإجمالي العام' : '—')}
+                    </th>
+                  )
+                })}
+              </tr>
+            </tfoot>
+          )}
         </table>
       </div>
 
