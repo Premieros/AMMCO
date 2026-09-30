@@ -10,7 +10,9 @@ function money(v:number){return new Intl.NumberFormat('en-US',{style:'currency',
 export default async function InventoryMovement({searchParams}:{searchParams:Promise<{branch?:string;from?:string;to?:string}>}){
  const f=await searchParams, from=f.from??'2026-09-01', to=f.to??'2026-09-30'
  const supabase=await createClient(); const {data:auth}=await supabase.auth.getClaims(); if(!auth?.claims?.sub) redirect('/login')
- let q=supabase.from('inventory_daily').select('branch_id,business_date,product_id,product_name,opening_qty,incoming_factory_qty,incoming_branches_qty,sales_qty,bonus_qty,gifts_qty,damages_qty,return_factory_qty,outgoing_branches_qty,adjustments_qty,closing_qty,unit_value,closing_value').gte('business_date',from).lte('business_date',to).order('business_date')
+ const {data:approvedBatches}=await supabase.from('import_batches').select('id').eq('status','approved')
+ const approvedIds=(approvedBatches??[]).map(b=>b.id)
+ let q=supabase.from('inventory_daily').select('branch_id,business_date,product_id,product_name,opening_qty,incoming_factory_qty,incoming_branches_qty,sales_qty,bonus_qty,gifts_qty,damages_qty,return_factory_qty,outgoing_branches_qty,adjustments_qty,closing_qty,unit_value,closing_value').in('batch_id',approvedIds.length?approvedIds:['00000000-0000-0000-0000-000000000000']).gte('business_date',from).lte('business_date',to).order('business_date')
  if(f.branch) q=q.eq('branch_id',f.branch)
  const [{data},{data:branchesData}]=await Promise.all([q,supabase.from('branches').select('id,name').eq('is_active',true).order('name')])
  const branchNames=new Map((branchesData??[]).map(b=>[b.id,b.name] as const)); const rows=(data??[]) as Row[]
