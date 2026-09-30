@@ -1,5 +1,6 @@
 import { createClient } from 'https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2.117.2/+esm'
 import { parseWorkbookBrowser } from './workbook-parser.js'
+import * as XLSX from 'https://cdn.jsdelivr.net/npm/xlsx@0.18.5/+esm'
 
 const SUPABASE_URL='https://yumeijsyiphzdsulsubf.supabase.co'
 const SUPABASE_KEY='eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6Inl1bWVpanN5aXBoemRzdWxzdWJmIiwicm9sZSI6ImFub24iLCJpYXQiOjE3OTA2ODk1ODAsImV4cCI6MjEwNjI2NTU4MH0.Hpy2VZpttnQGdrx6_6Y1c9w4iHG2HhopvFdrohk3BBE'
@@ -77,36 +78,91 @@ function scope(from,to,branch){return `<div class="scope report-meta"><span><b>$
 const escapeHtml=v=>String(v??'').replace(/[&<>"']/g,m=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[m]))
 const escapeAttr=v=>escapeHtml(v)
 function table(title,cols,rows,totalRow=''){
- const filterRow=cols.map((col,index)=>{
-  if(col.filter===false)return '<th></th>'
-  const values=[...new Set(rows.map(r=>String(r[col.key]??'').replace(/<[^>]*>/g,'').trim()).filter(Boolean))]
-  if(values.length>0&&values.length<=24){
-   return `<th><select class="col-filter" data-col="${index}" onchange="applyTableFilters(this)"><option value="">الكل</option>${values.sort((a,b)=>a.localeCompare(b,'ar',{numeric:true})).map(v=>`<option value="${escapeAttr(v)}">${escapeHtml(v)}</option>`).join('')}</select></th>`
-  }
-  return `<th><input class="col-filter" data-col="${index}" placeholder="فلتر…" oninput="applyTableFilters(this)"></th>`
+ const headers=cols.map((col,index)=>{
+  if(col.filter===false)return '<th>'+col.label+'</th>'
+  const values=[...new Set(rows.map(r=>String(r[col.key]??'').replace(/<[^>]*>/g,'').trim()).filter(Boolean))].sort((a,b)=>a.localeCompare(b,'ar',{numeric:true}))
+  const encoded=encodeURIComponent(JSON.stringify(values))
+  return '<th><div class="th-filter-wrap"><span>'+col.label+'</span><button class="excel-filter-btn" type="button" data-col="'+index+'" data-values="'+encoded+'" onclick="openExcelFilter(this)" title="فلتر العمود">⌄</button></div></th>'
  }).join('')
- return `<section class="table-card"><div class="table-head"><div><h2>${title}</h2><small>${rows.length} صف</small></div><div class="table-tools"><input class="search" placeholder="بحث…" oninput="applyTableFilters(this)"><button class="tool-btn" type="button" onclick="clearTableFilters(this)">مسح الفلاتر</button><button class="tool-btn" type="button" onclick="exportVisibleTable(this)">CSV</button><button class="tool-btn" type="button" onclick="window.print()">طباعة</button></div></div><div class="table-wrap"><table><thead><tr>${cols.map(c=>`<th>${c.label}<span class="filter-mark">⌄</span></th>`).join('')}</tr><tr class="column-filter-row">${filterRow}</tr></thead><tbody>${rows.map(r=>`<tr>${cols.map(c=>`<td class="${c.num?'num':''} ${c.key==='branch_name'?'row-label':''}">${r[c.key]??'-'}</td>`).join('')}</tr>`).join('')}${totalRow}</tbody></table></div></section>`
+ return '<section class="table-card" data-report-title="'+escapeAttr(title)+'">'+
+  '<div class="table-head"><div><h2>'+title+'</h2><small>'+rows.length+' صف</small></div>'+
+  '<div class="table-tools"><input class="search" placeholder="بحث…" oninput="applyTableFilters(this)">'+
+  '<button class="tool-btn" type="button" onclick="clearTableFilters(this)">مسح الفلاتر</button>'+
+  '<button class="tool-btn" type="button" onclick="exportVisibleTableXlsx(this)">Excel</button>'+
+  '<button class="tool-btn" type="button" onclick="printReportOnly(this)">طباعة</button></div></div>'+
+  '<div class="table-wrap"><table><thead><tr>'+headers+'</tr></thead><tbody>'+
+  rows.map(r=>'<tr>'+cols.map(col=>'<td class="'+(col.num?'num ':'')+(col.key==='branch_name'?'row-label':'')+'">'+(r[col.key]??'-')+'</td>').join('')+'</tr>').join('')+
+  totalRow+'</tbody></table></div></section>'
+}
+window.__tableFilters=new WeakMap()
+window.openExcelFilter=button=>{
+ document.getElementById('excel-filter-popover')?.remove()
+ const card=button.closest('.table-card'),col=Number(button.dataset.col||0)
+ const allValues=JSON.parse(decodeURIComponent(button.dataset.values||'%5B%5D'))
+ const state=window.__tableFilters.get(card)||{}
+ const selected=new Set(state[col]||allValues)
+ const rect=button.getBoundingClientRect()
+ const options=allValues.map(v=>'<label class="excel-filter-option"><input type="checkbox" value="'+escapeAttr(v)+'" '+(selected.has(v)?'checked':'')+'><span>'+escapeHtml(v)+'</span></label>').join('')
+ const html='<div class="excel-filter-popover" id="excel-filter-popover" style="top:'+(rect.bottom+6+window.scrollY)+'px;left:'+Math.max(8,rect.left-225+window.scrollX)+'px">'+
+  '<div class="excel-filter-search"><input placeholder="بحث في القيم…" oninput="filterExcelChoices(this)"></div>'+
+  '<div class="excel-filter-actions"><button type="button" onclick="toggleExcelChoices(true)">تحديد الكل</button><button type="button" onclick="toggleExcelChoices(false)">إلغاء الكل</button></div>'+
+  '<div class="excel-filter-list">'+options+'</div>'+
+  '<div class="excel-filter-footer"><button class="btn secondary" type="button" onclick="document.getElementById(\'excel-filter-popover\').remove()">إلغاء</button><button class="btn" type="button" onclick="applyExcelChoiceFilter()">تطبيق</button></div></div>'
+ document.body.insertAdjacentHTML('beforeend',html)
+ const pop=document.getElementById('excel-filter-popover');pop.dataset.col=String(col);pop.__card=card
+}
+window.filterExcelChoices=input=>{
+ const q=input.value.trim().toLowerCase()
+ input.closest('.excel-filter-popover').querySelectorAll('.excel-filter-option').forEach(label=>label.style.display=label.innerText.toLowerCase().includes(q)?'flex':'none')
+}
+window.toggleExcelChoices=checked=>{
+ document.querySelectorAll('#excel-filter-popover .excel-filter-option').forEach(label=>{if(label.style.display!=='none')label.querySelector('input').checked=checked})
+}
+window.applyExcelChoiceFilter=()=>{
+ const pop=document.getElementById('excel-filter-popover');if(!pop)return
+ const card=pop.__card,col=Number(pop.dataset.col)
+ const picked=[...pop.querySelectorAll('.excel-filter-option input:checked')].map(x=>x.value)
+ const state=window.__tableFilters.get(card)||{};state[col]=picked;window.__tableFilters.set(card,state)
+ const btn=card.querySelector('.excel-filter-btn[data-col="'+col+'"]')
+ if(btn){const all=JSON.parse(decodeURIComponent(btn.dataset.values||'%5B%5D'));btn.classList.toggle('active',picked.length!==all.length)}
+ pop.remove();applyTableFilters(card.querySelector('.search'))
 }
 window.applyTableFilters=source=>{
- const card=source.closest('.table-card'),q=(card.querySelector('.search')?.value||'').trim().toLowerCase(),filters=[...card.querySelectorAll('.col-filter')]
+ const card=source.closest('.table-card'),q=(card.querySelector('.search')?.value||'').trim().toLowerCase(),state=window.__tableFilters.get(card)||{}
  const rows=[...card.querySelectorAll('tbody tr:not(.total)')]
  rows.forEach(row=>{
   const cells=[...row.children]
   const globalOk=!q||row.innerText.toLowerCase().includes(q)
-  const colsOk=filters.every(f=>{const v=(f.value||'').trim().toLowerCase();if(!v)return true;const cell=(cells[Number(f.dataset.col)]?.innerText||'').trim().toLowerCase();return f.tagName==='SELECT'?cell===v:cell.includes(v)})
+  const colsOk=Object.entries(state).every(([key,selected])=>Array.isArray(selected)&&selected.length>0&&selected.includes((cells[Number(key)]?.innerText||'').trim()))
   row.style.display=globalOk&&colsOk?'':'none'
  })
 }
 window.filterTable=input=>window.applyTableFilters(input)
-window.clearTableFilters=button=>{const card=button.closest('.table-card');card.querySelectorAll('.search,.col-filter').forEach(el=>el.value='');window.applyTableFilters(card.querySelector('.search'))}
-window.resetReportFilters=()=>{const r=route().split('?')[0];location.hash=`#/${r}`}
-window.exportVisibleTable=button=>{
- const card=button.closest('.table-card'),rows=[...card.querySelectorAll('tr')].filter(r=>r.style.display!=='none')
- const csv='\uFEFF'+rows.map(r=>[...r.children].map(c=>`"${c.innerText.replace(/"/g,'""')}"`).join(',')).join('\n')
- const blob=new Blob([csv],{type:'text/csv;charset=utf-8;'}),url=URL.createObjectURL(blob),a=document.createElement('a')
- a.href=url;a.download=(card.querySelector('h2')?.innerText||'AMMCO-report')+'.csv';a.click();URL.revokeObjectURL(url)
+window.clearTableFilters=button=>{
+ const card=button.closest('.table-card');card.querySelector('.search').value='';window.__tableFilters.delete(card)
+ card.querySelectorAll('.excel-filter-btn').forEach(b=>b.classList.remove('active'));applyTableFilters(card.querySelector('.search'))
 }
-
+window.resetReportFilters=()=>{const r=route().split('?')[0];location.hash='#/'+r}
+window.exportVisibleTableXlsx=button=>{
+ const card=button.closest('.table-card'),tableEl=card.querySelector('table')
+ const visibleRows=[...tableEl.querySelectorAll('tr')].filter(r=>r.style.display!=='none')
+ const matrix=visibleRows.map(r=>[...r.children].map(cell=>cell.innerText.trim()))
+ const ws=XLSX.utils.aoa_to_sheet(matrix)
+ ws['!cols']=(matrix[0]||[]).map((_,i)=>({wch:Math.min(40,Math.max(10,...matrix.map(r=>String(r[i]||'').length+2)))}))
+ const wb=XLSX.utils.book_new();XLSX.utils.book_append_sheet(wb,ws,'Report')
+ const title=(card.dataset.reportTitle||'AMMCO-report').replace(/[\\/:*?"<>|]/g,'-')
+ XLSX.writeFile(wb,title+'.xlsx',{compression:true})
+}
+window.printReportOnly=button=>{
+ const card=button.closest('.table-card'),title=card.dataset.reportTitle||'تقرير AMMCO',meta=document.querySelector('.report-meta')?.innerText||''
+ const table=card.querySelector('table').cloneNode(true)
+ ;[...table.querySelectorAll('tbody tr')].forEach(r=>{if(r.style.display==='none')r.remove()})
+ table.querySelectorAll('.excel-filter-btn').forEach(x=>x.remove())
+ const win=window.open('','_blank','width=1100,height=760');if(!win)return
+ win.document.write('<!doctype html><html lang="ar" dir="rtl"><head><meta charset="utf-8"><title>'+escapeHtml(title)+'</title><style>'+
+ 'body{font-family:"IBM Plex Sans Arabic","Segoe UI",Tahoma,Arial,sans-serif;margin:18px;color:#172033}h1{font-size:18px;margin:0 0 4px}.meta{font-size:11px;color:#64748b;margin-bottom:12px}table{width:100%;border-collapse:collapse;font-size:11px}th{background:#dce9f4;font-weight:700}th,td{border:1px solid #d9e1ea;padding:6px 8px;text-align:right}td.num{direction:ltr;text-align:right;font-weight:600}tr:nth-child(even) td{background:#fafbfd}.total th,.total td{background:#e4eef6;font-weight:700}@page{size:landscape;margin:10mm}</style></head><body><h1>'+escapeHtml(title)+'</h1><div class="meta">'+escapeHtml(meta)+'</div>'+table.outerHTML+'<script>window.onload=function(){window.focus();window.print()}<\/script></body></html>')
+ win.document.close()
+}
 async function render(){
  if(!session) return renderLogin()
  if(!profile?.is_active) return shell('AMMCO','الحساب غير مهيأ أو غير نشط','<div class="notice">راجع مدير النظام لربط الحساب بالمؤسسة.</div>')
