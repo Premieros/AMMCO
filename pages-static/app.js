@@ -235,10 +235,11 @@ function renderUploads(){
   </section>`)
  document.getElementById('upload-form')?.addEventListener('submit',async e=>{
   e.preventDefault()
+  const form=e.currentTarget
   const button=document.getElementById('upload-btn'); const msg=document.getElementById('upload-msg')
   button.disabled=true; button.textContent='جاري القراءة…'; msg.innerHTML=''
   try{
-   const fd=new FormData(e.currentTarget)
+   const fd=new FormData(form)
    const file=fd.get('file')
    if(!(file instanceof File)) throw new Error('اختر ملف Excel')
    const periodStart=String(fd.get('period_start')||'')
@@ -267,7 +268,7 @@ function renderUploads(){
    }else{
     msg.innerHTML=`<div class="success">تم رفع وتحليل الإصدار ${out.version} بنجاح: ${parsed.stats.sheetCount} صفحة، ${parsed.stats.representativeRowCount} سجل مندوب، ${parsed.stats.inventoryDailyRowCount} حركة صنف، ${parsed.stats.productCount} صنف.</div>`
    }
-   e.currentTarget.reset()
+   form.reset()
   }catch(err){msg.innerHTML=`<div class="error">${err.message||err}</div>`}
   finally{button.disabled=false;button.textContent='رفع الملف'}
  })
