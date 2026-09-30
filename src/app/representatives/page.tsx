@@ -10,7 +10,9 @@ function money(v:number){return new Intl.NumberFormat('en-US',{style:'currency',
 function pct(v:number){return `${new Intl.NumberFormat('en-US',{maximumFractionDigits:1}).format(v*100)}%`}
 export default async function RepresentativePerformance({searchParams}:{searchParams:Promise<{branch?:string;from?:string;to?:string}>}){
  const f=await searchParams; const from=f.from??'2026-09-01'; const to=f.to??'2026-09-30'; const supabase=await createClient(); const {data:auth}=await supabase.auth.getClaims(); if(!auth?.claims?.sub) redirect('/login')
- let q=supabase.from('sales_rep_daily').select('branch_id,business_date,rep_name,opening_balance,sales_before_discount,net_after_discount,discounts,deposit_amount,expense_amount,closing_balance').gte('business_date',from).lte('business_date',to).order('business_date')
+ const {data:approvedBatches}=await supabase.from('import_batches').select('id').eq('status','approved')
+ const approvedIds=(approvedBatches??[]).map(b=>b.id)
+ let q=supabase.from('sales_rep_daily').select('branch_id,business_date,rep_name,opening_balance,sales_before_discount,net_after_discount,discounts,deposit_amount,expense_amount,closing_balance').in('batch_id',approvedIds.length?approvedIds:['00000000-0000-0000-0000-000000000000']).gte('business_date',from).lte('business_date',to).order('business_date')
  if(f.branch)q=q.eq('branch_id',f.branch)
  const [{data},{data:branchesData}]=await Promise.all([q,supabase.from('branches').select('id,name').eq('is_active',true).order('name')])
  const reps=(data??[]) as Rep[]; const branchNames=new Map((branchesData??[]).map(b=>[b.id,b.name] as const))
