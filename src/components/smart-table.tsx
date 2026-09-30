@@ -74,6 +74,22 @@ export function SmartTable({
     return next
   }, [rows, columns, search, selectedBranches, branchKey, columnFilters, sort])
 
+  const exportCsv = () => {
+    const header = visibleColumns.map((column) => column.label)
+    const body = filteredRows.map((row) => visibleColumns.map((column) => {
+      const value = text(row[column.key]).replace(/"/g, '""')
+      return `"${value}"`
+    }))
+    const csv = '\uFEFF' + [header.map((value) => `"${value.replace(/"/g, '""')}"`).join(','), ...body.map((row) => row.join(','))].join('\n')
+    const blob = new Blob([csv], { type: 'text/csv;charset=utf-8;' })
+    const url = URL.createObjectURL(blob)
+    const anchor = document.createElement('a')
+    anchor.href = url
+    anchor.download = `${title || 'AMMCO-report'}.csv`
+    anchor.click()
+    URL.revokeObjectURL(url)
+  }
+
   const toggleSort = (key: string) => {
     setSort((current) =>
       !current || current.key !== key
@@ -141,6 +157,8 @@ export function SmartTable({
               ))}
             </div>
           </details>
+          <button type="button" className="btn secondary" onClick={exportCsv}>تصدير CSV</button>
+          <button type="button" className="btn secondary" onClick={() => window.print()}>طباعة</button>
           {activeFilterCount > 0 ? (
             <button
               type="button"
