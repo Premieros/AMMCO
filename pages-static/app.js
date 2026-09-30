@@ -70,7 +70,8 @@ window.changeUnifiedReport=select=>{
 
 function shell(title,subtitle,body){
  const r=route().split('?')[0],sheetSection=sheetSectionForRoute(r)
- app.innerHTML=`<div class="shell">
+ const sidebarCollapsed=localStorage.getItem('ammco.sidebar.collapsed')==='1'
+ app.innerHTML=`<div class="shell ${sidebarCollapsed?'sidebar-collapsed':''}">
  <aside class="sidebar">
   <div class="brand"><div class="logo">A</div><div><b>AMMCO</b><small>Management Intelligence</small></div></div>
 
@@ -91,6 +92,7 @@ function shell(title,subtitle,body){
   <header class="topbar">
    <div class="topbar-context"><span>تقرير الإدارة</span><b>${sheetSection}</b></div>
    <div class="actions">
+    <button class="btn secondary sidebar-toggle" type="button" onclick="toggleSidebar()" title="إخفاء أو إظهار القائمة">☰ القائمة</button>
     <button class="btn secondary" onclick="location.hash='#/branches'">+ فرع</button>
     <button class="btn" onclick="location.hash='#/uploads'">رفع شيت</button>
     <button class="btn secondary" id="logout">خروج</button>
@@ -111,6 +113,11 @@ function shell(title,subtitle,body){
  </div>`
  document.getElementById('logout')?.addEventListener('click',async()=>{await supabase.auth.signOut();location.hash='';})
  document.getElementById('report-picker')?.addEventListener('change',e=>changeUnifiedReport(e.currentTarget))
+}
+window.toggleSidebar=()=>{
+ const shell=document.querySelector('.shell');if(!shell)return
+ const collapsed=shell.classList.toggle('sidebar-collapsed')
+ localStorage.setItem('ammco.sidebar.collapsed',collapsed?'1':'0')
 }
 function branchOptions(selected=''){return `<option value="">كل الفروع</option>${branches.map(b=>`<option value="${b.id}" ${selected===b.id?'selected':''}>${b.name}</option>`).join('')}`}
 function filters(from,to,branch){return `<form id="filters" class="filters compact-filters">
@@ -297,6 +304,16 @@ function currentFilters(){const p=qs();return {branch:p.get('branch')||'',from:p
 async function loadDaily(branch,from,to){
  let q=supabase.from('v_branch_daily_kpis').select('*').gte('business_date',from).lte('business_date',to).order('business_date');if(branch)q=q.eq('branch_id',branch);const {data,error}=await q;if(error)throw error;return data||[]
 }
+function latestInventoryByProduct(rows){
+ const latest=new Map()
+ ;(rows||[]).forEach(r=>{
+  const key=r.branch_id+'|'+(r.product_id||r.product_name||'')
+  const prev=latest.get(key)
+  if(!prev||String(r.business_date)>String(prev.business_date)||(String(r.business_date)===String(prev.business_date)&&Number(r.id||0)>Number(prev.id||0)))latest.set(key,r)
+ })
+ return [...latest.values()]
+}
+
 function managementDashboardTable(rows,totalRow){
  const cols=[
   {key:'branch_name',label:'الفرع'},
@@ -340,7 +357,7 @@ async function renderDashboard(){
   .in('batch_id',ids.length?ids:['00000000-0000-0000-0000-000000000000'])
   .gte('business_date',from).lte('business_date',to).order('business_date')
  let invQ=supabase.from('inventory_daily')
-  .select('branch_id,product_id,sales_qty')
+  .select('id,branch_id,business_date,product_id,product_name,sales_qty,closing_qty,closing_value')
   .in('batch_id',ids.length?ids:['00000000-0000-0000-0000-000000000000'])
   .gte('business_date',from).lte('business_date',to)
  let prodQ=supabase.from('products').select('id,box_count').eq('is_active',true)
@@ -381,9 +398,14 @@ async function renderDashboard(){
   carBy.set(r.branch_id,x)
  })
 
+ const latestInventory=latestInventoryByProduct(inventoryRows),inventoryByBranch=new Map()
+ latestInventory.forEach(r=>{
+  const x=inventoryByBranch.get(r.branch_id)||{qty:0,value:0}
+  x.qty+=Number(r.closing_qty||0);x.value+=Number(r.closing_value||0);inventoryByBranch.set(r.branch_id,x)
+ })
  const raw=[...by.entries()].map(([id,x])=>{
-  const wh=whLatest.get(id)||{},car=carBy.get(id)||{fuel:0,petro:0,maintenance:0},equivCartons=Number(equivCartonsBy.get(id)||0)
-  return {...x,id,equivCartons,avgPrice:equivCartons?x.net/equivCartons:0,fuel:car.fuel,petro:car.petro,maintenance:car.maintenance,inventoryQty:Number(wh.closing_qty||0),inventoryValue:Number(wh.closing_value||0)}
+  const inv=inventoryByBranch.get(id)||{qty:0,value:0},car=carBy.get(id)||{fuel:0,petro:0,maintenance:0},equivCartons=Number(equivCartonsBy.get(id)||0)
+  return {...x,id,equivCartons,avgPrice:equivCartons?x.net/equivCartons:0,fuel:car.fuel,petro:car.petro,maintenance:car.maintenance,inventoryQty:inv.qty,inventoryValue:inv.value}
  }).sort((a,b)=>b.net-a.net)
 
  const rows=raw.map(x=>({
@@ -416,7 +438,7 @@ async function renderExecutive(){
  const daily=await loadDaily(branch,from,to)
  const ids=await approvedIds()
  let whQ=supabase.from('warehouse_daily_summary').select('branch_id,business_date,opening_qty,opening_value,incoming_factory_qty,incoming_factory_value,incoming_branches_qty,incoming_branches_value,sales_qty,sales_value,bonus_qty,bonus_value,gifts_qty,gifts_value,damages_qty,damages_value,return_factory_qty,return_factory_value,outgoing_branches_qty,outgoing_branches_value,adjustment_qty,adjustment_value,closing_qty,closing_value').in('batch_id',ids.length?ids:['00000000-0000-0000-0000-000000000000']).gte('business_date',from).lte('business_date',to).order('business_date')
- let invQ=supabase.from('inventory_daily').select('branch_id,product_id,sales_qty').in('batch_id',ids.length?ids:['00000000-0000-0000-0000-000000000000']).gte('business_date',from).lte('business_date',to)
+ let invQ=supabase.from('inventory_daily').select('id,branch_id,business_date,product_id,product_name,sales_qty,closing_qty,closing_value').in('batch_id',ids.length?ids:['00000000-0000-0000-0000-000000000000']).gte('business_date',from).lte('business_date',to)
  let prodQ=supabase.from('products').select('id,box_count').eq('is_active',true)
  let expQ=supabase.from('v_expense_analysis').select('branch_id,canonical_category,expense_group,amount').gte('entry_date',from).lte('entry_date',to)
  if(branch){whQ=whQ.eq('branch_id',branch);invQ=invQ.eq('branch_id',branch);expQ=expQ.eq('branch_id',branch)}
@@ -463,9 +485,14 @@ async function renderExecutive(){
   if(/صيان|maintenance/.test(txt))x.maintenance+=Number(r.amount||0)
   carExp.set(r.branch_id,x)
  })
+ const latestInventory=latestInventoryByProduct(inventoryRows),inventoryByBranch=new Map()
+ latestInventory.forEach(r=>{
+  const x=inventoryByBranch.get(r.branch_id)||{qty:0,value:0}
+  x.qty+=Number(r.closing_qty||0);x.value+=Number(r.closing_value||0);inventoryByBranch.set(r.branch_id,x)
+ })
  const raw=[...by.entries()].map(([id,x])=>{
-  const wh=whLatest.get(id)||{},car=carExp.get(id)||{fuel:0,petro:0,maintenance:0}
-  return {id,...x,inventoryQty:Number(wh.closing_qty||0),inventoryValue:Number(wh.closing_value||x.inventoryValue||0),equivCartons:Number(equivCartonsBy.get(id)||0),fuel:car.fuel,petro:car.petro,maintenance:car.maintenance}
+  const inv=inventoryByBranch.get(id)||{qty:0,value:0},car=carExp.get(id)||{fuel:0,petro:0,maintenance:0}
+  return {id,...x,inventoryQty:inv.qty,inventoryValue:inv.value,equivCartons:Number(equivCartonsBy.get(id)||0),fuel:car.fuel,petro:car.petro,maintenance:car.maintenance}
  }).sort((a,b)=>b.net-a.net)
 
  const rows=raw.map(x=>({
@@ -944,7 +971,43 @@ async function renderInventory(){
  ],rows))
  bindFilters('inventory')
 }
-async function renderProducts(){const {branch,from,to}=currentFilters();const ids=await approvedIds();let q=supabase.from('inventory_daily').select('branch_id,product_name,sales_qty,closing_qty,closing_value').in('batch_id',ids.length?ids:['00000000-0000-0000-0000-000000000000']).gte('business_date',from).lte('business_date',to);if(branch)q=q.eq('branch_id',branch);const {data,error}=await q;if(error)throw error;const bset=branch?branches.filter(b=>b.id===branch):branches;const matrix=new Map();(data||[]).forEach(r=>{const x=matrix.get(r.product_name)||{};const c=x[r.branch_id]||{sales:0,closing:0,value:0};c.sales+=+r.sales_qty||0;c.closing=+r.closing_qty||c.closing;c.value=+r.closing_value||c.value;x[r.branch_id]=c;matrix.set(r.product_name,x)});const rows=[...matrix.entries()].map(([product,cells])=>{let html=`<td class="row-label">${product}</td>`;for(const b of bset){const c=cells[b.id]||{};html+=`<td class="num">${money(c.sales)}</td><td class="num">${money(c.closing)}</td><td class="num">${money(c.value)}</td>`}return `<tr>${html}</tr>`}).join('');const head=bset.map((b,i)=>`<th colspan="3" class="${i%2?'group-green':'group-blue'}">${b.name}</th>`).join('');const sub=bset.map(()=>'<th>بيع</th><th>رصيد</th><th>قيمة</th>').join('');shell('مصفوفة الأصناف','الصنف × الفروع',filters(from,to,branch)+scope(from,to,branch)+`<section class="table-card matrix"><div class="table-head"><h2>Product Sales & Stock Matrix</h2></div><div class="table-wrap"><table><thead><tr><th rowspan="2">الصنف</th>${head}</tr><tr>${sub}</tr></thead><tbody>${rows}</tbody></table></div></section>`);bindFilters('products')}
+async function renderProducts(){
+ const {branch,from,to}=currentFilters(),ids=await approvedIds()
+ let q=supabase.from('inventory_daily')
+  .select('id,branch_id,business_date,product_id,product_name,sales_qty,closing_qty,closing_value')
+  .in('batch_id',ids.length?ids:['00000000-0000-0000-0000-000000000000'])
+  .gte('business_date',from).lte('business_date',to)
+  .order('business_date',{ascending:true})
+ if(branch)q=q.eq('branch_id',branch)
+ const {data,error}=await q;if(error)throw error
+ const bset=branch?branches.filter(b=>b.id===branch):branches
+ const sales=new Map()
+ ;(data||[]).forEach(r=>{
+  const key=r.branch_id+'|'+(r.product_id||r.product_name)
+  sales.set(key,(sales.get(key)||0)+Number(r.sales_qty||0))
+ })
+ const latest=latestInventoryByProduct(data||[]),matrix=new Map()
+ latest.forEach(r=>{
+  const x=matrix.get(r.product_name)||{}
+  const key=r.branch_id+'|'+(r.product_id||r.product_name)
+  x[r.branch_id]={sales:sales.get(key)||0,closing:Number(r.closing_qty||0),value:Number(r.closing_value||0),date:r.business_date}
+  matrix.set(r.product_name,x)
+ })
+ const rows=[...matrix.entries()].sort((a,b)=>a[0].localeCompare(b[0],'ar')).map(([product,cells])=>{
+  let html='<td class="row-label">'+escapeHtml(product)+'</td>'
+  for(const b of bset){
+   const x=cells[b.id]
+   html+='<td class="num">'+(x?qty(x.sales):'—')+'</td><td class="num">'+(x?qty(x.closing):'—')+'</td><td class="num">'+(x?money(x.value):'—')+'</td>'
+  }
+  return '<tr>'+html+'</tr>'
+ }).join('')
+ const head=bset.map((b,i)=>'<th colspan="3" class="'+(i%2?'group-green':'group-blue')+'">'+escapeHtml(b.name)+'</th>').join('')
+ const sub=bset.map(()=>'<th>بيع</th><th>رصيد آخر</th><th>قيمة رصيد آخر</th>').join('')
+ shell('أرصدة ومصفوفة الأصناف','الرصيد = عمود رصيد آخر لنفس الصنف في آخر يوم متاح',
+  filters(from,to,branch)+scope(from,to,branch)+
+  '<section class="table-card matrix"><div class="table-head"><div><h2>أرصدة الفروع حسب آخر رصيد للصنف</h2><small>'+matrix.size+' صنف</small></div></div><div class="table-wrap"><table><thead><tr><th rowspan="2">الصنف</th>'+head+'</tr><tr>'+sub+'</tr></thead><tbody>'+rows+'</tbody></table></div></section>')
+ bindFilters('products')
+}
 async function renderBranches(){const {data,error}=await supabase.from('branches').select('id,name,code,is_active,created_at,treasury_accounts(id,is_active)').order('created_at');if(error)throw error;const rows=(data||[]).map(b=>({name:b.name,code:b.code,status:b.is_active?'نشط':'متوقف',treasuries:(b.treasury_accounts||[]).filter(x=>x.is_active).length,created_at:new Date(b.created_at).toLocaleString('en-GB')}));const add=profile?.role==='admin'?`<section class="card" style="margin-bottom:14px"><h2>+ إضافة فرع جديد</h2><form id="add-branch" class="filters" style="margin:0"><div class="field"><label>اسم الفرع</label><input name="name" required></div><div class="field"><label>كود الفرع</label><input name="code" dir="ltr" required></div><div></div><div class="field"><label>&nbsp;</label><button class="btn">إنشاء الفرع</button></div></form><div id="branch-msg"></div></section>`:'';shell('إدارة الفروع','إضافة الفروع وإدارة الحالة',add+table('الفروع الحالية',[{key:'name',label:'الفرع'},{key:'code',label:'الكود'},{key:'status',label:'الحالة'},{key:'treasuries',label:'عدد الخزائن',num:1},{key:'created_at',label:'تاريخ الإنشاء'}],rows));document.getElementById('add-branch')?.addEventListener('submit',async e=>{e.preventDefault();const fd=new FormData(e.currentTarget);const {error}=await supabase.rpc('create_branch_with_default_treasury',{p_code:String(fd.get('code')).trim(),p_name:String(fd.get('name')).trim()});document.getElementById('branch-msg').innerHTML=error?`<div class="error">${error.message}</div>`:'<div class="success">تم إنشاء الفرع والخزنة الرئيسية.</div>';if(!error)boot()})}
 async function renderImports(){
  const {data,error}=await supabase.from('import_batches').select('id,branch_id,original_file_name,period_start,period_end,version,status,uploaded_at,approved_at,validated_at,failure_message,branches(name)').order('uploaded_at',{ascending:false}).limit(300)
