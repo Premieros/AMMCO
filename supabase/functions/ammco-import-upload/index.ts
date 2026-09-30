@@ -58,7 +58,15 @@ Deno.serve(async (req: Request) => {
   const buffer = await file.arrayBuffer()
   const sha256 = await sha256Hex(buffer)
   const { data: duplicate } = await admin.from('import_batches').select('id,version,status').eq('branch_id', branchId).eq('file_sha256', sha256).maybeSingle()
-  if (duplicate) return json({ error: `هذا الملف مرفوع بالفعل كإصدار ${duplicate.version}` }, 409)
+  if (duplicate) {
+    if (['uploaded','processing','failed','rejected','validated'].includes(duplicate.status)) {
+      if (duplicate.status === 'processing') {
+        await admin.from('import_batches').update({ status: 'uploaded', failure_message: null }).eq('id', duplicate.id)
+      }
+      return json({ batchId: duplicate.id, version: duplicate.version, status: 'uploaded', reused: true })
+    }
+    return json({ error: `هذا الملف مرفوع بالفعل كإصدار ${duplicate.version}` }, 409)
+  }
 
   const { data: latest } = await admin.from('import_batches').select('version').eq('branch_id', branchId).eq('period_start', periodStart).order('version', { ascending: false }).limit(1).maybeSingle()
   const version = (latest?.version ?? 0) + 1
