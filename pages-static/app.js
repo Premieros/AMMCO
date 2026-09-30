@@ -26,6 +26,8 @@ let currentRenderedKey=null
 let bootPromise=null
 
 const pageCacheKey=()=>location.hash||'#/dashboard'
+const cacheableRoutes=new Set(['dashboard','reports','sales','expenses','expense-matrix','receivables','reps','inventory','products','monthly','banks','analytics','executive'])
+const isCacheableRoute=()=>cacheableRoutes.has(route().split('?')[0])
 function clearPageCache(){
  pageViewCache.clear()
  currentRenderedKey=null
@@ -331,12 +333,14 @@ async function renderFresh(){
 async function render(options={}){
  const force=!!options.force
  const targetKey=pageCacheKey()
+ const targetCacheable=isCacheableRoute()
 
- // Preserve the already rendered page as a live DOM node; event listeners stay attached.
+ // Cache read-only reporting pages only. Operational pages must always be fresh.
  if(currentRenderedKey&&currentRenderedKey!==targetKey&&app.firstElementChild){
-  pageViewCache.set(currentRenderedKey,app.firstElementChild)
+  const previousRoute=(currentRenderedKey.replace(/^#\/?/,'').split('?')[0]||'dashboard')
+  if(cacheableRoutes.has(previousRoute))pageViewCache.set(currentRenderedKey,app.firstElementChild)
  }
- if(!force&&pageViewCache.has(targetKey)){
+ if(!force&&targetCacheable&&pageViewCache.has(targetKey)){
   const cached=pageViewCache.get(targetKey)
   app.replaceChildren(cached)
   currentRenderedKey=targetKey
@@ -345,7 +349,8 @@ async function render(options={}){
 
  await renderFresh()
  currentRenderedKey=targetKey
- if(app.firstElementChild)pageViewCache.set(targetKey,app.firstElementChild)
+ if(targetCacheable&&app.firstElementChild)pageViewCache.set(targetKey,app.firstElementChild)
+ else pageViewCache.delete(targetKey)
 }
 
 function renderLogin(){
@@ -1608,6 +1613,7 @@ function renderUploads(){
  }))
  shell('رفع شيتات الفروع','12 مسار رفع في نفس الشاشة مع متابعة مستقلة لكل فرع',`
   <div id="upload-msg"></div>
+  <div class="bulk-live-summary" id="bulk-live-summary">الحالة الحالية: 0 جاهز • 0 يعمل • 0 نجح • 0 مراجعة • 0 فشل</div>
   <section class="card bulk-upload-head">
    <div class="notice">يمكنك تجهيز حتى 12 فرعًا ثم الضغط مرة واحدة. التحليل يتم على جهازك، والحفظ يتم في Supabase. للحفاظ على استقرار المتصفح تتم المعالجة في 3 مسارات متوازية آمنة.</div>
    <div class="bulk-period">
@@ -1641,9 +1647,18 @@ function renderUploads(){
   </div>
  `)
 
+ const updateLiveSummary=()=>{
+  const states={ready:0,working:0,success:0,warning:0,error:0}
+  document.querySelectorAll('.lane-status').forEach(el=>{
+   for(const key of Object.keys(states))if(el.classList.contains(key))states[key]++
+  })
+  const live=document.getElementById('bulk-live-summary')
+  if(live)live.textContent='الحالة الحالية: '+states.ready+' جاهز • '+states.working+' يعمل • '+states.success+' نجح • '+states.warning+' مراجعة • '+states.error+' فشل'
+ }
  const readyCount=()=>{
   const files=[...document.querySelectorAll('.lane-file')].filter(input=>input.files?.[0]).length
   const el=document.getElementById('bulk-ready-count');if(el)el.textContent=String(files)
+  updateLiveSummary()
  }
  document.querySelectorAll('.lane-file').forEach(input=>input.addEventListener('change',()=>{
   const lane=input.dataset.lane
@@ -1668,6 +1683,7 @@ function renderUploads(){
   if(status){status.textContent=label;status.className=`lane-status ${state}`}
   if(result)result.innerHTML=detail
   if(bar)bar.style.width=`${Math.max(0,Math.min(100,progress))}%`
+  updateLiveSummary()
  }
 
  const processLane=async task=>{
