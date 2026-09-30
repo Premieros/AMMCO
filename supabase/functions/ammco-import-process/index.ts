@@ -211,6 +211,55 @@ Deno.serve(async (req: Request) => {
     return json({ error: 'تعذر تحديد خزنة الفرع الافتراضية' }, { status: 500 })
   }
 
+  const { data: cashDestinations, error: cashDestinationsError } = await admin
+    .from('cash_destinations')
+    .select('id,name,destination_type,branch_id')
+    .eq('organization_id', batch.organization_id)
+    .eq('is_active', true)
+
+  if (cashDestinationsError) {
+    return json({ error: 'تعذر تحميل اختيارات توجيه الحركات النقدية' }, { status: 500 })
+  }
+
+  const normalizeDestinationText = (value: unknown) =>
+    String(value ?? '')
+      .toLowerCase()
+      .replace(/أ|إ|آ/g, 'ا')
+      .replace(/ة/g, 'ه')
+      .replace(/\s+/g, ' ')
+      .trim()
+
+  const inferCashDestinationId = (entry: ParsedWorkbook['treasuryEntries'][number]) => {
+    const haystack = normalizeDestinationText(
+      `${entry.description ?? ''} ${entry.sourceCategory ?? ''} ${entry.canonicalCategory ?? ''}`,
+    )
+    const destinations = cashDestinations ?? []
+
+    const byType = (type: string) => destinations.filter((d) => d.destination_type === type)
+    const findNamed = (list: typeof destinations) =>
+      list.find((d) => {
+        const name = normalizeDestinationText(d.name).replace(/^فرع\s*-?\s*/, '')
+        return name.length >= 2 && haystack.includes(name)
+      })
+
+    if (entry.entryKind === 'bank_deposit') {
+      return findNamed(byType('bank'))?.id ?? null
+    }
+    if (entry.entryKind === 'hq_transfer') {
+      return byType('factory')[0]?.id ?? null
+    }
+    if (entry.entryKind === 'interbranch') {
+      return findNamed(byType('branch'))?.id ?? null
+    }
+    if (entry.entryKind === 'expense' || entry.isExpense) {
+      return byType('expense')[0]?.id ?? null
+    }
+    if (entry.entryKind === 'cash_balance') {
+      return byType('cash')[0]?.id ?? null
+    }
+    return null
+  }
+
   await admin
     .from('import_batches')
     .update({ status: 'processing', failure_message: null })
@@ -817,6 +866,7 @@ Deno.serve(async (req: Request) => {
         direction: entry.direction,
         running_balance: entry.runningBalance,
         treasury_account_id: defaultTreasury?.id ?? null,
+        destination_id: entry.direction === 'out' ? inferCashDestinationId(entry) : null,
         raw_payload: entry.rawPayload,
       }))
 
