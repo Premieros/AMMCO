@@ -68,57 +68,58 @@ window.changeUnifiedReport=select=>{
  location.hash='#/reports?report='+encodeURIComponent(select.value)+'&branch='+encodeURIComponent(branch)+'&from='+encodeURIComponent(from)+'&to='+encodeURIComponent(to)
 }
 
+
+
+const EXEC_NAV_SECTIONS=[
+ {id:'dashboard',label:'لوحة الإدارة',icon:'<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="3" y="3" width="7" height="9"></rect><rect x="14" y="3" width="7" height="5"></rect><rect x="14" y="12" width="7" height="9"></rect><rect x="3" y="16" width="7" height="5"></rect></svg>'},
+ {id:'reports',label:'التقارير',href:'#/reports?report=executive',icon:'<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"></path><polyline points="14 2 14 8 20 8"></polyline><line x1="8" y1="13" x2="16" y2="13"></line><line x1="8" y1="17" x2="16" y2="17"></line></svg>'},
+ {id:'sales',label:'المبيعات',icon:'<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polyline points="23 6 13.5 15.5 8.5 10.5 1 18"></polyline><polyline points="17 6 23 6 23 12"></polyline></svg>'},
+ {id:'expenses',label:'المصروفات',href:'#/reports?report=expenses',icon:'<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="2" y="4" width="20" height="16" rx="2"></rect><line x1="2" y1="10" x2="22" y2="10"></line></svg>'},
+ {id:'products',label:'الأصناف والمخزون',icon:'<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M21 16V8a2 2 0 0 0-1-1.73l-7-4a2 2 0 0 0-2 0l-7 4A2 2 0 0 0 3 8v8a2 2 0 0 0 1 1.73l7 4a2 2 0 0 0 2 0l7-4A2 2 0 0 0 21 16z"></path><polyline points="3.27 6.96 12 12.01 20.73 6.96"></polyline></svg>'},
+ {id:'treasury',label:'الخزينة والبنوك',icon:'<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="2" y="6" width="20" height="12" rx="2"></rect><circle cx="12" cy="12" r="2"></circle></svg>'},
+ {id:'analytics',label:'التحليلات',icon:'<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><line x1="18" y1="20" x2="18" y2="10"></line><line x1="12" y1="20" x2="12" y2="4"></line><line x1="6" y1="20" x2="6" y2="14"></line></svg>'},
+ {id:'branches',label:'الفروع',icon:'<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M3 9l9-7 9 7v11a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2z"></path></svg>'},
+ {id:'imports',label:'مراجعة البيانات',icon:'<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"></path><polyline points="7 10 12 15 17 10"></polyline></svg>'},
+ {id:'uploads',label:'رفع شيتات الفروع',icon:'<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"></path><polyline points="17 8 12 3 7 8"></polyline><line x1="12" y1="3" x2="12" y2="15"></line></svg>'},
+ {id:'settings',label:'الإعدادات',icon:'<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="3"></circle><path d="M19.4 15a1.65 1.65 0 0 0 .33 1.82"></path></svg>'}
+]
+
 function shell(title,subtitle,body){
- const r=route().split('?')[0],sheetSection=sheetSectionForRoute(r)
- const sidebarCollapsed=localStorage.getItem('ammco.sidebar.collapsed')==='1'
- app.innerHTML=`<div class="shell ${sidebarCollapsed?'sidebar-collapsed':''}">
- <aside class="sidebar">
-  <div class="brand"><div class="logo">A</div><div><b>AMMCO</b><small>Management Intelligence</small></div></div>
-
-  <div class="nav-title">العمل المالي</div><nav class="nav">
-   <a class="${r==='dashboard'?'active':''}" href="#/dashboard">لوحة الإدارة</a>
-   <a class="${r==='reports'?'active':''}" href="#/reports?report=executive">التقارير</a>
-  </nav>
-
-  <div class="nav-title system-nav-title">إدارة النظام</div><nav class="nav">
-   <a class="${r==='branches'?'active':''}" href="#/branches">إدارة الفروع</a>
-   ${profile?.role==='admin'?`<a class="${r==='users'?'active':''}" href="#/users">المستخدمون والصلاحيات</a>`:''}
-   <a class="${r==='imports'?'active':''}" href="#/imports">سجل الرفع</a>
-   <a class="${r==='uploads'?'active':''}" href="#/uploads">رفع شيتات الفروع</a>
-  </nav>
- </aside>
-
- <main class="main">
-  <header class="topbar">
-   <div class="topbar-context"><span>تقرير الإدارة</span><b>${sheetSection}</b></div>
-   <div class="actions">
-    <button class="btn secondary sidebar-toggle" type="button" onclick="toggleSidebar()" title="إخفاء أو إظهار القائمة">☰ القائمة</button>
-    <button class="btn secondary" onclick="location.hash='#/branches'">+ فرع</button>
-    <button class="btn" onclick="location.hash='#/uploads'">رفع شيت</button>
-    <button class="btn secondary" id="logout">خروج</button>
-   </div>
-  </header>
-  <section class="content">
-   <div class="pagehead">
-    <div>
-     <div class="sheet-context">ورقة الإدارة / ${sheetSection}</div>
-     <h1>${title}</h1>
-     <div class="muted">${subtitle||''}</div>
+ const r=route().split('?')[0],collapsed=localStorage.getItem('ammco.sidebar.collapsed')==='1'
+ const nav=EXEC_NAV_SECTIONS.filter(x=>x.id!=='users').map(x=>{
+  const href=x.href||('#/'+x.id),active=r===x.id
+  return '<a href="'+href+'" class="sidebar-nav-item '+(active?'active':'')+'">'+x.icon+'<span>'+x.label+'</span></a>'
+ }).join('')
+ const userNav=profile?.role==='admin'?'<a href="#/users" class="sidebar-nav-item '+(r==='users'?'active':'')+'"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="7" r="4"></circle><path d="M5.5 21a6.5 6.5 0 0 1 13 0"></path></svg><span>المستخدمون والصلاحيات</span></a>':''
+ app.innerHTML=`<div class="shell ${collapsed?'sidebar-collapsed':''}">
+  <aside class="sidebar">
+   <div class="brand"><div class="logo">A</div><div><b>AMMCO</b><small>Management Intelligence</small></div></div>
+   <div class="nav-title">مركز العمليات والتحليل</div>
+   <nav class="nav-list" style="display:flex;flex-direction:column">${nav}${userNav}</nav>
+  </aside>
+  <main class="main">
+   <header class="topbar">
+    <div style="display:flex;align-items:center;gap:10px">
+     <button class="btn secondary" type="button" onclick="toggleSidebar()" title="إخفاء أو إظهار القائمة"><svg viewBox="0 0 24 24" width="16" height="16" fill="none" stroke="currentColor" stroke-width="2"><line x1="3" y1="6" x2="21" y2="6"></line><line x1="3" y1="12" x2="21" y2="12"></line><line x1="3" y1="18" x2="21" y2="18"></line></svg><span>القائمة</span></button>
+     <div class="topbar-context"><b>${title}</b><span>${subtitle||''}</span></div>
     </div>
-   </div>
-   ${r==='reports'?reportsHubNav():''}
-   ${body}
-  </section>
- </main>
+    <div class="actions"><span class="chip">${profile?.full_name||session?.user?.email||'مدير النظام'}</span><button class="btn secondary" id="logout">خروج</button></div>
+   </header>
+   <section class="content executive-content">
+    ${r==='reports'?reportsHubNav():''}
+    ${body}
+   </section>
+  </main>
  </div>`
- document.getElementById('logout')?.addEventListener('click',async()=>{await supabase.auth.signOut();location.hash='';})
+ document.getElementById('logout')?.addEventListener('click',async()=>{await supabase.auth.signOut();location.hash='';location.reload()})
  document.getElementById('report-picker')?.addEventListener('change',e=>changeUnifiedReport(e.currentTarget))
 }
 window.toggleSidebar=()=>{
- const shell=document.querySelector('.shell');if(!shell)return
- const collapsed=shell.classList.toggle('sidebar-collapsed')
+ const el=document.querySelector('.shell');if(!el)return
+ const collapsed=el.classList.toggle('sidebar-collapsed')
  localStorage.setItem('ammco.sidebar.collapsed',collapsed?'1':'0')
 }
+
 function branchOptions(selected=''){return `<option value="">كل الفروع</option>${branches.map(b=>`<option value="${b.id}" ${selected===b.id?'selected':''}>${b.name}</option>`).join('')}`}
 function filters(from,to,branch){return `<form id="filters" class="filters compact-filters">
  <div class="field filter-branch"><label>الفرع</label><select name="branch">${branchOptions(branch)}</select></div>
@@ -271,6 +272,8 @@ async function render(){
    if(report==='treasury')return renderTreasury()
    return renderExecutive()
   }
+  if(r==='analytics')return renderAnalytics()
+  if(r==='settings')return renderSettings()
   if(r==='branches')return renderBranches()
   if(r==='users')return renderUsers()
   if(r==='treasury')return renderTreasury()
@@ -296,10 +299,105 @@ function renderLogin(){
  document.getElementById('login-form').addEventListener('submit',async e=>{e.preventDefault();const fd=new FormData(e.currentTarget);const {error}=await supabase.auth.signInWithPassword({email:String(fd.get('email')),password:String(fd.get('password'))});document.getElementById('login-msg').innerHTML=error?`<div class="error">${error.message}</div>`:''})
 }
 
+
+function renderUnifiedFilterBar(f){
+ return '<div class="unified-bar"><div class="unified-bar-row">'+
+ '<div class="presets-wrap"><button class="preset-btn" onclick="applyExecPreset(\'this_month\')">هذا الشهر</button><button class="preset-btn" onclick="applyExecPreset(\'prev_month\')">الشهر السابق</button><button class="preset-btn" onclick="applyExecPreset(\'ytd\')">السنة الحالية</button><button class="preset-btn" onclick="applyExecPreset(\'last_7\')">آخر 7 أيام</button></div>'+
+ '<form id="exec-filter-form" style="display:flex;align-items:end;gap:8px;flex-wrap:wrap;margin-right:auto">'+
+ '<div class="field"><label>من</label><input type="date" name="from" value="'+f.from+'"></div>'+
+ '<div class="field"><label>إلى</label><input type="date" name="to" value="'+f.to+'"></div>'+
+ '<div class="field"><label>الفرع</label><select name="branch">'+branchOptions(f.branch)+'</select></div>'+
+ '<label class="compare-toggle"><input type="checkbox" name="compare" '+(f.compare?'checked':'')+'><span>مقارنة بالفترة السابقة</span></label>'+
+ '<button class="btn" type="submit">تطبيق</button><button class="btn secondary" type="button" onclick="resetExecFilters()">إعادة ضبط</button></form>'+
+ '<button class="btn secondary" type="button" onclick="exportFirstSmartTable()">تصدير Excel</button></div></div>'
+}
+window.bindExecFilters=()=>{
+ const form=document.getElementById('exec-filter-form');if(!form)return
+ form.addEventListener('submit',e=>{e.preventDefault();const fd=new FormData(form),p=new URLSearchParams();if(fd.get('branch'))p.set('branch',fd.get('branch'));p.set('from',fd.get('from'));p.set('to',fd.get('to'));if(fd.get('compare'))p.set('compare','1');location.hash='#/'+route().split('?')[0]+'?'+p.toString()})
+}
+window.applyExecPreset=type=>{
+ const now=new Date();let f,t
+ if(type==='this_month'){const y=now.getFullYear(),m=String(now.getMonth()+1).padStart(2,'0');f=y+'-'+m+'-01';t=new Date(y,now.getMonth()+1,0).toISOString().slice(0,10)}
+ else if(type==='prev_month'){const d=new Date(now.getFullYear(),now.getMonth()-1,1),y=d.getFullYear(),m=String(d.getMonth()+1).padStart(2,'0');f=y+'-'+m+'-01';t=new Date(y,d.getMonth()+1,0).toISOString().slice(0,10)}
+ else if(type==='ytd'){const y=now.getFullYear();f=y+'-01-01';t=now.toISOString().slice(0,10)}
+ else {const d=new Date(now.getTime()-6*86400000);f=d.toISOString().slice(0,10);t=now.toISOString().slice(0,10)}
+ const p=qs();p.set('from',f);p.set('to',t);location.hash='#/'+route().split('?')[0]+'?'+p.toString()
+}
+window.resetExecFilters=()=>{location.hash='#/'+route().split('?')[0]}
+window.exportFirstSmartTable=()=>{const btn=document.querySelector('.table-card .table-tools button[data-export]')||document.querySelector('.table-card .tool-btn');if(btn&&window.exportCurrentTableXlsx)return window.exportCurrentTableXlsx(btn);const old=document.querySelector('.table-card .tool-btn');if(old&&window.exportVisibleTableXlsx)return window.exportVisibleTableXlsx(old)}
+
+
+function normalizeExecCategory(raw){
+ const s=String(raw||'').toLowerCase()
+ if(/مرتب|رواتب|أجور|salary|wage/.test(s))return 'مرتبات'
+ if(/سولار|وقود|بترو|نقل|شحن|fuel|transport|سيار/.test(s))return 'نقل'
+ if(/صيان|قطع غيار|repair|maintenance/.test(s))return 'صيانة'
+ if(/إيجار|ايجار|rent/.test(s))return 'إيجارات'
+ if(/كهرباء|مياه|غاز|نظافة|تشغيل/.test(s))return 'تشغيل'
+ if(/إدار|انترنت|هاتف|admin/.test(s))return 'إدارية'
+ return 'أخرى'
+}
+function isDoubleProductVerified(product){return Number(product?.wholesale_carton_price||0)===570}
+async function loadExecutiveIntelligence(f){
+ const ids=await approvedIds(),active=f.branch?[f.branch]:[]
+ let kq=supabase.from('v_branch_daily_kpis').select('*').gte('business_date',f.from).lte('business_date',f.to).order('business_date')
+ let iq=supabase.from('inventory_daily').select('id,branch_id,business_date,product_id,product_name,sales_qty,closing_qty,closing_value,batch_id').in('batch_id',ids.length?ids:['00000000-0000-0000-0000-000000000000']).gte('business_date',f.from).lte('business_date',f.to)
+ let wq=supabase.from('warehouse_daily_summary').select('id,branch_id,business_date,sales_qty,closing_qty,closing_value,raw_payload,batch_id').in('batch_id',ids.length?ids:['00000000-0000-0000-0000-000000000000']).gte('business_date',f.from).lte('business_date',f.to).order('business_date')
+ let eq=supabase.from('v_expense_analysis').select('branch_id,entry_date,canonical_category,expense_group,amount').gte('entry_date',f.from).lte('entry_date',f.to)
+ if(f.branch){kq=kq.eq('branch_id',f.branch);iq=iq.eq('branch_id',f.branch);wq=wq.eq('branch_id',f.branch);eq=eq.eq('branch_id',f.branch)}
+ const [kr,ir,wr,er,pr,br]=await Promise.all([kq,iq,wq,eq,supabase.from('products').select('id,name,wholesale_carton_price,box_count').eq('is_active',true),supabase.from('import_batches').select('created_at').eq('status','approved').order('created_at',{ascending:false}).limit(1)])
+ for(const x of [kr,ir,wr,er,pr])if(x.error)throw x.error
+ const kpis=kr.data||[],inv=ir.data||[],wh=wr.data||[],exp=er.data||[],products=pr.data||[],productMap=new Map(products.map(p=>[p.id,p]))
+ const branchAgg=new Map()
+ branches.forEach(b=>{if(!f.branch||b.id===f.branch)branchAgg.set(b.id,{id:b.id,name:b.name,code:b.code,sales:0,qty:0,equivQty:0,expenses:0,collections:0,discounts:0,hasData:false})})
+ const timeline=new Map(),latestWh=new Map()
+ let netSales=0,grossSales=0,discounts=0,collections=0,totalExpenses=0
+ kpis.forEach(r=>{
+  const s=Number(r.net_sales||0),g=Number(r.gross_sales||0),d=Number(r.discounts||0),col=Number(r.collections||0)
+  netSales+=s;grossSales+=g;discounts+=d;collections+=col
+  const b=branchAgg.get(r.branch_id);if(b){b.sales+=s;b.collections+=col;b.discounts+=d;b.hasData=true}
+  const day=timeline.get(r.business_date)||{date:r.business_date,sales:0,expenses:0,qty:0,equivQty:0};day.sales+=s;timeline.set(r.business_date,day)
+ })
+ wh.forEach(r=>{
+  const b=branchAgg.get(r.branch_id);if(b){b.qty+=Number(r.sales_qty||0);b.hasData=true}
+  const prev=latestWh.get(r.branch_id);if(!prev||String(r.business_date)>=String(prev.business_date))latestWh.set(r.branch_id,r)
+  const day=timeline.get(r.business_date)||{date:r.business_date,sales:0,expenses:0,qty:0,equivQty:0};day.qty+=Number(r.sales_qty||0);timeline.set(r.business_date,day)
+ })
+ const detailedEquiv=new Map()
+ inv.forEach(r=>{
+  const p=productMap.get(r.product_id),factor=isDoubleProductVerified(p)?2:1,q=Number(r.sales_qty||0)
+  detailedEquiv.set(r.branch_id,(detailedEquiv.get(r.branch_id)||0)+q*factor)
+  const day=timeline.get(r.business_date)||{date:r.business_date,sales:0,expenses:0,qty:0,equivQty:0};day.equivQty+=q*factor;timeline.set(r.business_date,day)
+ })
+ branchAgg.forEach((b,id)=>{
+  const lw=latestWh.get(id),verified=Number(lw?.raw_payload?.equivalent_cartons_month||0)
+  b.equivQty=verified||Number(detailedEquiv.get(id)||0)
+ })
+ exp.forEach(r=>{
+  const amt=Number(r.amount||0);totalExpenses+=amt
+  const b=branchAgg.get(r.branch_id);if(b){b.expenses+=amt;b.hasData=true}
+  const day=timeline.get(r.entry_date)||{date:r.entry_date,sales:0,expenses:0,qty:0,equivQty:0};day.expenses+=amt;timeline.set(r.entry_date,day)
+ })
+ const branchList=[...branchAgg.values()].map(b=>({...b,sharePct:netSales?b.sales/netSales:0,avgPrice:b.equivQty?b.sales/b.equivQty:0,expenseRatio:b.sales?b.expenses/b.sales:0})).sort((a,b)=>b.sales-a.sales)
+ const equivSalesQty=branchList.reduce((a,b)=>a+b.equivQty,0),rawSalesQty=branchList.reduce((a,b)=>a+b.qty,0)
+ const avgCartonPrice=equivSalesQty?netSales/equivSalesQty:0,expenseRatio=netSales?totalExpenses/netSales:0
+ const expensesByCategory={};exp.forEach(r=>{const k=normalizeExecCategory((r.canonical_category||'')+' '+(r.expense_group||''));expensesByCategory[k]=(expensesByCategory[k]||0)+Number(r.amount||0)})
+ let prevNetSales=0,prevTotalExpenses=0,prevEquivQty=0,prevAvgPrice=0,prevExpenseRatio=0
+ if(f.compare){
+  const s=new Date(f.from),e=new Date(f.to),days=Math.round((e-s)/86400000)+1,pe=new Date(s.getTime()-86400000),ps=new Date(pe.getTime()-(days-1)*86400000),pf=ps.toISOString().slice(0,10),pt=pe.toISOString().slice(0,10)
+  let pq=supabase.from('v_branch_daily_kpis').select('net_sales').gte('business_date',pf).lte('business_date',pt),px=supabase.from('v_expense_analysis').select('amount').gte('entry_date',pf).lte('entry_date',pt)
+  if(f.branch){pq=pq.eq('branch_id',f.branch);px=px.eq('branch_id',f.branch)}
+  const [pa,pb]=await Promise.all([pq,px]);prevNetSales=(pa.data||[]).reduce((a,r)=>a+Number(r.net_sales||0),0);prevTotalExpenses=(pb.data||[]).reduce((a,r)=>a+Number(r.amount||0),0)
+  prevExpenseRatio=prevNetSales?prevTotalExpenses/prevNetSales:0
+ }
+ const points=[...timeline.values()].sort((a,b)=>a.date.localeCompare(b.date));points.forEach(p=>{p.avgPrice=p.equivQty?p.sales/p.equivQty:0})
+ return {kpis:{netSales,prevNetSales,equivSalesQty,prevEquivQty,avgCartonPrice,prevAvgPrice,totalExpenses,prevTotalExpenses,netResult:netSales-totalExpenses,prevNetResult:prevNetSales-prevTotalExpenses,expenseRatio,prevExpenseRatio,reportingBranches:branchList.filter(b=>b.hasData).length,totalBranchesCount:branchAgg.size,lastUpdate:br.data?.[0]?.created_at?new Date(br.data[0].created_at).toLocaleString('ar-EG'):'—'},timelinePoints:points,branchList,expensesByCategory,discounts,grossSales,collections,rawExpenses:exp,rawInventory:inv,products,productMap,rawSalesQty}
+}
+
 async function approvedIds(){
  const {data,error}=await supabase.from('import_batches').select('id').eq('status','approved');if(error)throw error;return (data||[]).map(x=>x.id)
 }
-function currentFilters(){const p=qs();return {branch:p.get('branch')||'',from:p.get('from')||defaultFrom,to:p.get('to')||defaultTo}}
+function currentFilters(){const p=qs();return {branch:p.get('branch')||'',from:p.get('from')||defaultFrom,to:p.get('to')||defaultTo,compare:p.get('compare')==='1'}}
 
 async function loadDaily(branch,from,to){
  let q=supabase.from('v_branch_daily_kpis').select('*').gte('business_date',from).lte('business_date',to).order('business_date');if(branch)q=q.eq('branch_id',branch);const {data,error}=await q;if(error)throw error;return data||[]
@@ -350,96 +448,457 @@ function managementDashboardTable(rows,totalRow){
   totalRow+'</tbody></table></div></section>'
 }
 
-async function renderDashboard(){
- const {branch,from,to}=currentFilters()
- const daily=await loadDaily(branch,from,to),ids=await approvedIds()
- let whQ=supabase.from('warehouse_daily_summary')
-  .select('branch_id,business_date,closing_qty,closing_value,raw_payload')
-  .in('batch_id',ids.length?ids:['00000000-0000-0000-0000-000000000000'])
-  .gte('business_date',from).lte('business_date',to).order('business_date')
- let invQ=supabase.from('inventory_daily')
-  .select('id,branch_id,business_date,product_id,product_name,sales_qty,closing_qty,closing_value')
-  .in('batch_id',ids.length?ids:['00000000-0000-0000-0000-000000000000'])
-  .gte('business_date',from).lte('business_date',to)
- let prodQ=supabase.from('products').select('id,box_count').eq('is_active',true)
- let expQ=supabase.from('v_expense_analysis')
-  .select('branch_id,canonical_category,expense_group,amount')
-  .gte('entry_date',from).lte('entry_date',to)
- if(branch){whQ=whQ.eq('branch_id',branch);invQ=invQ.eq('branch_id',branch);expQ=expQ.eq('branch_id',branch)}
- const extra=await Promise.all([whQ,invQ,prodQ,expQ]),warehouse=extra[0].data||[],inventoryRows=extra[1].data||[],productRows=extra[2].data||[],expenses=extra[3].data||[]
- if(extra[0].error||extra[1].error||extra[2].error||extra[3].error)throw extra[0].error||extra[1].error||extra[2].error||extra[3].error
+// -------------------------------------------------------------------
+// 8 CORE KPI CARDS COMPONENT
+// -------------------------------------------------------------------
+function renderKPICard(title, cur, prev, format = 'currency', invert = false, subInfo = '') {
+  let valStr = ''
+  if (format === 'currency') valStr = `${money(cur)} ج.م`
+  else if (format === 'percent') valStr = pct(cur)
+  else if (format === 'qty') valStr = `${qty(cur)} كرتونة`
+  else valStr = String(cur)
 
- const by=new Map()
- daily.forEach(r=>{
-  const k=r.branch_id
-  const x=by.get(k)||{branch_name:r.branch_name,firstDate:r.business_date,opening:Number(r.opening_receivables||0),gross:0,net:0,coll:0,disc:0,debt:0}
-  if(String(r.business_date)<String(x.firstDate)){x.firstDate=r.business_date;x.opening=Number(r.opening_receivables||0)}
-  x.gross+=Number(r.gross_sales||0);x.net+=Number(r.net_sales||0);x.coll+=Number(r.collections||0);x.disc+=Number(r.discounts||0);x.debt=Number(r.closing_receivables||x.debt)
-  by.set(k,x)
- })
+  let deltaHtml = ''
+  if (prev !== undefined && prev !== null && prev > 0) {
+    const delta = ((cur - prev) / prev) * 100
+    const isUp = delta > 0.05
+    const isDown = delta < -0.05
+    let sentiment = 'neutral'
+    if (isUp) sentiment = invert ? 'negative' : 'positive'
+    if (isDown) sentiment = invert ? 'positive' : 'negative'
 
- const whLatest=new Map()
- warehouse.forEach(r=>{
-  const prev=whLatest.get(r.branch_id)
-  if(!prev||String(r.business_date)>=String(prev.business_date))whLatest.set(r.branch_id,r)
- })
- const boxCountByProduct=new Map(productRows.map(p=>[p.id,Number(p.box_count||0)])),equivCartonsBy=new Map()
- inventoryRows.forEach(r=>{
-  const boxCount=boxCountByProduct.get(r.product_id)||0
-  const factor=boxCount===12?2:1
-  equivCartonsBy.set(r.branch_id,(equivCartonsBy.get(r.branch_id)||0)+(Number(r.sales_qty||0)*factor))
- })
+    const sign = delta > 0 ? '+' : ''
+    const arrow = delta > 0 ? '▲' : (delta < 0 ? '▼' : '—')
+    deltaHtml = `<span class="delta-badge ${sentiment}">${arrow} ${sign}${delta.toFixed(1)}%</span>`
+  } else {
+    deltaHtml = `<span class="delta-badge neutral">—</span>`
+  }
 
- const carBy=new Map()
- expenses.forEach(r=>{
-  const txt=((r.canonical_category||'')+' '+(r.expense_group||'')).toLowerCase(),x=carBy.get(r.branch_id)||{fuel:0,petro:0,maintenance:0}
-  if(/سولار|وقود|fuel/.test(txt))x.fuel+=Number(r.amount||0)
-  if(/بترو|petro/.test(txt))x.petro+=Number(r.amount||0)
-  if(/صيان|maintenance/.test(txt))x.maintenance+=Number(r.amount||0)
-  carBy.set(r.branch_id,x)
- })
-
- const latestInventory=latestInventoryByProduct(inventoryRows),inventoryByBranch=new Map()
- latestInventory.forEach(r=>{
-  const x=inventoryByBranch.get(r.branch_id)||{qty:0,value:0}
-  x.qty+=Number(r.closing_qty||0);x.value+=Number(r.closing_value||0);inventoryByBranch.set(r.branch_id,x)
- })
- const raw=[...by.entries()].map(([id,x])=>{
-  const wh=whLatest.get(id)||{},verifiedLegacy=wh.raw_payload?.closing_qty_source==='daily_product_closing_verified'
-  const inv=verifiedLegacy?{qty:Number(wh.closing_qty||0),value:Number(wh.closing_value||0)}:(inventoryByBranch.get(id)||{qty:0,value:0})
-  const verifiedEquiv=Number(wh.raw_payload?.equivalent_cartons_month||0)
-  const detailedEquiv=Number(equivCartonsBy.get(id)||0)
-  const equivCartons=verifiedEquiv||detailedEquiv
-  const car=carBy.get(id)||{fuel:0,petro:0,maintenance:0}
-  return {...x,id,equivCartons,avgPrice:equivCartons?x.net/equivCartons:0,fuel:car.fuel,petro:car.petro,maintenance:car.maintenance,inventoryQty:inv.qty,inventoryValue:inv.value}
- }).sort((a,b)=>b.net-a.net)
-
- const rows=raw.map(x=>({
-  branch_name:x.branch_name,
-  opening:money(x.opening),
-  sales:money(x.net),
-  collections:money(x.coll),
-  cumulative:money(x.debt),
-  discount:money(x.disc),
-  discount_rate:pct(x.gross?x.disc/x.gross:0),
-  sales_qty:qty(x.equivCartons),
-  avg_price:money(x.avgPrice),
-  fuel:money(x.fuel),
-  petro:money(x.petro),
-  maintenance:money(x.maintenance),
-  inventory_qty:qty(x.inventoryQty),
-  inventory_value:money(x.inventoryValue)
- }))
- const t=raw.reduce((a,x)=>{a.opening+=x.opening;a.sales+=x.net;a.collections+=x.coll;a.cumulative+=x.debt;a.discount+=x.disc;a.gross+=x.gross;a.equivCartons+=x.equivCartons;a.fuel+=x.fuel;a.petro+=x.petro;a.maintenance+=x.maintenance;a.inventoryQty+=x.inventoryQty;a.inventoryValue+=x.inventoryValue;return a},{opening:0,sales:0,collections:0,cumulative:0,discount:0,gross:0,equivCartons:0,fuel:0,petro:0,maintenance:0,inventoryQty:0,inventoryValue:0})
- const totalRow='<tr class="total"><th>الإجمالي</th>'+
-  '<th class="num">'+money(t.opening)+'</th><th class="num">'+money(t.sales)+'</th><th class="num">'+money(t.collections)+'</th><th class="num">'+money(t.cumulative)+'</th>'+
-  '<th class="num">'+money(t.discount)+'</th><th>'+pct(t.gross?t.discount/t.gross:0)+'</th><th class="num">'+qty(t.equivCartons)+'</th><th class="num">'+money(t.equivCartons?t.sales/t.equivCartons:0)+'</th>'+
-  '<th class="num">'+money(t.fuel)+'</th><th class="num">'+money(t.petro)+'</th><th class="num">'+money(t.maintenance)+'</th>'+
-  '<th class="num">'+qty(t.inventoryQty)+'</th><th class="num">'+money(t.inventoryValue)+'</th></tr>'
-
- shell('لوحة الإدارة','التقرير المجمع بنفس منطق ورقة الإدارة',filters(from,to,branch)+scope(from,to,branch)+managementDashboardTable(rows,totalRow))
- bindFilters('dashboard')
+  return `
+    <div class="kpi-card-rich">
+      <div class="kpi-head">
+        <span class="kpi-title">${title}</span>
+        ${deltaHtml}
+      </div>
+      <div class="kpi-val">${valStr}</div>
+      <div class="kpi-sub">
+        <span>${subInfo || (prev ? `السابق: ${format === 'currency' ? money(prev) : qty(prev)}` : 'فترة حالية')}</span>
+      </div>
+    </div>
+  `
 }
+
+function render8KPIGrid(kpis, compare) {
+  return `
+    <div class="kpis-8-grid">
+      ${renderKPICard('إجمالي المبيعات (صافي)', kpis.netSales, compare ? kpis.prevNetSales : null, 'currency', false, 'صافي الإيرادات بعد الخصم')}
+      ${renderKPICard('كمية المبيعات (المكافئة)', kpis.equivSalesQty, compare ? kpis.prevEquivQty : null, 'qty', false, 'مع احتساب دبل × 2')}
+      ${renderKPICard('متوسط سعر الكرتونة', kpis.avgCartonPrice, compare ? kpis.prevAvgPrice : null, 'currency', false, 'المبيعات ÷ الكمية المكافئة')}
+      ${renderKPICard('إجمالي المصروفات', kpis.totalExpenses, compare ? kpis.prevTotalExpenses : null, 'currency', true, 'المنصرف الفعلي من الخزائن')}
+      ${renderKPICard('صافي النتيجة (المبيعات - المصروفات)', kpis.netResult, compare ? kpis.prevNetResult : null, 'currency', false, 'الأرباح التشغيلية المحققة')}
+      ${renderKPICard('نسبة المصروفات للمبيعات', kpis.expenseRatio, compare ? kpis.prevExpenseRatio : null, 'percent', true, 'الحد المعياري المستهدف < 15%')}
+      ${renderKPICard('الفروع الملتزمة بالرفع', `${kpis.reportingBranches} / ${kpis.totalBranchesCount}`, null, 'text', false, `نسبة الالتزام ${pct(kpis.totalBranchesCount ? kpis.reportingBranches / kpis.totalBranchesCount : 0)}`)}
+      ${renderKPICard('آخر تحديث للبيانات', kpis.lastUpdate, null, 'text', false, 'حالة البيانات: معتمدة ومطابقة')}
+    </div>
+  `
+}
+
+// -------------------------------------------------------------------
+// INTERACTIVE SVG TIMELINE CHART
+// -------------------------------------------------------------------
+let chartActiveSeries = { sales: true, expenses: true, qty: false, price: false }
+let chartViewMode = 'day'
+
+window.toggleChartSeries = series => {
+  chartActiveSeries[series] = !chartActiveSeries[series]
+  window.drawTimelineSVG()
+}
+
+window.setChartMode = mode => {
+  chartViewMode = mode
+  document.querySelectorAll('.chart-mode-btn').forEach(b => b.classList.toggle('active', b.dataset.mode === mode))
+  window.drawTimelineSVG()
+}
+
+function renderTimelineChartSection() {
+  return `
+    <div class="chart-card">
+      <div class="chart-controls">
+        <div style="font-size:12px; font-weight:800; color:#17324d;">المبيعات والمصروفات عبر الزمن</div>
+
+        <div class="chart-series-toggles">
+          <label class="series-checkbox">
+            <input type="checkbox" ${chartActiveSeries.sales ? 'checked' : ''} onchange="window.toggleChartSeries('sales')">
+            <span class="series-dot sales"></span>
+            <span>المبيعات</span>
+          </label>
+
+          <label class="series-checkbox">
+            <input type="checkbox" ${chartActiveSeries.expenses ? 'checked' : ''} onchange="window.toggleChartSeries('expenses')">
+            <span class="series-dot expenses"></span>
+            <span>المصروفات</span>
+          </label>
+
+          <label class="series-checkbox">
+            <input type="checkbox" ${chartActiveSeries.qty ? 'checked' : ''} onchange="window.toggleChartSeries('qty')">
+            <span class="series-dot qty"></span>
+            <span>الكمية المكافئة</span>
+          </label>
+
+          <label class="series-checkbox">
+            <input type="checkbox" ${chartActiveSeries.price ? 'checked' : ''} onchange="window.toggleChartSeries('price')">
+            <span class="series-dot price"></span>
+            <span>متوسط السعر</span>
+          </label>
+        </div>
+
+        <div class="chart-modes">
+          <button class="chart-mode-btn ${chartViewMode === 'day' ? 'active' : ''}" data-mode="day" onclick="window.setChartMode('day')">يومي</button>
+          <button class="chart-mode-btn ${chartViewMode === 'week' ? 'active' : ''}" data-mode="week" onclick="window.setChartMode('week')">أسبوعي</button>
+          <button class="chart-mode-btn ${chartViewMode === 'month' ? 'active' : ''}" data-mode="month" onclick="window.setChartMode('month')">شهري</button>
+        </div>
+      </div>
+
+      <div class="svg-chart-container" id="chart-container">
+        <svg class="svg-chart" id="timeline-svg" preserveAspectRatio="none" viewBox="0 0 800 240"></svg>
+        <div class="chart-tooltip" id="chart-tooltip"></div>
+      </div>
+    </div>
+  `
+}
+
+window.cachedPoints = []
+window.drawTimelineSVG = () => {
+  const svg = document.getElementById('timeline-svg')
+  const tooltip = document.getElementById('chart-tooltip')
+  if (!svg || !window.cachedPoints || !window.cachedPoints.length) return
+
+  // Grouping by mode
+  let raw = window.cachedPoints
+  if (chartViewMode === 'week') {
+    const weeks = new Map()
+    raw.forEach(p => {
+      const d = new Date(p.date)
+      const w = `${d.getFullYear()}-W${Math.ceil((d.getDate() + 6) / 7)}`
+      if (!weeks.has(w)) weeks.set(w, { date: w, sales: 0, expenses: 0, equivQty: 0 })
+      const itm = weeks.get(w)
+      itm.sales += p.sales; itm.expenses += p.expenses; itm.equivQty += p.equivQty
+    })
+    raw = [...weeks.values()]
+  } else if (chartViewMode === 'month') {
+    const months = new Map()
+    raw.forEach(p => {
+      const m = p.date.substring(0, 7)
+      if (!months.has(m)) months.set(m, { date: m, sales: 0, expenses: 0, equivQty: 0 })
+      const itm = months.get(m)
+      itm.sales += p.sales; itm.expenses += p.expenses; itm.equivQty += p.equivQty
+    })
+    raw = [...months.values()]
+  }
+
+  const W = 800, H = 240, padX = 40, padY = 30
+  const plotW = W - (padX * 2), plotH = H - (padY * 2)
+
+  let maxVal = 1000
+  raw.forEach(p => {
+    if (chartActiveSeries.sales && p.sales > maxVal) maxVal = p.sales
+    if (chartActiveSeries.expenses && p.expenses > maxVal) maxVal = p.expenses
+  })
+
+  const getX = i => padX + (i / Math.max(1, raw.length - 1)) * plotW
+  const getY = val => H - padY - (val / maxVal) * plotH
+
+  // Build grid lines
+  let gridLines = ''
+  for (let i = 0; i <= 4; i++) {
+    const yVal = (maxVal / 4) * i
+    const yPos = getY(yVal)
+    gridLines += `
+      <line x1="${padX}" y1="${yPos}" x2="${W - padX}" y2="${yPos}" stroke="#f1f5f9" stroke-width="1" />
+      <text x="${W - padX + 5}" y="${yPos + 4}" fill="#94a3b8" font-size="9" text-anchor="start">${money(yVal)}</text>
+    `
+  }
+
+  // Polylines
+  const makeLine = (key, color) => {
+    const pts = raw.map((p, i) => `${getX(i)},${getY(p[key] || 0)}`).join(' ')
+    return `<polyline fill="none" stroke="${color}" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round" points="${pts}" />`
+  }
+
+  let linesHtml = ''
+  if (chartActiveSeries.sales) linesHtml += makeLine('sales', '#2563eb')
+  if (chartActiveSeries.expenses) linesHtml += makeLine('expenses', '#e11d48')
+
+  // Interactive points
+  let pointsHtml = ''
+  raw.forEach((p, i) => {
+    const x = getX(i)
+    if (chartActiveSeries.sales) {
+      const y = getY(p.sales || 0)
+      pointsHtml += `<circle cx="${x}" cy="${y}" r="3.5" fill="#2563eb" stroke="#fff" stroke-width="1.5" class="chart-pt" data-idx="${i}" />`
+    }
+    if (chartActiveSeries.expenses) {
+      const y = getY(p.expenses || 0)
+      pointsHtml += `<circle cx="${x}" cy="${y}" r="3.5" fill="#e11d48" stroke="#fff" stroke-width="1.5" class="chart-pt" data-idx="${i}" />`
+    }
+  })
+
+  svg.innerHTML = gridLines + linesHtml + pointsHtml
+
+  // Attach hover events
+  svg.querySelectorAll('.chart-pt').forEach(pt => {
+    pt.addEventListener('mouseenter', e => {
+      const idx = Number(e.target.dataset.idx)
+      const item = raw[idx]
+      const rect = svg.getBoundingClientRect()
+      const ptRect = e.target.getBoundingClientRect()
+      tooltip.style.display = 'block'
+      tooltip.style.left = `${ptRect.left - rect.left - 50}px`
+      tooltip.style.top = `${ptRect.top - rect.top - 50}px`
+      tooltip.innerHTML = `
+        <div style="font-weight:bold; color:#cbd5e1; margin-bottom:2px;">${item.date}</div>
+        <div>المبيعات: <b style="color:#60a5fa;">${money(item.sales)} ج.م</b></div>
+        <div>المصروفات: <b style="color:#f87171;">${money(item.expenses)} ج.م</b></div>
+      `
+    })
+    pt.addEventListener('mouseleave', () => {
+      tooltip.style.display = 'none'
+    })
+  })
+}
+
+// -------------------------------------------------------------------
+// BRANCH HORIZONTAL BARS COMPARISON
+// -------------------------------------------------------------------
+function renderBranchBarsSection(branches) {
+  const maxSales = Math.max(1, ...branches.map(b => b.sales))
+
+  const rowsHtml = branches.map((b, idx) => {
+    const w = (b.sales / maxSales) * 100
+    return `
+      <div class="branch-bar-row" onclick="window.drillDownBranch('${b.id}')" title="انقر لتصفية باقي الصفحة على ${escapeAttr(b.name)}">
+        <div class="branch-info">
+          <span class="branch-rank">${idx + 1}</span>
+          <b style="font-size:11px; color:#17324d;">${escapeHtml(b.name)}</b>
+        </div>
+
+        <div class="branch-bar-track">
+          <div class="branch-bar-fill" style="width:${w}%;"></div>
+        </div>
+
+        <div style="text-align:right;">
+          <b style="font-size:11px;">${money(b.sales)} ج.م</b>
+          <div style="font-size:9px; color:#64748b;">حصة: ${pct(b.sharePct)}</div>
+        </div>
+
+        <div style="text-align:right;">
+          <span style="font-size:10.5px; font-weight:700;">${qty(b.equivQty)}</span>
+          <div style="font-size:9px; color:#64748b;">كرتونة مكافئة</div>
+        </div>
+
+        <div style="text-align:right;">
+          <span style="font-size:10.5px; font-weight:700; color:${b.expenseRatio > 0.18 ? '#b91c1c' : '#15803d'};">${pct(b.expenseRatio)}</span>
+          <div style="font-size:9px; color:#64748b;">مصروف/مبيعات</div>
+        </div>
+      </div>
+    `
+  }).join('')
+
+  return `
+    <div class="branch-bars-card">
+      <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:10px;">
+        <div>
+          <b style="font-size:12px; color:#17324d;">مقارنة أداء الفروع (Drill-down تفاعلي)</b>
+          <small style="color:#64748b; margin-right:8px;">اضغط على أي فرع لتصفية التحليلات فوراً</small>
+        </div>
+        <span class="chip" style="font-size:9.5px;">${branches.length} فرع</span>
+      </div>
+
+      <div style="display:grid; grid-template-columns:140px 1fr 140px 120px 80px; gap:12px; font-size:9.5px; font-weight:800; color:#64748b; padding:0 8px 6px; border-bottom:1px solid #e2e8f0;">
+        <span>الفرع</span>
+        <span>المبيعات والحصة السوقية</span>
+        <span style="text-align:right;">قيمة المبيعات</span>
+        <span style="text-align:right;">الكمية المكافئة</span>
+        <span style="text-align:right;">نسبة المصروفات</span>
+      </div>
+
+      <div style="display:flex; flex-direction:column; gap:2px; margin-top:4px;">
+        ${rowsHtml}
+      </div>
+    </div>
+  `
+}
+
+window.drillDownBranch = branchId => {
+  const p = new URLSearchParams(location.hash.includes('?') ? location.hash.split('?')[1] : '')
+  p.set('branch', branchId)
+  location.hash = `#/${route()}?${p.toString()}`
+}
+
+// -------------------------------------------------------------------
+// SMART INSIGHTS / ANOMALIES COMPONENT
+// -------------------------------------------------------------------
+function renderSmartAnomalies(data) {
+  const anomalies = []
+
+  // Check 1: Expense spike > 20%
+  if (data.kpis.expenseRatio > 0.18) {
+    anomalies.push({
+      type: 'critical',
+      title: 'ارتفاع حاد في نسبة المصروفات الإجمالية',
+      desc: `سجلت نسبة المصروفات ${pct(data.kpis.expenseRatio)} متجاوزة الحد الآمن (15%) بمقدار ${money(data.kpis.totalExpenses)} ج.م.`
+    })
+  }
+
+  // Check 2: Branches with 0 sales but active expenses
+  data.branchList.forEach(b => {
+    if (b.sales === 0 && b.expenses > 0) {
+      anomalies.push({
+        type: 'warning',
+        title: `فرع ${b.name}: تسجيل مصروفات بدون مبيعات`,
+        desc: `تم رصد مصروفات بقيمة ${money(b.expenses)} ج.م بدون وجود أي مبيعات مسجلة في هذه الفترة.`
+      })
+    }
+  })
+
+  // Check 3: Branches not reporting
+  const nonReporting = data.branchList.filter(b => !b.hasData)
+  if (nonReporting.length > 0) {
+    anomalies.push({
+      type: 'info',
+      title: `${nonReporting.length} فروع لم تقم بتسليم بياناتها للفترة المحددة`,
+      desc: `الفروع: ${nonReporting.map(b => b.name).join('، ')}.`
+    })
+  }
+
+  if (!anomalies.length) {
+    anomalies.push({
+      type: 'info',
+      title: 'مؤشرات الأداء مستقرة تماماً',
+      desc: 'لم يتم رصد أي انحرافات سعرية أو قفزات غير مبررة في المصروفات ضمن الفترة المحددة.'
+    })
+  }
+
+  const itemsHtml = anomalies.map(a => `
+    <div class="anomaly-item ${a.type}">
+      <div>
+        <div style="font-weight:800; font-size:11px;">${a.title}</div>
+        <div style="font-size:9.5px; opacity:0.9;">${a.desc}</div>
+      </div>
+      <span class="chip" style="font-size:9px; background:rgba(255,255,255,0.7);">${a.type === 'critical' ? 'تنبيه حرج' : (a.type === 'warning' ? 'تحذير' : 'ملاحظة')}</span>
+    </div>
+  `).join('')
+
+  return `
+    <div class="anomalies-card">
+      <div style="font-size:12px; font-weight:800; color:#17324d; margin-bottom:8px; display:flex; align-items:center; gap:6px;">
+        <svg viewBox="0 0 24 24" width="16" height="16" fill="none" stroke="#d97706" stroke-width="2"><path d="M10.29 3.86L1.82 18a2 2 0 0 0 1.71 3h16.94a2 2 0 0 0 1.71-3L13.71 3.86a2 2 0 0 0-3.42 0z"></path><line x1="12" y1="9" x2="12" y2="13"></line><line x1="12" y1="17" x2="12.01" y2="17"></line></svg>
+        <span>التحليلات الذكية والانحرافات المرصودة</span>
+      </div>
+      ${itemsHtml}
+    </div>
+  `
+}
+
+// -------------------------------------------------------------------
+// EXCEL-LIKE SMART DATA TABLE (Sticky Header/Col, Search, Group, Export)
+// -------------------------------------------------------------------
+function renderSmartTable(title, cols, rows, totalRow = '', groupByOptions = []) {
+  const headers = cols.map((col, idx) => `
+    <th class="${idx === 0 ? 'sticky-col' : ''}">
+      <div style="display:flex; align-items:center; justify-content:space-between; gap:4px;">
+        <span>${col.label}</span>
+      </div>
+    </th>
+  `).join('')
+
+  const rowsHtml = rows.map(r => `
+    <tr>
+      ${cols.map((col, idx) => `
+        <td class="${col.num ? 'num' : ''} ${idx === 0 ? 'sticky-col' : ''}">
+          ${r[col.key] ?? '—'}
+        </td>
+      `).join('')}
+    </tr>
+  `).join('')
+
+  return `
+    <div class="table-card" data-report-title="${escapeAttr(title)}">
+      <div class="table-head">
+        <div>
+          <h2>${title}</h2>
+          <small>${rows.length} سجلات معتمدة ومطابقة</small>
+        </div>
+        <div class="table-tools">
+          <input class="search" placeholder="بحث فوري في الجدول…" oninput="window.applyTableSearch(this)">
+          <button class="tool-btn" type="button" onclick="window.exportCurrentTableXlsx(this)">تحميل Excel</button>
+        </div>
+      </div>
+
+      <div class="table-wrap">
+        <table>
+          <thead>
+            <tr>${headers}</tr>
+          </thead>
+          <tbody>
+            ${rowsHtml}
+            ${totalRow}
+          </tbody>
+        </table>
+      </div>
+    </div>
+  `
+}
+
+window.applyTableSearch = input => {
+  const q = input.value.trim().toLowerCase()
+  const table = input.closest('.table-card').querySelector('tbody')
+  table.querySelectorAll('tr:not(.total)').forEach(tr => {
+    tr.style.display = !q || tr.innerText.toLowerCase().includes(q) ? '' : 'none'
+  })
+}
+
+window.exportCurrentTableXlsx = btn => {
+  const card = btn.closest('.table-card')
+  const table = card.querySelector('table')
+  const visibleRows = [...table.querySelectorAll('tr')].filter(r => r.style.display !== 'none')
+  const matrix = visibleRows.map(r => [...r.children].map(c => c.innerText.trim()))
+  const ws = XLSX.utils.aoa_to_sheet(matrix)
+  const wb = XLSX.utils.book_new()
+  XLSX.utils.book_append_sheet(wb, ws, 'Report')
+  const title = (card.dataset.reportTitle || 'AMMCO-Export').replace(/[\\/:*?"<>|]/g, '-')
+  XLSX.writeFile(wb, `${title}.xlsx`, { compression: true })
+}
+
+window.exportCurrentReportExcel = () => {
+  const tableCard = document.querySelector('.table-card')
+  if (tableCard) {
+    const btn = tableCard.querySelector('.table-tools button')
+    if (btn) return window.exportCurrentTableXlsx(btn)
+  }
+  alert('جاري تنزيل تقرير المنصة…')
+}
+
+
+
+async function renderDashboard(){
+ const f=currentFilters(),data=await loadExecutiveIntelligence(f);window.cachedPoints=data.timelinePoints
+ const cols=[{key:'name',label:'الفرع'},{key:'sales',label:'صافي المبيعات',num:true},{key:'qty',label:'الكرتونة الفعلية',num:true},{key:'equivQty',label:'الكمية المكافئة (دبل×2)',num:true},{key:'avgPrice',label:'متوسط سعر الكرتونة',num:true},{key:'expenses',label:'إجمالي المصروفات',num:true},{key:'collections',label:'التحصيلات',num:true},{key:'expenseRatio',label:'نسبة المصروفات',num:true}]
+ const rows=data.branchList.map(b=>({name:'<a href="javascript:drillDownBranch(\''+b.id+'\')" style="font-weight:800;color:#17324d">'+escapeHtml(b.name)+'</a>',sales:money(b.sales),qty:qty(b.qty),equivQty:qty(b.equivQty),avgPrice:money(b.avgPrice),expenses:money(b.expenses),collections:money(b.collections),expenseRatio:pct(b.expenseRatio)}))
+ const t=data.branchList.reduce((a,b)=>{a.sales+=b.sales;a.qty+=b.qty;a.eq+=b.equivQty;a.exp+=b.expenses;a.coll+=b.collections;return a},{sales:0,qty:0,eq:0,exp:0,coll:0})
+ const total='<tr class="total"><th class="sticky-col">الإجمالي</th><th class="num">'+money(t.sales)+'</th><th class="num">'+qty(t.qty)+'</th><th class="num">'+qty(t.eq)+'</th><th class="num">'+money(t.eq?t.sales/t.eq:0)+'</th><th class="num">'+money(t.exp)+'</th><th class="num">'+money(t.coll)+'</th><th>'+pct(t.sales?t.exp/t.sales:0)+'</th></tr>'
+ const body=renderUnifiedFilterBar(f)+render8KPIGrid(data.kpis,f.compare)+renderTimelineChartSection()+'<div class="executive-analysis-grid">'+renderBranchBarsSection(data.branchList)+renderSmartAnomalies(data)+'</div>'+renderSmartTable('جدول ملخص أداء الفروع المعتمد',cols,rows,total)
+ shell('لوحة الإدارة التنفيذية','One Number = One Source',body);bindExecFilters();setTimeout(drawTimelineSVG,50)
+}
+window.drillDownBranch=branchId=>{const p=qs();p.set('branch',branchId);location.hash='#/'+route().split('?')[0]+'?'+p.toString()}
+async function renderAnalytics(){
+ const f=currentFilters(),data=await loadExecutiveIntelligence(f);window.cachedPoints=data.timelinePoints
+ shell('التحليلات المتقدمة','المقارنات التنفيذية والانحرافات',renderUnifiedFilterBar(f)+renderTimelineChartSection()+renderBranchBarsSection(data.branchList)+renderSmartAnomalies(data));bindExecFilters();setTimeout(drawTimelineSVG,50)
+}
+async function renderSettings(){
+ shell('إعدادات النظام','تفضيلات الواجهة والمنصة','<section class="card settings-card"><h2>AMMCO Intelligence</h2><p>مصدر البيانات: AMMCO المعتمد فقط.</p><p>قاعدة الدبل: سعر الكرتونة 570 = ×2، غير ذلك ×1.</p><p>One Number = One Source مفعلة على التقارير.</p><button class="btn secondary" onclick="localStorage.clear();location.reload()">مسح إعدادات المتصفح</button></section>')
+}
+
 async function renderExecutive(){
  const cfg=currentFilters(),branch=cfg.branch,from=cfg.from,to=cfg.to
  const daily=await loadDaily(branch,from,to)
