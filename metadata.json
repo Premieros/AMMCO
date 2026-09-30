@@ -1,0 +1,6 @@
+{
+  "name": "AMMCO",
+  "description": "منصة الإدارة المركزية وتحليل أداء فروع AMMCO",
+  "permissions": [],
+  "capabilities": ["MAJOR_CAPABILITY_SERVER_SIDE_GEMINI_API"]
+}

@@ -1,144 +1,263 @@
 import { redirect } from 'next/navigation'
+import Link from 'next/link'
 import { AppShell } from '@/components/app-shell'
-import { SmartTable } from '@/components/smart-table'
+import { UnifiedFilterBar } from '@/components/unified-filter-bar'
+import { KPICard } from '@/components/kpi-card'
+import { SmartDataTable } from '@/components/smart-data-table'
 import { createClient } from '@/lib/supabase/server'
+import { getUnifiedIntelligenceData } from '@/lib/data-source'
 import { createTreasuryAccount } from './actions'
+import { Wallet, ArrowDownLeft, ArrowUpRight, History, Plus } from 'lucide-react'
 
 export const dynamic = 'force-dynamic'
 
-function money(value: number) {
-  return new Intl.NumberFormat('en-US', {
-    minimumFractionDigits: 0,
-    maximumFractionDigits: 2,
-  }).format(value)
+function money(v: number) {
+  return new Intl.NumberFormat('en-US', { maximumFractionDigits: 2 }).format(v)
 }
 
 export default async function TreasuryPage({
   searchParams,
 }: {
-  searchParams: Promise<{ error?: string; success?: string; from?: string; to?: string }>
+  searchParams: Promise<{ branch?: string; from?: string; to?: string; error?: string; success?: string }>
 }) {
-  const messages = await searchParams
-  const from = messages.from ?? ''
-  const to = messages.to ?? ''
+  const filters = await searchParams
   const supabase = await createClient()
+
   const { data: auth } = await supabase.auth.getClaims()
   const userId = auth?.claims?.sub
   if (!userId) redirect('/login')
 
+  const { data: profile } = await supabase
+    .from('profiles')
+    .select('role')
+    .eq('user_id', userId)
+    .maybeSingle()
+
+  const data = await getUnifiedIntelligenceData(supabase, {
+    from: filters.from,
+    to: filters.to,
+    branch: filters.branch,
+  })
+
+  // Fetch cash entries with branch and correction logs
   let entriesQuery = supabase
     .from('cash_entries')
-    .select('id,branch_id,entry_date,direction,category,source_code,description,amount,running_balance,entry_kind,canonical_category,expense_group,treasury_account_id,branches(name),treasury_accounts(name,account_type),import_batches(uploaded_at,status)')
+    .select('id, branch_id, entry_date, direction, category, source_code, description, amount, running_balance, canonical_category, expense_group, treasury_account_id, branches(name), treasury_accounts(name, account_type), import_batches(uploaded_at, status)')
+    .gte('entry_date', data.from)
+    .lte('entry_date', data.to)
     .order('entry_date', { ascending: false })
     .order('id', { ascending: false })
     .limit(5000)
 
-  if (from) entriesQuery = entriesQuery.gte('entry_date', from)
-  if (to) entriesQuery = entriesQuery.lte('entry_date', to)
+  if (filters.branch) {
+    entriesQuery = entriesQuery.eq('branch_id', filters.branch)
+  }
 
-  const [{ data: profile }, { data: branches }, { data: accounts }, { data: entries }] = await Promise.all([
-    supabase.from('profiles').select('role').eq('user_id', userId).maybeSingle(),
-    supabase.from('branches').select('id,name').eq('is_active', true).order('name'),
-    supabase.from('treasury_accounts').select('id,branch_id,code,name,account_type,is_default,is_active,branches(name)').eq('is_active', true).order('name'),
+  const [{ data: entries }, { data: accounts }, { data: corrections }] = await Promise.all([
     entriesQuery,
+    supabase.from('treasury_accounts').select('id, branch_id, name, code, account_type').eq('is_active', true),
+    supabase.from('cash_entry_correction_log').select('*').order('changed_at', { ascending: false }).limit(200),
   ])
 
-  const cashEntries = entries ?? []
-  const incoming = cashEntries.filter((row) => row.direction === 'in').reduce((sum, row) => sum + Number(row.amount ?? 0), 0)
-  const outgoing = cashEntries.filter((row) => row.direction === 'out').reduce((sum, row) => sum + Number(row.amount ?? 0), 0)
-  const expenses = cashEntries.filter((row) => row.entry_kind === 'expense').reduce((sum, row) => sum + Number(row.amount ?? 0), 0)
+  const cashList = entries ?? []
+  const correctionMap = new Map<number, NonNullable<typeof corrections>[number]>()
+  for (const c of corrections ?? []) {
+    if (!correctionMap.has(c.cash_entry_id)) {
+      correctionMap.set(c.cash_entry_id, c)
+    }
+  }
 
-  const rows = cashEntries.map((row) => {
-    const branch = Array.isArray(row.branches) ? row.branches[0] : row.branches
-    const treasury = Array.isArray(row.treasury_accounts) ? row.treasury_accounts[0] : row.treasury_accounts
-    const batch = Array.isArray(row.import_batches) ? row.import_batches[0] : row.import_batches
+  // Calculate Cash KPIs
+  let totalIn = 0
+  let totalOut = 0
+  for (const e of cashList) {
+    const amt = Number(e.amount ?? 0)
+    if (e.direction === 'in') totalIn += amt
+    else totalOut += amt
+  }
+
+  // Estimate opening & closing balance from latest and earliest entry
+  const netCashChange = totalIn - totalOut
+
+  const journalRows = cashList.map((row) => {
+    const bName = Array.isArray(row.branches) ? row.branches[0]?.name : (row.branches as { name: string } | null)?.name ?? '-'
+    const tName = Array.isArray(row.treasury_accounts) ? row.treasury_accounts[0]?.name : (row.treasury_accounts as { name: string } | null)?.name ?? 'الخزنة'
+    const corr = correctionMap.get(row.id)
+    const isIn = row.direction === 'in'
+    const amt = Number(row.amount ?? 0)
 
     return {
-      href: `/treasury/${row.id}`,
-      entry_date: row.entry_date ?? '',
-      branch_name: branch?.name ?? '-',
-      treasury_name: treasury?.name ?? 'الخزنة الرئيسية',
-      source_code: row.source_code ?? '',
-      description: row.description ?? '',
-      source_category: row.category ?? '',
-      canonical_category: row.canonical_category ?? '',
-      expense_group: row.expense_group ?? '',
-      direction: row.direction === 'in' ? 'وارد' : 'صادر',
-      amount: money(Number(row.amount ?? 0)),
-      running_balance: row.running_balance === null ? '' : money(Number(row.running_balance)),
-      uploaded_at: batch?.uploaded_at ? new Date(batch.uploaded_at).toLocaleString('en-GB') : '',
+      id: row.id,
+      entryDate: row.entry_date ?? '',
+      branchName: bName,
+      treasuryName: tName,
+      originalDesc: row.description ?? row.category ?? 'حركة نقدية',
+      direction: isIn ? 'وارد' : 'صادر',
+      inAmount: isIn ? money(amt) : '-',
+      outAmount: !isIn ? money(amt) : '-',
+      amount: amt,
+      runningBalance: row.running_balance !== null ? money(Number(row.running_balance)) : '-',
+      hasCorrection: Boolean(corr),
+      correctionNote: corr ? `تعديل بواسطة: ${corr.changed_by} (${corr.reason})` : 'أصلي',
+      lastModified: corr ? new Date(corr.changed_at).toLocaleString('en-GB') : 'أصلي',
+      drillHref: `/treasury/${row.id}`,
     }
   })
 
   return (
     <AppShell
-      title="الخزائن"
-      subtitle="حركة تراكمية لكل خزائن الفروع مع البحث والفلاتر والتعديل الموثق"
-      breadcrumbs={[{ label: 'لوحة الإدارة', href: '/' }, { label: 'الخزائن' }]}
+      title="إدارة الخزينة والسيولة النقدية"
+      subtitle={`سجل حركات الخزائن والبنوك (Journal) مع الحفاظ على النص الأصلي وتوثيق كل تعديل إداري`}
+      breadcrumbs={[{ label: 'لوحة الإدارة', href: '/' }, { label: 'الخزينة' }]}
     >
-      {messages.error ? <div className="error">{messages.error}</div> : null}
-      {messages.success ? <div className="success">{messages.success}</div> : null}
+      {filters.error && <div className="error">{filters.error}</div>}
+      {filters.success && <div className="success">{filters.success}</div>}
 
-      <form className="card filters" method="get" style={{ marginBottom: 16 }}>
-        <div className="field"><label>من</label><input name="from" type="date" defaultValue={from} /></div>
-        <div className="field"><label>إلى</label><input name="to" type="date" defaultValue={to} /></div>
-        <div className="field filter-action"><label>&nbsp;</label><button className="btn" type="submit">تطبيق الفترة</button></div>
-      </form>
+      <UnifiedFilterBar
+        branches={data.branches}
+        defaultFrom={data.from}
+        defaultTo={data.to}
+        defaultBranch={filters.branch}
+        exportType="branches"
+      />
 
-      <section className="grid portal-kpis" style={{ marginBottom: 16 }}>
-        <div className="card"><div className="kpi-label">إجمالي الوارد</div><div className="kpi-value">{money(incoming)}</div></div>
-        <div className="card"><div className="kpi-label">إجمالي الصادر</div><div className="kpi-value">{money(outgoing)}</div></div>
-        <div className="card"><div className="kpi-label">المصروفات</div><div className="kpi-value">{money(expenses)}</div></div>
-        <div className="card"><div className="kpi-label">عدد الخزائن</div><div className="kpi-value">{accounts?.length ?? 0}</div></div>
+      {/* 1. Cash Core KPIs (Requirement 11) */}
+      <section className="dashboard-kpis-grid">
+        <KPICard
+          label="إجمالي النقدية الداخلة (الوارد)"
+          currentValue={totalIn}
+          format="currency"
+          subtitle="توريدات مناديب ومبيعات كاش"
+        />
+
+        <KPICard
+          label="إجمالي النقدية الخارجة (الصادر)"
+          currentValue={totalOut}
+          format="currency"
+          invertSentiment={true}
+          subtitle="مصروفات وتشغيل وإيداعات"
+        />
+
+        <KPICard
+          label="صافي التغير في النقدية"
+          currentValue={netCashChange}
+          format="currency"
+          subtitle="الداخل - الخارج"
+        />
+
+        <KPICard
+          label="رصيد الخزائن النهائي المجمع"
+          currentValue={data.currentSummary.closingCash}
+          format="currency"
+          subtitle="رصيد الخزائن حسب آخر شيت"
+        />
+
+        <KPICard
+          label="عدد الحركات المسجلة"
+          currentValue={cashList.length}
+          format="number"
+          subtitle="حركة نقدية وبنكية"
+        />
       </section>
 
-      {profile?.role === 'admin' ? (
-        <details className="card" style={{ marginBottom: 16 }}>
-          <summary className="details-summary">إضافة خزنة / بنك</summary>
-          <form action={createTreasuryAccount} className="form" style={{ marginTop: 14 }}>
-            <div className="grid analytics-grid">
-              <div className="field">
-                <label>الفرع</label>
-                <select name="branch_id" required defaultValue="">
-                  <option value="" disabled>اختر الفرع</option>
-                  {(branches ?? []).map((branch) => <option key={branch.id} value={branch.id}>{branch.name}</option>)}
-                </select>
-              </div>
-              <div className="field"><label>اسم الخزنة</label><input name="name" required /></div>
-              <div className="field"><label>الكود</label><input name="code" required dir="ltr" /></div>
-              <div className="field">
-                <label>النوع</label>
-                <select name="account_type" defaultValue="cash">
-                  <option value="cash">خزنة نقدية</option>
-                  <option value="bank">بنك</option>
-                  <option value="other">أخرى</option>
-                </select>
-              </div>
+      {/* 2. Journal Table (Requirement 11) */}
+      <section className="mt-4">
+        <SmartDataTable
+          title="دفتر حركة النقدية (Cash Journal)"
+          subtitle="البيان الأصلي محفوظ تماماً، وأي حركة تم تصحيحها تظهر مميزة مع إمكانية فتح سجل التدقيق"
+          rows={journalRows}
+          rowHrefKey="drillHref"
+          groupByOptions={[
+            { key: 'branchName', label: 'الفرع' },
+            { key: 'direction', label: 'نوع الحركة' },
+          ]}
+          topTotals={{
+            'إجمالي الداخل': `${money(totalIn)} ج.م`,
+            'إجمالي الخارج': `${money(totalOut)} ج.م`,
+            'صافي الحركة': `${money(netCashChange)} ج.م`,
+            'عدد الحركات': journalRows.length,
+          }}
+          columns={[
+            { key: 'entryDate', label: 'التاريخ', sortable: true },
+            { key: 'branchName', label: 'الفرع', sortable: true },
+            { key: 'treasuryName', label: 'الخزنة / البنك', hideByDefault: true },
+            { key: 'originalDesc', label: 'البيان الأصلي للموظف', sortable: true },
+            {
+              key: 'inAmount',
+              label: 'داخل (وارد)',
+              numeric: true,
+              sortable: true,
+              render: (r) => (
+                <span className={r.direction === 'وارد' ? 'text-emerald-700 font-bold' : ''}>
+                  {r.inAmount}
+                </span>
+              ),
+            },
+            {
+              key: 'outAmount',
+              label: 'خارج (صادر)',
+              numeric: true,
+              sortable: true,
+              render: (r) => (
+                <span className={r.direction === 'صادر' ? 'text-rose-700 font-bold' : ''}>
+                  {r.outAmount}
+                </span>
+              ),
+            },
+            { key: 'runningBalance', label: 'الرصيد', numeric: true, sortable: true },
+            {
+              key: 'hasCorrection',
+              label: 'حالة التعديل',
+              render: (r) => (
+                <span className={`pill-badge ${r.hasCorrection ? 'pill-amber' : 'pill-gray'}`}>
+                  {r.hasCorrection ? 'معدل إدارياً' : 'أصلي'}
+                </span>
+              ),
+            },
+            { key: 'lastModified', label: 'آخر تحديث', hideByDefault: true },
+          ]}
+        />
+      </section>
+
+      {/* 3. Add Treasury Account Panel (Admin Only) */}
+      {profile?.role === 'admin' && (
+        <details className="mt-4 card p-4">
+          <summary className="cursor-pointer font-bold text-sm text-slate-700 flex items-center gap-2">
+            <Plus className="w-4 h-4 text-blue-600" />
+            <span>إضافة خزنة أو حساب بنكي جديد</span>
+          </summary>
+          <form action={createTreasuryAccount} className="branch-form-inline mt-3">
+            <div className="field-group">
+              <label>الفرع</label>
+              <select name="branch_id" required defaultValue="">
+                <option value="" disabled>اختر الفرع</option>
+                {data.branches.map((b) => (
+                  <option key={b.id} value={b.id}>{b.name}</option>
+                ))}
+              </select>
             </div>
-            <button className="btn" type="submit">إضافة</button>
+            <div className="field-group">
+              <label>اسم الخزنة / الحساب</label>
+              <input name="name" required placeholder="مثال: حساب CIB الرئيسي" />
+            </div>
+            <div className="field-group">
+              <label>الكود</label>
+              <input name="code" required placeholder="CIB-01" dir="ltr" />
+            </div>
+            <div className="field-group">
+              <label>النوع</label>
+              <select name="account_type" defaultValue="cash">
+                <option value="cash">خزنة نقدية</option>
+                <option value="bank">حساب بنكي</option>
+                <option value="other">أخرى</option>
+              </select>
+            </div>
+            <button type="submit" className="btn-primary-action">
+              إضافة الحساب
+            </button>
           </form>
         </details>
-      ) : null}
-
-      <SmartTable
-        title="حركة الخزائن"
-        rows={rows}
-        rowHrefKey="href"
-        columns={[
-          { key: 'entry_date', label: 'التاريخ' },
-          { key: 'branch_name', label: 'الفرع' },
-          { key: 'treasury_name', label: 'الخزنة' },
-          { key: 'source_code', label: 'الكود' },
-          { key: 'description', label: 'البيان' },
-          { key: 'source_category', label: 'التصنيف الأصلي' },
-          { key: 'canonical_category', label: 'التوجيه' },
-          { key: 'expense_group', label: 'مجموعة المصروف' },
-          { key: 'direction', label: 'الحركة' },
-          { key: 'amount', label: 'المبلغ', numeric: true },
-          { key: 'running_balance', label: 'الرصيد', numeric: true },
-          { key: 'uploaded_at', label: 'وقت رفع الشيت', hiddenByDefault: true },
-        ]}
-      />
+      )}
     </AppShell>
   )
 }

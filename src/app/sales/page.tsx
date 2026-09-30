@@ -1,136 +1,269 @@
 import { redirect } from 'next/navigation'
+import Link from 'next/link'
 import { AppShell } from '@/components/app-shell'
-import { SmartTable } from '@/components/smart-table'
+import { UnifiedFilterBar } from '@/components/unified-filter-bar'
+import { KPICard } from '@/components/kpi-card'
+import { SmartDataTable } from '@/components/smart-data-table'
 import { createClient } from '@/lib/supabase/server'
+import { getUnifiedIntelligenceData, isDoubleProduct } from '@/lib/data-source'
+import { TrendingUp, Package, Building, Tag, ArrowUpDown } from 'lucide-react'
 
 export const dynamic = 'force-dynamic'
 
-function money(value: number) {
-  return new Intl.NumberFormat('en-US', { maximumFractionDigits: 2 }).format(value)
+function money(v: number) {
+  return new Intl.NumberFormat('en-US', { maximumFractionDigits: 2 }).format(v)
 }
 
-function pct(value: number) {
-  return `${new Intl.NumberFormat('en-US', { maximumFractionDigits: 1 }).format(value * 100)}%`
+function num(v: number) {
+  return new Intl.NumberFormat('en-US', { maximumFractionDigits: 0 }).format(v)
+}
+
+function pct(v: number) {
+  return `${(v * 100).toFixed(1)}%`
 }
 
 export default async function SalesPage({
   searchParams,
 }: {
-  searchParams: Promise<{ branch?: string; from?: string; to?: string }>
+  searchParams: Promise<{ branch?: string; from?: string; to?: string; compare?: string }>
 }) {
   const filters = await searchParams
-  const from = filters.from ?? ''
-  const to = filters.to ?? ''
-  const branch = filters.branch ?? ''
   const supabase = await createClient()
+
   const { data: auth } = await supabase.auth.getClaims()
   if (!auth?.claims?.sub) redirect('/login')
 
-  let dailyQuery = supabase
-    .from('v_branch_daily_kpis')
-    .select('*')
-    .order('business_date', { ascending: false })
-    .limit(5000)
-
-  let warehouseQuery = supabase
-    .from('warehouse_daily_summary')
-    .select('branch_id,business_date,sales_qty,sales_value,closing_qty,closing_value,import_batches!inner(status)')
-    .eq('import_batches.status', 'approved')
-    .order('business_date', { ascending: false })
-    .limit(5000)
-
-  if (branch) {
-    dailyQuery = dailyQuery.eq('branch_id', branch)
-    warehouseQuery = warehouseQuery.eq('branch_id', branch)
-  }
-  if (from) {
-    dailyQuery = dailyQuery.gte('business_date', from)
-    warehouseQuery = warehouseQuery.gte('business_date', from)
-  }
-  if (to) {
-    dailyQuery = dailyQuery.lte('business_date', to)
-    warehouseQuery = warehouseQuery.lte('business_date', to)
-  }
-
-  const [{ data: daily }, { data: warehouse }, { data: branches }] = await Promise.all([
-    dailyQuery,
-    warehouseQuery,
-    supabase.from('branches').select('id,name').eq('is_active',true).order('name'),
-  ])
-
-  const warehouseByKey = new Map(
-    (warehouse ?? []).map((row) => [`${row.branch_id}:${row.business_date}`, row]),
-  )
-
-  const rows = (daily ?? []).map((row) => {
-    const wh = warehouseByKey.get(`${row.branch_id}:${row.business_date}`)
-    const gross = Number(row.gross_sales ?? 0)
-    const discount = Number(row.discounts ?? 0)
-    return {
-      href: `/drilldown/sales?branch=${row.branch_id ?? ''}&date=${row.business_date ?? ''}`,
-      business_date: row.business_date ?? '',
-      branch_name: row.branch_name ?? '-',
-      gross_sales: money(gross),
-      discounts: money(discount),
-      discount_rate: pct(gross ? discount / gross : 0),
-      net_sales: money(Number(row.net_sales ?? 0)),
-      sales_qty: money(Number(wh?.sales_qty ?? 0)),
-      collections: money(Number(row.collections ?? 0)),
-      opening_receivables: money(Number(row.opening_receivables ?? 0)),
-      closing_receivables: money(Number(row.closing_receivables ?? 0)),
-      expenses: money(Number(row.expenses ?? 0)),
-      closing_cash: money(Number(row.closing_cash ?? 0)),
-      inventory_value: money(Number(wh?.closing_value ?? row.inventory_value ?? 0)),
-    }
+  const data = await getUnifiedIntelligenceData(supabase, {
+    from: filters.from,
+    to: filters.to,
+    branch: filters.branch,
   })
 
-  const totalNet = (daily ?? []).reduce((sum, row) => sum + Number(row.net_sales ?? 0), 0)
-  const totalDiscount = (daily ?? []).reduce((sum, row) => sum + Number(row.discounts ?? 0), 0)
-  const totalGross = (daily ?? []).reduce((sum, row) => sum + Number(row.gross_sales ?? 0), 0)
-  const totalQty = (warehouse ?? []).reduce((sum, row) => sum + Number(row.sales_qty ?? 0), 0)
+  const cur = data.currentSummary
+  const prev = data.prevSummary
+  const showCompare = filters.compare === '1'
+
+  // Fetch detailed inventory_daily rows for the Excel table
+  const { data: approvedBatches } = await supabase
+    .from('import_batches')
+    .select('id')
+    .eq('status', 'approved')
+
+  const approvedIds = (approvedBatches ?? []).map((b) => b.id)
+  const approvedFilter = approvedIds.length > 0 ? approvedIds : ['00000000-0000-0000-0000-000000000000']
+
+  let tableQuery = supabase
+    .from('inventory_daily')
+    .select('id, branch_id, business_date, product_id, product_name, sales_qty, unit_value, closing_qty, closing_value, branches(name)')
+    .in('batch_id', approvedFilter)
+    .gte('business_date', data.from)
+    .lte('business_date', data.to)
+    .gt('sales_qty', 0)
+    .order('business_date', { ascending: false })
+
+  if (filters.branch) {
+    tableQuery = tableQuery.eq('branch_id', filters.branch)
+  }
+
+  const { data: rawSalesRows } = await tableQuery
+
+  // Group detailed sales items into branch-product records
+  type AggregatedRow = {
+    id: string
+    productName: string
+    branchName: string
+    branchId: string
+    rawQty: number
+    isDouble: string
+    standardizedQty: number
+    salesValue: number
+    unitPrice: number
+    discount: number
+    discountRate: number
+    drillHref: string
+  }
+
+  const rowsMap = new Map<string, AggregatedRow>()
+  for (const row of rawSalesRows ?? []) {
+    const bName = Array.isArray(row.branches) ? row.branches[0]?.name : (row.branches as { name: string } | null)?.name ?? 'فرع'
+    const key = `${row.branch_id}::${row.product_name}`
+    const qty = Number(row.sales_qty ?? 0)
+    const isDouble = isDoubleProduct(row.product_name)
+    const stdQty = isDouble ? qty * 2 : qty
+    const unitPrice = Number(row.unit_value ?? 0)
+    const val = qty * unitPrice
+
+    const existing = rowsMap.get(key)
+    if (!existing) {
+      rowsMap.set(key, {
+        id: key,
+        productName: row.product_name,
+        branchName: bName,
+        branchId: row.branch_id,
+        rawQty: qty,
+        isDouble: isDouble ? 'نعم (×2)' : 'عادي',
+        standardizedQty: stdQty,
+        salesValue: val,
+        unitPrice,
+        discount: 0,
+        discountRate: 0,
+        drillHref: `/drilldown/sales?branch=${row.branch_id}&from=${data.from}&to=${data.to}`,
+      })
+    } else {
+      existing.rawQty += qty
+      existing.standardizedQty += stdQty
+      existing.salesValue += val
+      existing.unitPrice = existing.standardizedQty > 0 ? existing.salesValue / existing.standardizedQty : existing.unitPrice
+    }
+  }
+
+  const tableRows = [...rowsMap.values()].sort((a, b) => b.salesValue - a.salesValue)
+
+  // Find Extremes (أعلى وأقل القيم كبيانات وليس كتقييم إداري)
+  const topProduct = data.products[0]
+  const lowestProduct = data.products.length > 0 ? data.products[data.products.length - 1] : null
+  const topBranch = data.branchPerformance[0]
+  const lowestBranch = data.branchPerformance.length > 0 ? data.branchPerformance[data.branchPerformance.length - 1] : null
 
   return (
     <AppShell
-      title="المبيعات"
-      subtitle="حركة تراكمية مع فلاتر متعددة الفروع وبحث واختيار أعمدة مثل Excel"
+      title="تحليل المبيعات والكميات الموحدة"
+      subtitle={`بيانات المبيعات التفصيلية مع احتساب المنتجات Double ×2 والربط المباشر بالمصدر الخام`}
       breadcrumbs={[{ label: 'لوحة الإدارة', href: '/' }, { label: 'المبيعات' }]}
     >
-      <form className="card filters" method="get" style={{ marginBottom: 16 }}>
-        <div className="field"><label>الفرع</label><select name="branch" defaultValue={branch}><option value="">كل الفروع</option>{(branches ?? []).map((item) => <option key={item.id} value={item.id}>{item.name}</option>)}</select></div>
-        <div className="field"><label>من</label><input name="from" type="date" defaultValue={from} /></div>
-        <div className="field"><label>إلى</label><input name="to" type="date" defaultValue={to} /></div>
-        <div className="field filter-action"><label>&nbsp;</label><button className="btn" type="submit">تطبيق الفترة</button></div>
-      </form>
+      <UnifiedFilterBar
+        branches={data.branches}
+        defaultFrom={data.from}
+        defaultTo={data.to}
+        defaultBranch={filters.branch}
+        exportType="sales"
+      />
 
-      <div className="report-scope"><span className="scope-chip">الفرع: <strong>{(branches ?? []).find((item) => item.id === branch)?.name ?? 'كل الفروع'}</strong></span><span className="scope-chip">الفترة: <strong>{from || 'البداية'} → {to || 'اليوم'}</strong></span></div>
+      {/* 1. Sales Core KPIs */}
+      <section className="dashboard-kpis-grid">
+        <KPICard
+          label="صافي المبيعات"
+          currentValue={cur.netSales}
+          previousValue={prev.netSales}
+          format="currency"
+          showPrevious={showCompare}
+          subtitle={`قبل الخصم: ${money(cur.grossSales)} ج.م`}
+        />
 
-      <section className="grid portal-kpis" style={{ marginBottom: 16 }}>
-        <div className="card"><div className="kpi-label">صافي المبيعات</div><div className="kpi-value">{money(totalNet)}</div></div>
-        <div className="card"><div className="kpi-label">البيع قبل الخصم</div><div className="kpi-value">{money(totalGross)}</div></div>
-        <div className="card"><div className="kpi-label">الخصومات</div><div className="kpi-value">{money(totalDiscount)}</div><div className="muted">{pct(totalGross ? totalDiscount / totalGross : 0)}</div></div>
-        <div className="card"><div className="kpi-label">كمية البيع</div><div className="kpi-value">{money(totalQty)}</div></div>
+        <KPICard
+          label="كمية المبيعات الموحدة"
+          currentValue={cur.standardizedQty}
+          previousValue={prev.standardizedQty}
+          format="number"
+          showPrevious={showCompare}
+          subtitle={`الكمية الفعلية: ${num(cur.salesQty)}`}
+        />
+
+        <KPICard
+          label="متوسط سعر البيع الموحد"
+          currentValue={cur.avgUnitPrice}
+          previousValue={prev.avgUnitPrice}
+          format="currency"
+          showPrevious={showCompare}
+          subtitle="صافي المبيعات ÷ الكمية الموحدة"
+        />
+
+        <KPICard
+          label="إجمالي الخصومات"
+          currentValue={cur.discounts}
+          previousValue={prev.discounts}
+          format="currency"
+          showPrevious={showCompare}
+          subtitle={`نسبة الخصم: ${pct(cur.discountRate)}`}
+        />
+
+        <KPICard
+          label="نسبة الخصم من البيع"
+          currentValue={cur.discountRate}
+          previousValue={prev.discountRate}
+          format="percent"
+          showPrevious={showCompare}
+          subtitle="الخصومات ÷ إجمالي البيع قبل الخصم"
+        />
       </section>
 
-      <SmartTable
-        title="حركة المبيعات"
-        rows={rows}
-        rowHrefKey="href"
-        columns={[
-          { key: 'business_date', label: 'التاريخ' },
-          { key: 'branch_name', label: 'الفرع' },
-          { key: 'gross_sales', label: 'قبل الخصم', numeric: true },
-          { key: 'discounts', label: 'الخصم', numeric: true },
-          { key: 'discount_rate', label: 'نسبة الخصم' },
-          { key: 'net_sales', label: 'صافي المبيعات', numeric: true },
-          { key: 'sales_qty', label: 'كمية البيع', numeric: true },
-          { key: 'collections', label: 'التحصيل', numeric: true },
-          { key: 'opening_receivables', label: 'رصيد أول المديونية', numeric: true, hiddenByDefault: true },
-          { key: 'closing_receivables', label: 'رصيد آخر المديونية', numeric: true },
-          { key: 'expenses', label: 'المصروفات', numeric: true },
-          { key: 'closing_cash', label: 'رصيد الخزنة', numeric: true, hiddenByDefault: true },
-          { key: 'inventory_value', label: 'رصيد المخزون', numeric: true },
-        ]}
-      />
+      {/* 2. Analytical Summary & Statistical Extremes (Requirement 6) */}
+      <section className="sales-analytics-cards-grid">
+        <div className="card-analytical">
+          <div className="card-head-simple">
+            <Package className="w-4 h-4 text-blue-600" />
+            <h4>أعلى وأقل الأصناف مبيعاً</h4>
+          </div>
+          <div className="stat-pair">
+            <div className="stat-box">
+              <span className="stat-label">الأعلى قيمة:</span>
+              <strong className="stat-name">{topProduct ? topProduct.productName : '-'}</strong>
+              <span className="stat-figure">{topProduct ? `${money(topProduct.salesValue)} ج.م` : '-'}</span>
+            </div>
+            <div className="stat-box">
+              <span className="stat-label">الأقل مبيعاً:</span>
+              <strong className="stat-name">{lowestProduct ? lowestProduct.productName : '-'}</strong>
+              <span className="stat-figure">{lowestProduct ? `${money(lowestProduct.salesValue)} ج.م` : '-'}</span>
+            </div>
+          </div>
+        </div>
+
+        <div className="card-analytical">
+          <div className="card-head-simple">
+            <Building className="w-4 h-4 text-emerald-600" />
+            <h4>أعلى وأقل الفروع مساهمة</h4>
+          </div>
+          <div className="stat-pair">
+            <div className="stat-box">
+              <span className="stat-label">أعلى فرع:</span>
+              <strong className="stat-name">{topBranch ? topBranch.branchName : '-'}</strong>
+              <span className="stat-figure">{topBranch ? `${money(topBranch.netSales)} ج.م (${topBranch.companySharePct.toFixed(1)}%)` : '-'}</span>
+            </div>
+            <div className="stat-box">
+              <span className="stat-label">أقل فرع:</span>
+              <strong className="stat-name">{lowestBranch ? lowestBranch.branchName : '-'}</strong>
+              <span className="stat-figure">{lowestBranch ? `${money(lowestBranch.netSales)} ج.م (${lowestBranch.companySharePct.toFixed(1)}%)` : '-'}</span>
+            </div>
+          </div>
+        </div>
+      </section>
+
+      {/* 3. Professional Excel-like Smart Table (Requirement 7) */}
+      <section className="mt-4">
+        <SmartDataTable
+          title="جدول المبيعات التفصيلي"
+          subtitle="حساب موحد للكميات والمتوسطات مع تثبيت الرؤوس وتصدير Excel مباشر"
+          rows={tableRows}
+          rowHrefKey="drillHref"
+          groupByOptions={[
+            { key: 'branchName', label: 'الفرع' },
+            { key: 'productName', label: 'الصنف' },
+          ]}
+          topTotals={{
+            'إجمالي المبيعات': `${money(cur.netSales)} ج.م`,
+            'الكمية الفعلية': num(cur.salesQty),
+            'الكمية الموحدة (x2)': num(cur.standardizedQty),
+            'إجمالي الخصم': `${money(cur.discounts)} ج.م`,
+          }}
+          columns={[
+            { key: 'productName', label: 'الصنف', sortable: true },
+            { key: 'branchName', label: 'الفرع', sortable: true },
+            { key: 'rawQty', label: 'الكمية الفعلية', numeric: true, sortable: true, render: (r) => num(r.rawQty) },
+            { key: 'isDouble', label: 'Double', render: (r) => (
+              <span className={`pill-badge ${r.isDouble.includes('نعم') ? 'pill-blue' : 'pill-gray'}`}>
+                {r.isDouble}
+              </span>
+            )},
+            { key: 'standardizedQty', label: 'الكمية الموحدة', numeric: true, sortable: true, render: (r) => (
+              <strong>{num(r.standardizedQty)}</strong>
+            )},
+            { key: 'salesValue', label: 'قيمة المبيعات (ج.م)', numeric: true, sortable: true, render: (r) => (
+              <strong>{money(r.salesValue)}</strong>
+            )},
+            { key: 'unitPrice', label: 'متوسط سعر البيع', numeric: true, sortable: true, render: (r) => money(r.unitPrice) },
+          ]}
+        />
+      </section>
     </AppShell>
   )
 }

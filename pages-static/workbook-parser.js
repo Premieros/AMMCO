@@ -179,7 +179,7 @@ function extractInventoryDaily(sheet,name,businessDate){
   for(let row=header+1;row<=rows;row++){
     const product=text(sheet,`D${row}`).replace(/\s+/g,' ').trim()
     const barcode=text(sheet,`AX${row}`),barcodeNum=num(sheet,`AX${row}`)
-    if(!product.replace(/[\s*]+/g,''))continue
+    if(!product.replace(/[\s*]+/g,'')||(!barcode&&barcodeNum===0))continue
     const unit=nullableNum(sheet,`E${row}`),closing=num(sheet,`BI${row}`)
     out.push({businessDate,sourceSheet:name,sourceRow:row,barcode:barcode||(barcodeNum?String(barcodeNum):null),productName:product,unitValue:unit,
       openingQty:num(sheet,`AY${row}`),incomingFactoryQty:num(sheet,`AZ${row}`),incomingBranchesQty:num(sheet,`BA${row}`),

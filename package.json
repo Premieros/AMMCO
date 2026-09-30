@@ -3,9 +3,10 @@
   "version": "0.1.0",
   "private": true,
   "scripts": {
-    "dev": "next dev",
+    "dev": "next dev -p 3000 -H 0.0.0.0",
     "build": "next build",
     "start": "next start",
+    "lint": "tsc --noEmit",
     "typecheck": "tsc --noEmit",
     "verify:importer": "node --experimental-strip-types scripts/verify-importer.ts"
   },
@@ -13,6 +14,8 @@
     "@supabase/ssr": "0.12.7",
     "@supabase/supabase-js": "2.117.2",
     "exceljs": "4.4.0",
+    "lucide-react": "^1.49.0",
+    "motion": "^13.4.6",
     "next": "16.3.6",
     "react": "19.3.0",
     "react-dom": "19.3.0",

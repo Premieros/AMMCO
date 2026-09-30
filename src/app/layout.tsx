@@ -12,6 +12,10 @@ const tajawal = Tajawal({
 export const metadata: Metadata = {
   title: 'AMMCO | Management Intelligence',
   description: 'منصة الإدارة المركزية وتحليل أداء فروع AMMCO',
+  openGraph: {
+    title: 'AMMCO | Management Intelligence',
+    description: 'منصة الإدارة المركزية وتحليل أداء فروع AMMCO',
+  },
 }
 
 export default function RootLayout({ children }: Readonly<{ children: React.ReactNode }>) {
