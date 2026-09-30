@@ -63,8 +63,9 @@ const classifyTreasury=(sourceCode,sourceCategory,description)=>{
   const nc=normalizeCategory(category),nd=normalizeCategory(desc)
   if(/^303\d+/.test(code))return {entryKind:'expense',canonicalCategory:category||null,expenseGroup:expenseGroupFor(category),isExpense:true,classificationConfidence:'exact'}
   if(nc==='توريد')return {entryKind:'collection',canonicalCategory:'توريد مندوب',expenseGroup:null,isExpense:false,classificationConfidence:'exact'}
-  if(/ايداع/.test(nc)||/\bqnb\b/i.test(category)||nc==='القاهره')return {entryKind:'bank_deposit',canonicalCategory:category||'ايداع بنكي',expenseGroup:null,isExpense:false,classificationConfidence:'exact'}
-  if((/تحويل/.test(nc)&&/مصنع/.test(nc))||nc==='دائنون')return {entryKind:'hq_transfer',canonicalCategory:category||'تحويل للمصنع',expenseGroup:null,isExpense:false,classificationConfidence:'exact'}
+  const bankText=normalizeCategory(category+' '+desc)
+  if(/ايداع/.test(nc)||/ايداع/.test(nd)||/\b(qnb|cib)\b/i.test(category+' '+desc)||/بنك مصر|البنك الاهلي|البنك الأهلي|القاهره/.test(bankText))return {entryKind:'bank_deposit',canonicalCategory:category||desc||'ايداع بنكي',expenseGroup:null,isExpense:false,classificationConfidence:category?'exact':'inferred'}
+  if((/تحويل/.test(nc)&&/مصنع/.test(nc))||(/تحويل/.test(nd)&&/مصنع/.test(nd))||nc==='دائنون')return {entryKind:'hq_transfer',canonicalCategory:category||desc||'تحويل للمصنع',expenseGroup:null,isExpense:false,classificationConfidence:category?'exact':'inferred'}
   if(nc==='سلفه')return {entryKind:'advance',canonicalCategory:'سلفة',expenseGroup:null,isExpense:false,classificationConfidence:'exact'}
   if(nc==='عهده')return {entryKind:'custody',canonicalCategory:'عهدة',expenseGroup:null,isExpense:false,classificationConfidence:'exact'}
   if(/مستحقه فروع/.test(nc))return {entryKind:'interbranch',canonicalCategory:category||'مستحقات فروع',expenseGroup:null,isExpense:false,classificationConfidence:'exact'}
