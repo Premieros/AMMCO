@@ -808,3 +808,156 @@ tbody tr:hover td{background:#fff5cf}
   .shell{grid-template-columns:1fr}
   .sidebar{display:none}
 }
+
+
+/* Management workbook navigation + page readability */
+.sidebar{
+  overflow-y:auto;
+  scrollbar-width:thin;
+  scrollbar-color:#cbd5e1 transparent;
+}
+.brand{
+  position:sticky;
+  top:0;
+  z-index:5;
+  background:rgba(255,255,255,.97);
+  backdrop-filter:blur(12px);
+}
+.nav-title{
+  margin:18px 9px 6px;
+  padding-top:1px;
+  color:#526579;
+  font-size:11px;
+  line-height:1.4;
+  font-weight:800;
+  letter-spacing:0;
+}
+.nav-title:not(:first-of-type){
+  border-top:1px solid #edf1f5;
+  padding-top:12px;
+}
+.nav-title.system-nav-title{
+  color:#7a4b16;
+}
+.nav a{
+  min-height:39px;
+  padding:8px 11px;
+  border-radius:10px;
+  font-size:12px;
+  line-height:1.35;
+  font-weight:650;
+}
+.nav a.active{
+  font-weight:800;
+}
+.topbar-context{
+  display:flex;
+  align-items:center;
+  gap:9px;
+  min-width:0;
+}
+.topbar-context span{
+  font-size:11px;
+  color:#8a97a6;
+  font-weight:600;
+}
+.topbar-context b{
+  max-width:260px;
+  overflow:hidden;
+  text-overflow:ellipsis;
+  white-space:nowrap;
+  font-size:13px!important;
+  color:#203246;
+  font-weight:800;
+}
+.content{
+  padding:20px 24px 30px;
+}
+.pagehead{
+  margin-bottom:14px;
+}
+.sheet-context{
+  display:inline-flex;
+  align-items:center;
+  min-height:25px;
+  margin-bottom:5px;
+  padding:3px 9px;
+  border:1px solid #dce5ed;
+  border-radius:999px;
+  background:#f7fafc;
+  color:#587086;
+  font-size:10.5px;
+  font-weight:700;
+}
+.pagehead h1{
+  margin:0 0 3px;
+  font-size:25px;
+  line-height:1.25;
+  font-weight:800;
+  color:#17283a;
+}
+.pagehead .muted{
+  font-size:11.5px;
+  line-height:1.5;
+  color:#708094;
+}
+.compact-filters{
+  min-height:55px;
+  gap:9px;
+  padding:10px 11px;
+}
+.compact-filters .field{
+  width:165px;
+}
+.compact-filters .filter-branch{
+  width:min(275px,32vw);
+}
+.field label{
+  margin-bottom:2px;
+  font-size:10px;
+  font-weight:700;
+}
+.field input,.field select{
+  min-height:34px;
+  height:34px;
+  font-size:11.5px;
+}
+.btn{
+  min-height:34px;
+  padding:6px 12px;
+  font-size:11.5px;
+  font-weight:750;
+}
+.report-meta{
+  min-height:28px;
+  margin-bottom:10px;
+  font-size:10.5px;
+}
+.kpi{
+  min-height:90px;
+  padding:12px 14px 11px;
+}
+.kpi span{
+  font-size:10.5px;
+  font-weight:700;
+}
+.kpi strong{
+  margin-top:7px;
+  font-size:25px;
+  font-weight:800;
+}
+.card h2,.table-head h2{
+  font-size:13px;
+  font-weight:800;
+}
+.table-head small{
+  font-size:9.5px;
+}
+.tool-btn,.search{
+  font-size:10px;
+}
+@media(max-width:1100px){
+  .nav-title{font-size:10.5px}
+  .nav a{font-size:11.5px}
+  .pagehead h1{font-size:23px}
+}
