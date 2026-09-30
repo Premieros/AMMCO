@@ -1582,18 +1582,94 @@ async function renderImports(){
 }
 window.viewBatchIssues=async id=>{
  const msg=document.getElementById('imports-msg')
- if(msg)msg.innerHTML='<div class="notice">جاري تحميل أسباب المراجعة…</div>'
- const {data,error}=await supabase.from('import_validation_issues')
-  .select('code,severity,message,sheet_name,row_number')
-  .eq('batch_id',id)
-  .order('severity',{ascending:true})
-  .limit(200)
+ if(msg)msg.innerHTML='<div class="notice">جاري تحميل الفروق السابقة…</div>'
+ const [{data:issues,error:issuesError},{data:changes,error:changesError}]=await Promise.all([
+  supabase.from('import_validation_issues').select('code,severity,message,sheet_name,row_number').eq('batch_id',id).order('severity',{ascending:true}).limit(200),
+  supabase.from('import_day_changes').select('business_date,old_snapshot,new_snapshot,resolution_status').eq('batch_id',id).order('business_date').limit(100)
+ ])
+ const error=issuesError||changesError
  if(error){if(msg)msg.innerHTML='<div class="error">'+escapeHtml(error.message)+'</div>';return}
- const rows=data||[]
- if(!rows.length){if(msg)msg.innerHTML='<div class="notice">لا توجد ملاحظات مسجلة لهذه الدفعة.</div>';return}
- const errors=rows.filter(x=>x.severity==='error').length,warnings=rows.filter(x=>x.severity==='warning').length
- if(msg)msg.innerHTML='<div class="notice"><b>أسباب المراجعة:</b> '+errors+' خطأ • '+warnings+' تحذير</div>'+
-  '<div class="review-issues-list">'+rows.map(x=>'<div class="review-issue '+escapeAttr(x.severity||'')+'"><b>'+escapeHtml(x.message||x.code||'ملاحظة')+'</b><span>'+escapeHtml([x.sheet_name,x.row_number?('صف '+x.row_number):''].filter(Boolean).join(' • '))+'</span></div>').join('')+'</div>'
+ const issueRows=issues||[],changeRows=changes||[]
+ const errors=issueRows.filter(x=>x.severity==='error').length,warnings=issueRows.filter(x=>x.severity==='warning').length
+
+ const snap=s=>{
+  if(!s||typeof s!=='object')return {net:0,collections:0,debt:0,expenses:0,inventory:0}
+  if(s.metrics)return {
+   net:Number(s.metrics.netSales||0),collections:Number(s.metrics.collections||0),
+   debt:Number(s.metrics.closingReceivables||0),expenses:Number(s.metrics.expenses||0),
+   inventory:Number(s.metrics.inventoryValue||0)
+  }
+  const reps=Array.isArray(s.reps)?s.reps:[]
+  const treasury=Array.isArray(s.treasury)?s.treasury:[]
+  return {
+   net:reps.reduce((a,r)=>a+Number(r.netAfterDiscount||r.sales||0),0),
+   collections:reps.reduce((a,r)=>a+Number(r.depositAmount||r.collections||0),0),
+   debt:reps.reduce((a,r)=>a+Number(r.closingBalance||0),0),
+   expenses:treasury.filter(x=>x.isExpense).reduce((a,r)=>a+Number(r.amount||0),0),
+   inventory:Number(s.warehouse?.closingValue||0)
+  }
+ }
+ const diffHtml=changeRows.map(ch=>{
+  const old=snap(ch.old_snapshot),neu=snap(ch.new_snapshot)
+  return '<div class="history-diff-card"><div class="history-diff-date">'+escapeHtml(ch.business_date)+'</div>'+
+   '<div class="history-diff-grid">'+
+   [['صافي المبيعات',old.net,neu.net],['التحصيل',old.collections,neu.collections],['مديونية آخر',old.debt,neu.debt],['المصروفات',old.expenses,neu.expenses],['قيمة المخزون',old.inventory,neu.inventory]]
+    .filter(x=>Math.abs(Number(x[1])-Number(x[2]))>.02)
+    .map(x=>'<div><span>'+x[0]+'</span><b>'+money(x[1])+' → '+money(x[2])+'</b></div>').join('')+
+   '</div></div>'
+ }).join('')
+
+ if(msg)msg.innerHTML=
+  '<div class="notice"><b>الفروق السابقة:</b> '+changeRows.length+' يوم • '+errors+' خطأ • '+warnings+' تحذير</div>'+
+  (diffHtml||'<div class="notice">لا توجد فروق رقمية مسجلة.</div>')+
+  '<div class="history-review-actions">'+
+   '<button class="btn secondary" onclick="keepOldImportNew(\''+id+'\',this)">احتفظ بالسابق واستورد الجديد فقط</button>'+
+   '<button class="btn danger" onclick="approveReplacement(\''+id+'\',this)">اعتماد الاستبدال بهذه النسخة</button>'+
+  '</div>'
+}
+
+window.keepOldImportNew=async(id,btn)=>{
+ const msg=document.getElementById('imports-msg')
+ if(btn){btn.disabled=true;btn.textContent='جاري تجهيز الجديد فقط…'}
+ try{
+  const {data:{session:active}}=await supabase.auth.getSession()
+  const res=await fetch(`${SUPABASE_URL}/functions/v1/ammco-import-process`,{
+   method:'POST',headers:{Authorization:`Bearer ${active.access_token}`,apikey:SUPABASE_KEY,'Content-Type':'application/json'},
+   body:JSON.stringify({batchId:id,historyMode:'append_only'})
+  })
+  const out=await res.json()
+  if(!res.ok)throw new Error(out.error||'تعذر تجهيز النسخة')
+  if(out.noNewDays){if(msg)msg.innerHTML='<div class="notice">لا توجد أيام جديدة. البيانات القديمة بقيت كما هي ولم يتم تغييرها.</div>';return}
+  if(out.status!=='validated')throw new Error('النسخة ما زالت تحتاج مراجعة')
+  const {error}=await supabase.rpc('approve_import_batch',{p_batch_id:id})
+  if(error)throw error
+  clearPageCache()
+  if(msg)msg.innerHTML='<div class="success">تم الاحتفاظ بالبيانات السابقة واعتماد الأيام الجديدة فقط.</div>'
+  setTimeout(()=>render({force:true}),400)
+ }catch(err){if(msg)msg.innerHTML='<div class="error">'+escapeHtml(err.message||String(err))+'</div>'}
+ finally{if(btn){btn.disabled=false;btn.textContent='احتفظ بالسابق واستورد الجديد فقط'}}
+}
+
+window.approveReplacement=async(id,btn)=>{
+ const msg=document.getElementById('imports-msg')
+ if(!confirm('سيتم استبدال الأيام السابقة الموضحة أعلاه بهذه النسخة. هل تريد المتابعة؟'))return
+ if(btn){btn.disabled=true;btn.textContent='جاري تجهيز الاستبدال…'}
+ try{
+  const {data:{session:active}}=await supabase.auth.getSession()
+  const res=await fetch(`${SUPABASE_URL}/functions/v1/ammco-import-process`,{
+   method:'POST',headers:{Authorization:`Bearer ${active.access_token}`,apikey:SUPABASE_KEY,'Content-Type':'application/json'},
+   body:JSON.stringify({batchId:id,historyMode:'replace'})
+  })
+  const out=await res.json()
+  if(!res.ok)throw new Error(out.error||'تعذر تجهيز الاستبدال')
+  if(out.status!=='validated')throw new Error('توجد أخطاء أخرى غير فروق الأيام السابقة؛ لا يمكن الاستبدال')
+  const {error}=await supabase.rpc('approve_import_batch',{p_batch_id:id})
+  if(error)throw error
+  clearPageCache()
+  if(msg)msg.innerHTML='<div class="success">تم اعتماد الاستبدال وتحديث الأيام السابقة بالنسخة الجديدة.</div>'
+  setTimeout(()=>render({force:true}),400)
+ }catch(err){if(msg)msg.innerHTML='<div class="error">'+escapeHtml(err.message||String(err))+'</div>'}
+ finally{if(btn){btn.disabled=false;btn.textContent='اعتماد الاستبدال بهذه النسخة'}}
 }
 
 window.processBatch=async id=>{
@@ -1636,6 +1712,16 @@ function renderUploads(){
   <div class="bulk-live-summary" id="bulk-live-summary">الحالة الحالية: 0 جاهز • 0 يعمل • 0 نجح • 0 مراجعة • 0 فشل</div>
   <section class="card bulk-upload-head">
    <div class="notice">يمكنك تجهيز حتى 12 فرعًا ثم الضغط مرة واحدة. التحليل يتم على جهازك، والحفظ يتم في Supabase. للحفاظ على استقرار المتصفح تتم المعالجة في 3 مسارات متوازية آمنة.</div>
+   <div class="history-mode-card">
+    <div class="field history-mode-field">
+     <label>طريقة التعامل مع البيانات السابقة</label>
+     <select id="bulk-history-mode">
+      <option value="append_only" selected>احتفظ بالقديم وأضف الأيام الجديدة فقط</option>
+      <option value="review">اكتشف أي تعديل سابق واعرضه للمراجعة قبل الاستبدال</option>
+     </select>
+    </div>
+    <div class="history-mode-help">لن يتم استبدال يوم معتمد سابقًا تلقائيًا. الاستبدال يحتاج موافقة صريحة من سجل الرفع.</div>
+   </div>
    <div class="bulk-period">
     <div class="field"><label>من</label><input id="bulk-period-start" type="date" value="${periodStart}"></div>
     <div class="field"><label>إلى</label><input id="bulk-period-end" type="date" value="${periodEnd}"></div>
@@ -1707,7 +1793,7 @@ function renderUploads(){
  }
 
  const processLane=async task=>{
-  const {lane,branchId,file,periodStart,periodEnd,active}=task
+  const {lane,branchId,file,periodStart,periodEnd,active,historyMode}=task
   try{
    setLane(lane,'working','قراءة الملف','جاري تحليل Excel على جهازك…',10)
    const parsed=await parseWorkbookBrowser(file,{periodStart,periodEnd})
@@ -1731,14 +1817,17 @@ function renderUploads(){
    const processRes=await fetch(`${SUPABASE_URL}/functions/v1/ammco-import-process`,{
     method:'POST',
     headers:{Authorization:`Bearer ${active.access_token}`,apikey:SUPABASE_KEY,'Content-Type':'application/json'},
-    body:JSON.stringify({batchId:uploaded.batchId,parsed})
+    body:JSON.stringify({batchId:uploaded.batchId,parsed,historyMode})
    })
    const processed=await processRes.json()
    if(!processRes.ok)throw new Error(processed.error||'تعذر تسجيل البيانات')
 
    if(processed.status==='rejected'){
-    setLane(lane,'warning','يحتاج مراجعة',`${processed.issues||0} ملاحظة تحقق • الإصدار ${uploaded.version}`,100)
-    return {lane,ok:true,review:true}
+    const detail=processed.noNewDays
+      ? `لا توجد أيام جديدة بعد آخر بيانات معتمدة • الإصدار ${uploaded.version}`
+      : `${processed.issues||0} ملاحظة تحقق • الإصدار ${uploaded.version}`
+    setLane(lane,'warning',processed.noNewDays?'لا يوجد جديد':'يحتاج مراجعة',detail,100)
+    return {lane,ok:true,review:!processed.noNewDays}
    }
    setLane(lane,'success','تم بنجاح',`الإصدار ${uploaded.version} • ${parsed.stats.representativeRowCount} سجل مندوب • ${parsed.stats.inventoryDailyRowCount} حركة صنف`,100)
    return {lane,ok:true,review:false}
@@ -1767,6 +1856,7 @@ function renderUploads(){
   const msg=document.getElementById('upload-msg')
   const start=document.getElementById('bulk-period-start')?.value
   const end=document.getElementById('bulk-period-end')?.value
+  const historyMode=document.getElementById('bulk-history-mode')?.value||'append_only'
   if(!start||!end){msg.innerHTML='<div class="error">حدد الفترة أولًا.</div>';return}
   if(end<start){msg.innerHTML='<div class="error">تاريخ النهاية يجب ألا يسبق البداية.</div>';return}
 
@@ -1784,7 +1874,7 @@ function renderUploads(){
    if(!branchId){setLane(lane,'error','حدد الفرع','اختر الفرع قبل الرفع',0);continue}
    if(usedBranches.has(branchId)){setLane(lane,'error','فرع مكرر','كل فرع يجب أن يظهر مرة واحدة في الدفعة',0);continue}
    usedBranches.add(branchId)
-   tasks.push({lane,branchId,file,periodStart:start,periodEnd:end,active})
+   tasks.push({lane,branchId,file,periodStart:start,periodEnd:end,active,historyMode})
   }
   if(!tasks.length){msg.innerHTML='<div class="error">اختر ملفًا واحدًا على الأقل.</div>';return}
 
