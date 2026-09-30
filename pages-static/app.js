@@ -320,9 +320,10 @@ function managementDashboardTable(rows,totalRow){
   {key:'opening',label:'افتتاحي مديونية'},
   {key:'sales',label:'المبيعات',num:1},
   {key:'collections',label:'التحصيل',num:1},
-  {key:'cumulative',label:'تراكمي',num:1},
+  {key:'cumulative',label:'مديونية تراكمية',num:1},
   {key:'discount',label:'خصم',num:1},
   {key:'discount_rate',label:'نسبة الخصم'},
+  {key:'sales_qty',label:'كمية المبيعات المكافئة',num:1},
   {key:'avg_price',label:'متوسط السعر',num:1},
   {key:'fuel',label:'سولار',num:1},
   {key:'petro',label:'بترو أب',num:1},
@@ -342,7 +343,7 @@ function managementDashboardTable(rows,totalRow){
   '<button class="tool-btn" type="button" onclick="exportVisibleTableXlsx(this)">Excel</button>'+
   '<button class="tool-btn" type="button" onclick="printReportOnly(this)">طباعة</button></div></div>'+
   '<div class="table-wrap"><table><thead>'+
-   '<tr class="group-header-row"><th rowspan="2">الفرع</th><th colspan="4">30 سبتمبر</th><th colspan="3">نسبة الخصم</th><th colspan="3">مصاريف السيارات</th><th colspan="2">المخزون</th></tr>'+
+   '<tr class="group-header-row"><th rowspan="2">الفرع</th><th colspan="4">30 سبتمبر</th><th colspan="4">نسبة الخصم</th><th colspan="3">مصاريف السيارات</th><th colspan="2">المخزون</th></tr>'+
    '<tr class="column-header-row">'+header.replace(/^<th>[\s\S]*?<\/th>/,'')+'</tr>'+
   '</thead><tbody>'+
   rows.map(r=>'<tr>'+cols.map(col=>'<td class="'+(col.num?'num ':'')+(col.key==='branch_name'?'row-label':'')+'">'+(r[col.key]??'-')+'</td>').join('')+'</tr>').join('')+
@@ -406,8 +407,9 @@ async function renderDashboard(){
  const raw=[...by.entries()].map(([id,x])=>{
   const wh=whLatest.get(id)||{},verifiedLegacy=wh.raw_payload?.closing_qty_source==='daily_product_closing_verified'
   const inv=inventoryByBranch.get(id)||(verifiedLegacy?{qty:Number(wh.closing_qty||0),value:Number(wh.closing_value||0)}:{qty:0,value:0})
+  const verifiedEquiv=Number(wh.raw_payload?.equivalent_cartons_month||0)
   const detailedEquiv=Number(equivCartonsBy.get(id)||0)
-  const equivCartons=detailedEquiv||Number(wh.raw_payload?.equivalent_cartons_month||0)
+  const equivCartons=verifiedEquiv||detailedEquiv
   const car=carBy.get(id)||{fuel:0,petro:0,maintenance:0}
   return {...x,id,equivCartons,avgPrice:equivCartons?x.net/equivCartons:0,fuel:car.fuel,petro:car.petro,maintenance:car.maintenance,inventoryQty:inv.qty,inventoryValue:inv.value}
  }).sort((a,b)=>b.net-a.net)
@@ -420,6 +422,7 @@ async function renderDashboard(){
   cumulative:money(x.debt),
   discount:money(x.disc),
   discount_rate:pct(x.gross?x.disc/x.gross:0),
+  sales_qty:qty(x.equivCartons),
   avg_price:money(x.avgPrice),
   fuel:money(x.fuel),
   petro:money(x.petro),
@@ -430,7 +433,7 @@ async function renderDashboard(){
  const t=raw.reduce((a,x)=>{a.opening+=x.opening;a.sales+=x.net;a.collections+=x.coll;a.cumulative+=x.debt;a.discount+=x.disc;a.gross+=x.gross;a.equivCartons+=x.equivCartons;a.fuel+=x.fuel;a.petro+=x.petro;a.maintenance+=x.maintenance;a.inventoryQty+=x.inventoryQty;a.inventoryValue+=x.inventoryValue;return a},{opening:0,sales:0,collections:0,cumulative:0,discount:0,gross:0,equivCartons:0,fuel:0,petro:0,maintenance:0,inventoryQty:0,inventoryValue:0})
  const totalRow='<tr class="total"><th>الإجمالي</th>'+
   '<th class="num">'+money(t.opening)+'</th><th class="num">'+money(t.sales)+'</th><th class="num">'+money(t.collections)+'</th><th class="num">'+money(t.cumulative)+'</th>'+
-  '<th class="num">'+money(t.discount)+'</th><th>'+pct(t.gross?t.discount/t.gross:0)+'</th><th class="num">'+money(t.equivCartons?t.sales/t.equivCartons:0)+'</th>'+
+  '<th class="num">'+money(t.discount)+'</th><th>'+pct(t.gross?t.discount/t.gross:0)+'</th><th class="num">'+qty(t.equivCartons)+'</th><th class="num">'+money(t.equivCartons?t.sales/t.equivCartons:0)+'</th>'+
   '<th class="num">'+money(t.fuel)+'</th><th class="num">'+money(t.petro)+'</th><th class="num">'+money(t.maintenance)+'</th>'+
   '<th class="num">'+qty(t.inventoryQty)+'</th><th class="num">'+money(t.inventoryValue)+'</th></tr>'
 
@@ -497,8 +500,9 @@ async function renderExecutive(){
  const raw=[...by.entries()].map(([id,x])=>{
   const wh=whLatest.get(id)||{},verifiedLegacy=wh.raw_payload?.closing_qty_source==='daily_product_closing_verified'
   const inv=inventoryByBranch.get(id)||(verifiedLegacy?{qty:Number(wh.closing_qty||0),value:Number(wh.closing_value||0)}:{qty:0,value:0})
+  const verifiedEquiv=Number(wh.raw_payload?.equivalent_cartons_month||0)
   const detailedEquiv=Number(equivCartonsBy.get(id)||0)
-  const equivCartons=detailedEquiv||Number(wh.raw_payload?.equivalent_cartons_month||0)
+  const equivCartons=verifiedEquiv||detailedEquiv
   const car=carExp.get(id)||{fuel:0,petro:0,maintenance:0}
   return {id,...x,inventoryQty:inv.qty,inventoryValue:inv.value,equivCartons,fuel:car.fuel,petro:car.petro,maintenance:car.maintenance}
  }).sort((a,b)=>b.net-a.net)
@@ -518,6 +522,7 @@ async function renderExecutive(){
   discount7:money(x.last7Discount),
   discount:money(x.disc),
   discount_rate:pct(x.gross?x.disc/x.gross:0),
+  sales_qty:qty(x.equivCartons),
   avg_price:money(x.equivCartons?x.net/x.equivCartons:0),
   fuel:money(x.fuel),
   petro:money(x.petro),
@@ -530,13 +535,13 @@ async function renderExecutive(){
  }))
  const totals=raw.reduce((a,x)=>{
   a.opening+=x.opening;a.last7Sales+=x.last7Sales;a.last7Collections+=x.last7Collections;a.last7Returns+=x.last7Returns;a.net+=x.net;a.coll+=x.coll
-  a.closingDebt+=x.closingDebt;a.last7Discount+=x.last7Discount;a.disc+=x.disc;a.gross+=x.gross;a.fuel+=x.fuel;a.petro+=x.petro;a.maintenance+=x.maintenance
+  a.closingDebt+=x.closingDebt;a.last7Discount+=x.last7Discount;a.disc+=x.disc;a.gross+=x.gross;a.equivCartons+=x.equivCartons;a.fuel+=x.fuel;a.petro+=x.petro;a.maintenance+=x.maintenance
   a.inventoryQty+=x.inventoryQty;a.inventoryValue+=x.inventoryValue;a.closingCash+=x.closingCash;a.expenses+=x.expenses;return a
- },{opening:0,last7Sales:0,last7Collections:0,last7Returns:0,net:0,coll:0,closingDebt:0,last7Discount:0,disc:0,gross:0,fuel:0,petro:0,maintenance:0,inventoryQty:0,inventoryValue:0,closingCash:0,expenses:0})
+ },{opening:0,last7Sales:0,last7Collections:0,last7Returns:0,net:0,coll:0,closingDebt:0,last7Discount:0,disc:0,gross:0,equivCartons:0,fuel:0,petro:0,maintenance:0,inventoryQty:0,inventoryValue:0,closingCash:0,expenses:0})
  const totalRow='<tr class="total">'+
   '<th>الإجمالي</th><th class="num">'+money(totals.opening)+'</th><th class="num">'+money(totals.last7Sales)+'</th><th class="num">'+money(totals.last7Collections)+'</th><th class="num">'+money(totals.last7Returns)+'</th>'+
   '<th>—</th><th class="num">'+money(totals.opening)+'</th><th class="num">'+money(totals.net)+'</th><th class="num">'+money(totals.coll)+'</th><th class="num">'+money(totals.closingDebt)+'</th><th class="num">'+money(totals.closingDebt)+'</th>'+
-  '<th class="num">'+money(totals.last7Discount)+'</th><th class="num">'+money(totals.disc)+'</th><th>'+pct(totals.gross?totals.disc/totals.gross:0)+'</th><th>—</th>'+
+  '<th class="num">'+money(totals.last7Discount)+'</th><th class="num">'+money(totals.disc)+'</th><th>'+pct(totals.gross?totals.disc/totals.gross:0)+'</th><th class="num">'+qty(totals.equivCartons)+'</th><th class="num">'+money(totals.equivCartons?totals.net/totals.equivCartons:0)+'</th>'+
   '<th class="num">'+money(totals.fuel)+'</th><th class="num">'+money(totals.petro)+'</th><th class="num">'+money(totals.maintenance)+'</th>'+
   '<th class="num">'+qty(totals.inventoryQty)+'</th><th class="num">'+money(totals.inventoryValue)+'</th><th class="num">'+money(totals.closingCash)+'</th><th>'+pct(totals.net?totals.expenses/totals.net:0)+'</th><th>—</th></tr>'
 
@@ -551,10 +556,11 @@ async function renderExecutive(){
   {key:'sales',label:'المبيعات',num:1},
   {key:'collections',label:'التحصيل',num:1},
   {key:'month_debt',label:'مديونية الشهر',num:1},
-  {key:'cumulative_debt',label:'تراكمي',num:1},
+  {key:'cumulative_debt',label:'مديونية تراكمية',num:1},
   {key:'discount7',label:'خصم 7',num:1},
   {key:'discount',label:'الخصم',num:1},
   {key:'discount_rate',label:'% الخصم'},
+  {key:'sales_qty',label:'كمية المبيعات المكافئة',num:1},
   {key:'avg_price',label:'متوسط السعر',num:1},
   {key:'fuel',label:'سولار',num:1},
   {key:'petro',label:'بترو أب',num:1},
