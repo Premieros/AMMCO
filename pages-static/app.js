@@ -7,7 +7,9 @@ const supabase=createClient(SUPABASE_URL,SUPABASE_KEY,{auth:{persistSession:true
 const app=document.getElementById('app')
 const fmt=new Intl.NumberFormat('en-US',{maximumFractionDigits:2})
 const money=v=>fmt.format(Number(v||0))
-const pct=v=>`${fmt.format(Number(v||0)*100)}%`
+const compactFmt=new Intl.NumberFormat('en-US',{notation:'compact',maximumFractionDigits:2})
+const compactMoney=v=>compactFmt.format(Number(v||0))
+const pct=v=>`${new Intl.NumberFormat('en-US',{maximumFractionDigits:1}).format(Number(v||0)*100)}%`
 const route=()=>location.hash.replace(/^#\/?/,'')||'dashboard'
 const qs=()=>new URLSearchParams(location.hash.includes('?')?location.hash.split('?')[1]:'')
 const today=new Date()
@@ -59,11 +61,23 @@ function shell(title,subtitle,body){
 }
 
 function branchOptions(selected=''){return `<option value="">كل الفروع</option>${branches.map(b=>`<option value="${b.id}" ${selected===b.id?'selected':''}>${b.name}</option>`).join('')}`}
-function filters(from,to,branch){return `<form id="filters" class="filters"><div class="field"><label>الفرع</label><select name="branch">${branchOptions(branch)}</select></div><div class="field"><label>من</label><input type="date" name="from" value="${from}"></div><div class="field"><label>إلى</label><input type="date" name="to" value="${to}"></div><div class="field"><label>&nbsp;</label><button class="btn">تطبيق</button></div></form>`}
+function filters(from,to,branch){return `<form id="filters" class="filters compact-filters">
+ <div class="field filter-branch"><label>الفرع</label><select name="branch">${branchOptions(branch)}</select></div>
+ <div class="field"><label>من</label><input type="date" name="from" value="${from}"></div>
+ <div class="field"><label>إلى</label><input type="date" name="to" value="${to}"></div>
+ <div class="filter-buttons"><button class="btn" type="submit">تطبيق</button><button class="btn secondary" type="button" onclick="resetReportFilters()">مسح</button></div>
+</form>`}
 function bindFilters(path){document.getElementById('filters')?.addEventListener('submit',e=>{e.preventDefault();const f=new FormData(e.currentTarget);location.hash=`#/${path}?branch=${f.get('branch')||''}&from=${f.get('from')}&to=${f.get('to')}`})}
-function scope(from,to,branch){return `<div class="scope"><span class="chip">الفرع: <b>${branches.find(b=>b.id===branch)?.name||'كل الفروع'}</b></span><span class="chip">الفترة: <b>${from} → ${to}</b></span><span class="chip">المصدر: <b>النسخ المعتمدة فقط</b></span></div>`}
-function table(title,cols,rows,totalRow=''){return `<section class="table-card"><div class="table-head"><h2>${title}</h2><input class="search" placeholder="بحث داخل التقرير" oninput="filterTable(this)"></div><div class="table-wrap"><table><thead><tr>${cols.map(c=>`<th>${c.label}</th>`).join('')}</tr></thead><tbody>${rows.map(r=>`<tr>${cols.map(c=>`<td class="${c.num?'num':''} ${c.key==='branch_name'?'row-label':''}">${r[c.key]??'-'}</td>`).join('')}</tr>`).join('')}${totalRow}</tbody></table></div></section>`}
+function scope(from,to,branch){return `<div class="scope report-meta"><span><b>${branches.find(b=>b.id===branch)?.name||'كل الفروع'}</b></span><span>${from} → ${to}</span><span>Approved</span></div>`}
+function table(title,cols,rows,totalRow=''){return `<section class="table-card"><div class="table-head"><div><h2>${title}</h2><small>${rows.length} صف</small></div><div class="table-tools"><input class="search" placeholder="بحث…" oninput="filterTable(this)"><button class="tool-btn" type="button" onclick="exportVisibleTable(this)">CSV</button><button class="tool-btn" type="button" onclick="window.print()">طباعة</button></div></div><div class="table-wrap"><table><thead><tr>${cols.map(c=>`<th>${c.label}</th>`).join('')}</tr></thead><tbody>${rows.map(r=>`<tr>${cols.map(c=>`<td class="${c.num?'num':''} ${c.key==='branch_name'?'row-label':''}">${r[c.key]??'-'}</td>`).join('')}</tr>`).join('')}${totalRow}</tbody></table></div></section>`}
 window.filterTable=input=>{const q=input.value.trim().toLowerCase();const tbody=input.closest('.table-card').querySelector('tbody');[...tbody.rows].forEach(r=>r.style.display=r.innerText.toLowerCase().includes(q)?'':'none')}
+window.resetReportFilters=()=>{const r=route().split('?')[0];location.hash=`#/${r}`}
+window.exportVisibleTable=button=>{
+ const card=button.closest('.table-card'),rows=[...card.querySelectorAll('tr')].filter(r=>r.style.display!=='none')
+ const csv='\uFEFF'+rows.map(r=>[...r.children].map(c=>`"${c.innerText.replace(/"/g,'""')}"`).join(',')).join('\n')
+ const blob=new Blob([csv],{type:'text/csv;charset=utf-8;'}),url=URL.createObjectURL(blob),a=document.createElement('a')
+ a.href=url;a.download=(card.querySelector('h2')?.innerText||'AMMCO-report')+'.csv';a.click();URL.revokeObjectURL(url)
+}
 
 async function render(){
  if(!session) return renderLogin()
@@ -105,7 +119,12 @@ async function renderDashboard(){
  const totals=daily.reduce((a,r)=>{a.gross+=+r.gross_sales||0;a.net+=+r.net_sales||0;a.disc+=+r.discounts||0;a.coll+=+r.collections||0;a.exp+=+r.expenses||0;return a},{gross:0,net:0,disc:0,coll:0,exp:0})
  const by=new Map();daily.forEach(r=>{const k=r.branch_id;const x=by.get(k)||{branch_name:r.branch_name,net:0,coll:0,disc:0,exp:0,debt:0};x.net+=+r.net_sales||0;x.coll+=+r.collections||0;x.disc+=+r.discounts||0;x.exp+=+r.expenses||0;x.debt=+r.closing_receivables||x.debt;by.set(k,x)})
  const rows=[...by.values()].map(x=>({...x,net:money(x.net),coll:money(x.coll),disc:money(x.disc),exp:money(x.exp),debt:money(x.debt)}))
- shell('مركز الإدارة','صورة تنفيذية موحدة لأداء الفروع',filters(from,to,branch)+scope(from,to,branch)+`<section class="kpis"><div class="kpi"><span>صافي المبيعات</span><strong>${money(totals.net)}</strong></div><div class="kpi"><span>التحصيل</span><strong>${money(totals.coll)}</strong></div><div class="kpi"><span>الخصومات</span><strong>${money(totals.disc)}</strong></div><div class="kpi"><span>المصروفات</span><strong>${money(totals.exp)}</strong></div></section>`+table('مقارنة الفروع',[{key:'branch_name',label:'الفرع'},{key:'net',label:'صافي البيع',num:1},{key:'coll',label:'التحصيل',num:1},{key:'disc',label:'الخصم',num:1},{key:'exp',label:'المصروفات',num:1},{key:'debt',label:'مديونية آخر',num:1}],rows));bindFilters('dashboard')
+ shell('مركز الإدارة','ملخص أداء الفروع',filters(from,to,branch)+scope(from,to,branch)+`<section class="kpis dashboard-kpis">
+  <div class="kpi"><span>صافي المبيعات</span><strong>${compactMoney(totals.net)}</strong><small>${money(totals.net)}</small></div>
+  <div class="kpi"><span>التحصيل</span><strong>${compactMoney(totals.coll)}</strong><small>${money(totals.coll)}</small></div>
+  <div class="kpi"><span>الخصومات</span><strong>${compactMoney(totals.disc)}</strong><small>${money(totals.disc)}</small></div>
+  <div class="kpi"><span>المصروفات</span><strong>${compactMoney(totals.exp)}</strong><small>${money(totals.exp)}</small></div>
+ </section>`+table('مقارنة الفروع',[{key:'branch_name',label:'الفرع'},{key:'net',label:'صافي البيع',num:1},{key:'coll',label:'التحصيل',num:1},{key:'disc',label:'الخصم',num:1},{key:'exp',label:'المصروفات',num:1},{key:'debt',label:'مديونية آخر',num:1}],rows));bindFilters('dashboard')
 }
 async function renderExecutive(){const {branch,from,to}=currentFilters();const daily=await loadDaily(branch,from,to);const by=new Map();daily.forEach(r=>{const k=r.branch_id;const x=by.get(k)||{branch_name:r.branch_name,gross:0,disc:0,net:0,coll:0,open:+r.opening_receivables||0,debt:0,exp:0};x.gross+=+r.gross_sales||0;x.disc+=+r.discounts||0;x.net+=+r.net_sales||0;x.coll+=+r.collections||0;x.exp+=+r.expenses||0;x.debt=+r.closing_receivables||x.debt;by.set(k,x)});const rows=[...by.values()].map(x=>({...x,gross:money(x.gross),disc:money(x.disc),net:money(x.net),coll:money(x.coll),open:money(x.open),debt:money(x.debt),exp:money(x.exp)}));shell('التقرير التنفيذي','مقارنة الإدارة حسب الفروع',filters(from,to,branch)+scope(from,to,branch)+table('الملخص التنفيذي',[{key:'branch_name',label:'الفرع'},{key:'gross',label:'قبل الخصم',num:1},{key:'disc',label:'الخصم',num:1},{key:'net',label:'صافي البيع',num:1},{key:'coll',label:'التحصيل',num:1},{key:'open',label:'مديونية أول',num:1},{key:'debt',label:'مديونية آخر',num:1},{key:'exp',label:'المصروفات',num:1}],rows));bindFilters('executive')}
 async function renderSales(){const {branch,from,to}=currentFilters();const daily=await loadDaily(branch,from,to);const rows=daily.map(r=>({business_date:r.business_date,branch_name:r.branch_name,gross:money(r.gross_sales),discounts:money(r.discounts),net:money(r.net_sales),collections:money(r.collections),expenses:money(r.expenses)}));shell('تقرير المبيعات','تفاصيل المبيعات اليومية حسب الفرع',filters(from,to,branch)+scope(from,to,branch)+table('المبيعات اليومية',[{key:'business_date',label:'التاريخ'},{key:'branch_name',label:'الفرع'},{key:'gross',label:'قبل الخصم',num:1},{key:'discounts',label:'الخصم',num:1},{key:'net',label:'صافي البيع',num:1},{key:'collections',label:'التحصيل',num:1},{key:'expenses',label:'المصروفات',num:1}],rows));bindFilters('sales')}
