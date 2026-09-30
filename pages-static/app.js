@@ -77,7 +77,6 @@ function shell(title,subtitle,body){
   <div class="nav-title">تحويل مصنع</div><nav class="nav">
    <a class="${r==='treasury'?'active':''}" href="#/treasury">الخزينة والبنوك</a>
    <a class="${r==='banks'?'active':''}" href="#/banks">البنوك وYTD</a>
-   <a class="${r==='accounting-inputs'?'active':''}" href="#/accounting-inputs">إدخالات المحاسب والتوجيه</a>
   </nav>
 
   <div class="nav-title">حركة مخزون</div><nav class="nav">
@@ -224,7 +223,7 @@ async function render(){
   if(r==='branches')return renderBranches()
   if(r==='users')return renderUsers()
   if(r==='treasury')return renderTreasury()
-  if(r==='accounting-inputs')return renderAccountingInputs()
+  if(r==='accounting-inputs'){location.hash='#/treasury';return}
   if(r==='sales')return renderSales()
   if(r==='expenses')return renderExpenses()
   if(r==='expense-matrix')return renderExpenseMatrix()
@@ -302,10 +301,11 @@ async function renderExecutive(){
 async function renderTreasury(){
  const cfg=currentFilters(),branch=cfg.branch,from=cfg.from,to=cfg.to
  let accountQ=supabase.from('treasury_accounts').select('id,branch_id,name,code,account_type,is_default,is_active').eq('is_active',true)
- let entryQ=supabase.from('cash_entries').select('id,branch_id,entry_date,direction,description,amount,running_balance,canonical_category,expense_group,entry_kind,treasury_account_id').gte('entry_date',from).lte('entry_date',to).order('entry_date',{ascending:false})
+ let entryQ=supabase.from('cash_entries').select('id,branch_id,entry_date,direction,description,amount,running_balance,category,canonical_category,expense_group,entry_kind,is_expense,treasury_account_id').gte('entry_date',from).lte('entry_date',to).order('entry_date',{ascending:false})
  if(branch){accountQ=accountQ.eq('branch_id',branch);entryQ=entryQ.eq('branch_id',branch)}
  const rs=await Promise.all([accountQ,entryQ]),accounts=rs[0].data||[],entries=rs[1].data||[]
  if(rs[0].error||rs[1].error)throw rs[0].error||rs[1].error
+ window.__treasuryEditData={accounts,entries}
  const branchMap=new Map(branches.map(function(b){return [b.id,b.name]}))
  const accountMap=new Map(accounts.map(function(a){return [a.id,a]}))
  const totals=new Map()
@@ -321,17 +321,65 @@ async function renderTreasury(){
   return {branch_name:branchMap.get(a.branch_id)||'—',name:escapeHtml(a.name),type:a.account_type==='bank'?'بنك':'خزينة',incoming:money(x.incoming),outgoing:money(x.outgoing),net:money(x.incoming-x.outgoing)}
  })
  const entryRows=entries.map(function(e){
-  return {entry_date:e.entry_date||'—',branch_name:branchMap.get(e.branch_id)||'—',account:escapeHtml((accountMap.get(e.treasury_account_id)||{}).name||'غير موجه'),direction:e.direction==='in'?'داخل':'خارج',description:escapeHtml(e.description||'—'),category:escapeHtml(e.canonical_category||e.entry_kind||'—'),amount:money(e.amount),balance:money(e.running_balance)}
+  return {entry_date:e.entry_date||'—',branch_name:branchMap.get(e.branch_id)||'—',account:escapeHtml((accountMap.get(e.treasury_account_id)||{}).name||'غير موجه'),direction:e.direction==='in'?'داخل':'خارج',description:escapeHtml(e.description||'—'),source_category:escapeHtml(e.category||'—'),category:escapeHtml(e.canonical_category||e.entry_kind||'—'),expense:e.is_expense?'مصروف':'غير مصروف',amount:money(e.amount),balance:money(e.running_balance),action:profile?.role==='admin'?'<button class="inline-action" onclick="editTreasuryClassification('+e.id+')">تعديل التصنيف</button>':'—'}
  })
  const body=filters(from,to,branch)+scope(from,to,branch)+
   table('أرصدة وحركة الحسابات',[
    {key:'branch_name',label:'الفرع'},{key:'name',label:'الحساب'},{key:'type',label:'النوع'},{key:'incoming',label:'داخل',num:1},{key:'outgoing',label:'خارج',num:1},{key:'net',label:'صافي الحركة',num:1}
   ],accountRows)+'<div class="section-gap"></div>'+
   table('تفاصيل حركة الخزينة',[
-   {key:'entry_date',label:'التاريخ'},{key:'branch_name',label:'الفرع'},{key:'account',label:'الخزينة / البنك'},{key:'direction',label:'الحركة'},{key:'description',label:'البيان'},{key:'category',label:'التوجيه'},{key:'amount',label:'القيمة',num:1},{key:'balance',label:'الرصيد',num:1}
+   {key:'entry_date',label:'التاريخ'},{key:'branch_name',label:'الفرع'},{key:'account',label:'الخزينة / البنك'},{key:'direction',label:'الحركة'},{key:'description',label:'البيان'},{key:'source_category',label:'تصنيف المصدر'},{key:'category',label:'التوجيه'},{key:'expense',label:'نوع التقرير'},{key:'amount',label:'القيمة',num:1},{key:'balance',label:'الرصيد',num:1},{key:'action',label:'إجراء',filter:false}
   ],entryRows)
- shell('الخزينة والبنوك','الحركة الفعلية حسب الفرع والحساب',body)
+ shell('الخزينة والبنوك','الحركة الفعلية مع تعديل التصنيف الذي يغذي تقرير المصروفات',body)
  bindFilters('treasury')
+}
+
+
+window.editTreasuryClassification=function(id){
+ const data=window.__treasuryEditData||{},e=(data.entries||[]).find(x=>Number(x.id)===Number(id))
+ if(!e)return
+ const accounts=(data.accounts||[]).filter(a=>a.branch_id===e.branch_id&&a.is_active)
+ const accountOptions='<option value="">غير موجه</option>'+accounts.map(a=>'<option value="'+a.id+'" '+(a.id===e.treasury_account_id?'selected':'')+'>'+escapeHtml(a.name)+'</option>').join('')
+ document.getElementById('treasury-classification-dialog')?.remove()
+ const html='<div class="dialog-backdrop" id="treasury-classification-dialog"><div class="dialog-card">'+
+ '<div class="dialog-head"><h3>تعديل تصنيف حركة الخزينة #'+id+'</h3><button class="tool-btn" onclick="document.getElementById(\'treasury-classification-dialog\').remove()">إغلاق</button></div>'+
+ '<form id="treasury-classification-form" class="dialog-form">'+
+ '<div class="locked-source"><span>تصنيف المصدر</span><strong>'+escapeHtml(e.category||'—')+'</strong><span>القيمة</span><strong>'+money(e.amount)+'</strong></div>'+
+ '<div class="field"><label>البيان</label><input name="description" value="'+escapeAttr(e.description||'')+'"></div>'+
+ '<div class="field"><label>التوجيه النهائي</label><input name="canonical" value="'+escapeAttr(e.canonical_category||'')+'" placeholder="مثال: إيجار، كهرباء، سولار"></div>'+
+ '<div class="field"><label>هل تظهر في تقرير المصروفات؟</label><select name="is_expense"><option value="true" '+(e.is_expense?'selected':'')+'>نعم — مصروف</option><option value="false" '+(!e.is_expense?'selected':'')+'>لا — ليست مصروفًا</option></select></div>'+
+ '<div class="field"><label>مجموعة المصروف</label><input name="group" value="'+escapeAttr(e.expense_group||'')+'" placeholder="مثال: تشغيل ومرافق"></div>'+
+ '<div class="field"><label>الخزينة / البنك</label><select name="account">'+accountOptions+'</select></div>'+
+ '<div class="field"><label>نوع الحركة عند عدم اعتبارها مصروفًا</label><select name="entry_kind"><option value="other" '+(e.entry_kind==='other'?'selected':'')+'>أخرى</option><option value="collection" '+(e.entry_kind==='collection'?'selected':'')+'>تحصيل</option><option value="bank_deposit" '+(e.entry_kind==='bank_deposit'?'selected':'')+'>إيداع بنكي</option><option value="hq_transfer" '+(e.entry_kind==='hq_transfer'?'selected':'')+'>تحويل مصنع</option><option value="interbranch" '+(e.entry_kind==='interbranch'?'selected':'')+'>تحويل فروع</option><option value="advance" '+(e.entry_kind==='advance'?'selected':'')+'>سلفة</option><option value="custody" '+(e.entry_kind==='custody'?'selected':'')+'>عهدة</option><option value="cash_balance" '+(e.entry_kind==='cash_balance'?'selected':'')+'>رصيد خزينة</option></select></div>'+
+ '<div class="field"><label>سبب التعديل — إلزامي</label><textarea name="reason" rows="3" required placeholder="لماذا تم تصحيح التوجيه؟"></textarea></div>'+
+ '<button class="btn">حفظ التصنيف وتحديث التقارير</button><div id="treasury-classification-msg"></div>'+
+ '</form></div></div>'
+ document.body.insertAdjacentHTML('beforeend',html)
+ const form=document.getElementById('treasury-classification-form')
+ const toggleGroup=()=>{form.group.disabled=form.is_expense.value!=='true'}
+ form.is_expense.addEventListener('change',toggleGroup);toggleGroup()
+ form.addEventListener('submit',async ev=>{
+  ev.preventDefault()
+  const msg=document.getElementById('treasury-classification-msg')
+  try{
+   msg.innerHTML='<div class="notice">جاري حفظ التصنيف وتحديث تقرير المصروفات…</div>'
+   const result=await supabase.rpc('edit_cash_entry_classification',{
+    p_cash_entry_id:id,
+    p_description:form.description.value,
+    p_canonical_category:form.canonical.value,
+    p_expense_group:form.group.value,
+    p_treasury_account_id:form.account.value||null,
+    p_is_expense:form.is_expense.value==='true',
+    p_entry_kind:form.entry_kind.value,
+    p_reason:form.reason.value
+   })
+   if(result.error)throw result.error
+   document.getElementById('treasury-classification-dialog')?.remove()
+   await renderTreasury()
+  }catch(err){
+   msg.innerHTML='<div class="error">'+escapeHtml(err.message||err)+'</div>'
+  }
+ })
 }
 
 
