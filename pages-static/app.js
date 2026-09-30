@@ -272,7 +272,7 @@ async function renderExecutive(){
  const cfg=currentFilters(),branch=cfg.branch,from=cfg.from,to=cfg.to
  const daily=await loadDaily(branch,from,to)
  const ids=await approvedIds()
- let whQ=supabase.from('warehouse_daily_summary').select('branch_id,business_date,closing_qty,closing_value').in('batch_id',ids.length?ids:['00000000-0000-0000-0000-000000000000']).gte('business_date',from).lte('business_date',to).order('business_date')
+ let whQ=supabase.from('warehouse_daily_summary').select('branch_id,business_date,opening_qty,opening_value,incoming_factory_qty,incoming_factory_value,incoming_branches_qty,incoming_branches_value,sales_qty,sales_value,bonus_qty,bonus_value,gifts_qty,gifts_value,damages_qty,damages_value,return_factory_qty,return_factory_value,outgoing_branches_qty,outgoing_branches_value,adjustment_qty,adjustment_value,closing_qty,closing_value').in('batch_id',ids.length?ids:['00000000-0000-0000-0000-000000000000']).gte('business_date',from).lte('business_date',to).order('business_date')
  let expQ=supabase.from('v_expense_analysis').select('branch_id,canonical_category,expense_group,amount').gte('entry_date',from).lte('entry_date',to)
  if(branch){whQ=whQ.eq('branch_id',branch);expQ=expQ.eq('branch_id',branch)}
  const pair=await Promise.all([whQ,expQ]),warehouse=pair[0].data||[],expenseRows=pair[1].data||[]
@@ -299,10 +299,11 @@ async function renderExecutive(){
   const x=by.get(r.branch_id);if(!x)return
   x.last7Sales+=Number(r.net_sales||0);x.last7Collections+=Number(r.collections||0);x.last7Returns+=Number(r.returns_value||0);x.last7Discount+=Number(r.discounts||0)
  })
- const whLatest=new Map()
+ const whLatest=new Map(),whSalesQty=new Map()
  warehouse.forEach(function(r){
   const prev=whLatest.get(r.branch_id)
   if(!prev||String(r.business_date)>=String(prev.business_date))whLatest.set(r.branch_id,r)
+  whSalesQty.set(r.branch_id,(whSalesQty.get(r.branch_id)||0)+Number(r.sales_qty||0))
  })
  const carExp=new Map()
  expenseRows.forEach(function(r){
@@ -315,7 +316,7 @@ async function renderExecutive(){
  })
  const raw=[...by.entries()].map(([id,x])=>{
   const wh=whLatest.get(id)||{},car=carExp.get(id)||{fuel:0,petro:0,maintenance:0}
-  return {id,...x,inventoryQty:Number(wh.closing_qty||0),inventoryValue:Number(wh.closing_value||x.inventoryValue||0),fuel:car.fuel,petro:car.petro,maintenance:car.maintenance}
+  return {id,...x,inventoryQty:Number(wh.closing_qty||0),inventoryValue:Number(wh.closing_value||x.inventoryValue||0),salesQty:Number(whSalesQty.get(id)||0),fuel:car.fuel,petro:car.petro,maintenance:car.maintenance}
  }).sort((a,b)=>b.net-a.net)
 
  const rows=raw.map(x=>({
@@ -333,7 +334,7 @@ async function renderExecutive(){
   discount7:money(x.last7Discount),
   discount:money(x.disc),
   discount_rate:pct(x.gross?x.disc/x.gross:0),
-  avg_price:money(x.net?x.gross?x.net/Math.max(1,x.gross/x.net):0:0),
+  avg_price:money(x.salesQty?x.net/x.salesQty:0),
   fuel:money(x.fuel),
   petro:money(x.petro),
   maintenance:money(x.maintenance),
@@ -687,7 +688,44 @@ async function renderBanks(){
 }
 
 async function renderReps(){const {branch,from,to}=currentFilters();const ids=await approvedIds();let q=supabase.from('sales_rep_daily').select('branch_id,business_date,rep_name,sales_before_discount,net_after_discount,discounts,deposit_amount,closing_balance').in('batch_id',ids.length?ids:['00000000-0000-0000-0000-000000000000']).gte('business_date',from).lte('business_date',to);if(branch)q=q.eq('branch_id',branch);const {data,error}=await q;if(error)throw error;const names=new Map(branches.map(b=>[b.id,b.name]));const by=new Map();(data||[]).forEach(r=>{const k=`${r.branch_id}:${r.rep_name}`;const x=by.get(k)||{branch_name:names.get(r.branch_id),rep_name:r.rep_name,gross:0,net:0,disc:0,deposit:0,closing:0};x.gross+=+r.sales_before_discount||0;x.net+=+r.net_after_discount||0;x.disc+=+r.discounts||0;x.deposit+=+r.deposit_amount||0;x.closing=+r.closing_balance||x.closing;by.set(k,x)});const rows=[...by.values()].map(x=>({...x,gross:money(x.gross),net:money(x.net),disc:money(x.disc),deposit:money(x.deposit),closing:money(x.closing)}));shell('أداء المناديب','المندوب × الفرع',filters(from,to,branch)+scope(from,to,branch)+table('أداء المناديب',[{key:'branch_name',label:'الفرع'},{key:'rep_name',label:'المندوب'},{key:'gross',label:'قبل الخصم',num:1},{key:'disc',label:'الخصم',num:1},{key:'net',label:'صافي البيع',num:1},{key:'deposit',label:'التوريد',num:1},{key:'closing',label:'الرصيد',num:1}],rows));bindFilters('reps')}
-async function renderInventory(){const {branch,from,to}=currentFilters();const ids=await approvedIds();let q=supabase.from('inventory_daily').select('branch_id,business_date,product_name,opening_qty,incoming_factory_qty,incoming_branches_qty,sales_qty,bonus_qty,gifts_qty,damages_qty,return_factory_qty,outgoing_branches_qty,adjustments_qty,closing_qty,closing_value').in('batch_id',ids.length?ids:['00000000-0000-0000-0000-000000000000']).gte('business_date',from).lte('business_date',to);if(branch)q=q.eq('branch_id',branch);const {data,error}=await q;if(error)throw error;const names=new Map(branches.map(b=>[b.id,b.name]));const rows=(data||[]).slice(0,5000).map(r=>({branch_name:names.get(r.branch_id),business_date:r.business_date,product_name:r.product_name,opening:money(r.opening_qty),factory:money(r.incoming_factory_qty),sales:money(r.sales_qty),closing:money(r.closing_qty),value:money(r.closing_value)}));shell('حركة المخزون','حركة الصنف حسب الفرع واليوم',filters(from,to,branch)+scope(from,to,branch)+table('حركة المخزون',[{key:'business_date',label:'التاريخ'},{key:'branch_name',label:'الفرع'},{key:'product_name',label:'الصنف'},{key:'opening',label:'رصيد أول',num:1},{key:'factory',label:'وارد مصنع',num:1},{key:'sales',label:'مبيعات',num:1},{key:'closing',label:'رصيد آخر',num:1},{key:'value',label:'قيمة الرصيد',num:1}],rows));bindFilters('inventory')}
+async function renderInventory(){
+ const cfg=currentFilters(),branch=cfg.branch,from=cfg.from,to=cfg.to,ids=await approvedIds()
+ let q=supabase.from('warehouse_daily_summary').select('*').in('batch_id',ids.length?ids:['00000000-0000-0000-0000-000000000000']).gte('business_date',from).lte('business_date',to).order('business_date')
+ if(branch)q=q.eq('branch_id',branch)
+ const {data,error}=await q;if(error)throw error
+ const names=new Map(branches.map(b=>[b.id,b.name])),by=new Map()
+ ;(data||[]).forEach(r=>{
+  const x=by.get(r.branch_id)||{branch_name:names.get(r.branch_id)||'—',firstDate:r.business_date,lastDate:r.business_date,qty:{},val:{}}
+  if(String(r.business_date)<String(x.firstDate)){x.firstDate=r.business_date;x.qty.opening=Number(r.opening_qty||0);x.val.opening=Number(r.opening_value||0)}
+  if(x.qty.opening===undefined){x.qty.opening=Number(r.opening_qty||0);x.val.opening=Number(r.opening_value||0)}
+  const add=(obj,key,v)=>obj[key]=(obj[key]||0)+Number(v||0)
+  add(x.qty,'factory',r.incoming_factory_qty);add(x.val,'factory',r.incoming_factory_value)
+  add(x.qty,'branches',r.incoming_branches_qty);add(x.val,'branches',r.incoming_branches_value)
+  add(x.qty,'sales',r.sales_qty);add(x.val,'sales',r.sales_value)
+  add(x.qty,'bonus',r.bonus_qty);add(x.val,'bonus',r.bonus_value)
+  add(x.qty,'gifts',r.gifts_qty);add(x.val,'gifts',r.gifts_value)
+  add(x.qty,'damages',r.damages_qty);add(x.val,'damages',r.damages_value)
+  add(x.qty,'return_factory',r.return_factory_qty);add(x.val,'return_factory',r.return_factory_value)
+  add(x.qty,'out_branches',r.outgoing_branches_qty);add(x.val,'out_branches',r.outgoing_branches_value)
+  add(x.qty,'adjustment',r.adjustment_qty);add(x.val,'adjustment',r.adjustment_value)
+  if(String(r.business_date)>=String(x.lastDate)){x.lastDate=r.business_date;x.qty.closing=Number(r.closing_qty||0);x.val.closing=Number(r.closing_value||0)}
+  by.set(r.branch_id,x)
+ })
+ const rows=[]
+ ;[...by.values()].forEach(x=>{
+  rows.push({branch_name:x.branch_name,date:from+' → '+to,type:'الكمية',opening:qty(x.qty.opening),factory:qty(x.qty.factory),branches:qty(x.qty.branches),sales:qty(x.qty.sales),bonus:qty(x.qty.bonus),gifts:qty(x.qty.gifts),damages:qty(x.qty.damages),return_factory:qty(x.qty.return_factory),out_branches:qty(x.qty.out_branches),adjustment:qty(x.qty.adjustment),closing:qty(x.qty.closing),chains_in:'—',chains_out:'—',army:'—'})
+  rows.push({branch_name:x.branch_name,date:from+' → '+to,type:'القيمة',opening:money(x.val.opening),factory:money(x.val.factory),branches:money(x.val.branches),sales:money(x.val.sales),bonus:money(x.val.bonus),gifts:money(x.val.gifts),damages:money(x.val.damages),return_factory:money(x.val.return_factory),out_branches:money(x.val.out_branches),adjustment:money(x.val.adjustment),closing:money(x.val.closing),chains_in:'—',chains_out:'—',army:'—'})
+ })
+ shell('حركة مخزون','مطابقة ورقة الإدارة: كمية وقيمة لكل فرع',filters(from,to,branch)+scope(from,to,branch)+table('حركة مخزون',[
+  {key:'branch_name',label:'الفرع'},{key:'date',label:'الفترة'},{key:'type',label:'م'},
+  {key:'opening',label:'رصيد أول',num:1},{key:'factory',label:'وارد مصنع',num:1},{key:'branches',label:'وارد فروع',num:1},
+  {key:'sales',label:'إجمالي مبيعات اليوم',num:1},{key:'bonus',label:'البوانص',num:1},{key:'gifts',label:'هدايا',num:1},
+  {key:'damages',label:'توالف',num:1},{key:'return_factory',label:'مرتجع للمصنع',num:1},{key:'out_branches',label:'منصرف للفروع',num:1},
+  {key:'adjustment',label:'تسوية',num:1},{key:'closing',label:'رصيد آخر',num:1},
+  {key:'chains_in',label:'وارد سلاسل'},{key:'chains_out',label:'منصرف سلاسل'},{key:'army',label:'جيش'}
+ ],rows))
+ bindFilters('inventory')
+}
 async function renderProducts(){const {branch,from,to}=currentFilters();const ids=await approvedIds();let q=supabase.from('inventory_daily').select('branch_id,product_name,sales_qty,closing_qty,closing_value').in('batch_id',ids.length?ids:['00000000-0000-0000-0000-000000000000']).gte('business_date',from).lte('business_date',to);if(branch)q=q.eq('branch_id',branch);const {data,error}=await q;if(error)throw error;const bset=branch?branches.filter(b=>b.id===branch):branches;const matrix=new Map();(data||[]).forEach(r=>{const x=matrix.get(r.product_name)||{};const c=x[r.branch_id]||{sales:0,closing:0,value:0};c.sales+=+r.sales_qty||0;c.closing=+r.closing_qty||c.closing;c.value=+r.closing_value||c.value;x[r.branch_id]=c;matrix.set(r.product_name,x)});const rows=[...matrix.entries()].map(([product,cells])=>{let html=`<td class="row-label">${product}</td>`;for(const b of bset){const c=cells[b.id]||{};html+=`<td class="num">${money(c.sales)}</td><td class="num">${money(c.closing)}</td><td class="num">${money(c.value)}</td>`}return `<tr>${html}</tr>`}).join('');const head=bset.map((b,i)=>`<th colspan="3" class="${i%2?'group-green':'group-blue'}">${b.name}</th>`).join('');const sub=bset.map(()=>'<th>بيع</th><th>رصيد</th><th>قيمة</th>').join('');shell('مصفوفة الأصناف','الصنف × الفروع',filters(from,to,branch)+scope(from,to,branch)+`<section class="table-card matrix"><div class="table-head"><h2>Product Sales & Stock Matrix</h2></div><div class="table-wrap"><table><thead><tr><th rowspan="2">الصنف</th>${head}</tr><tr>${sub}</tr></thead><tbody>${rows}</tbody></table></div></section>`);bindFilters('products')}
 async function renderBranches(){const {data,error}=await supabase.from('branches').select('id,name,code,is_active,created_at,treasury_accounts(id,is_active)').order('created_at');if(error)throw error;const rows=(data||[]).map(b=>({name:b.name,code:b.code,status:b.is_active?'نشط':'متوقف',treasuries:(b.treasury_accounts||[]).filter(x=>x.is_active).length,created_at:new Date(b.created_at).toLocaleString('en-GB')}));const add=profile?.role==='admin'?`<section class="card" style="margin-bottom:14px"><h2>+ إضافة فرع جديد</h2><form id="add-branch" class="filters" style="margin:0"><div class="field"><label>اسم الفرع</label><input name="name" required></div><div class="field"><label>كود الفرع</label><input name="code" dir="ltr" required></div><div></div><div class="field"><label>&nbsp;</label><button class="btn">إنشاء الفرع</button></div></form><div id="branch-msg"></div></section>`:'';shell('إدارة الفروع','إضافة الفروع وإدارة الحالة',add+table('الفروع الحالية',[{key:'name',label:'الفرع'},{key:'code',label:'الكود'},{key:'status',label:'الحالة'},{key:'treasuries',label:'عدد الخزائن',num:1},{key:'created_at',label:'تاريخ الإنشاء'}],rows));document.getElementById('add-branch')?.addEventListener('submit',async e=>{e.preventDefault();const fd=new FormData(e.currentTarget);const {error}=await supabase.rpc('create_branch_with_default_treasury',{p_code:String(fd.get('code')).trim(),p_name:String(fd.get('name')).trim()});document.getElementById('branch-msg').innerHTML=error?`<div class="error">${error.message}</div>`:'<div class="success">تم إنشاء الفرع والخزنة الرئيسية.</div>';if(!error)boot()})}
 async function renderImports(){
