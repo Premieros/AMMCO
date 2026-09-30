@@ -33,16 +33,13 @@ window.addEventListener('hashchange',render)
 supabase.auth.onAuthStateChange((_e,s)=>{session=s;setTimeout(boot,0)})
 
 const sheetSectionForRoute=r=>{
- if(['dashboard','executive','receivables','monthly'].includes(r))return 'التقرير المجمع'
- if(['sales'].includes(r))return 'البيعات اصناف'
- if(['products'].includes(r))return 'رصيد الفروع'
- if(['expense-matrix'].includes(r))return 'تحليلي مصروفات'
- if(['expenses'].includes(r))return 'تقرير المصروفات'
- if(['treasury','banks','accounting-inputs'].includes(r))return 'تحويل مصنع'
- if(['inventory'].includes(r))return 'حركة مخزون'
- if(['reps'].includes(r))return 'بترو اب'
+ if(['dashboard','executive','monthly'].includes(r))return 'الإدارة المالية'
+ if(['sales','receivables','reps'].includes(r))return 'المبيعات والعملاء'
+ if(['expense-matrix','expenses'].includes(r))return 'المصروفات والتكاليف'
+ if(['inventory','products'].includes(r))return 'المخزون والأصناف'
+ if(['treasury','banks','accounting-inputs'].includes(r))return 'النقدية والبنوك'
  if(['branches','users','imports','uploads'].includes(r))return 'إدارة النظام'
- return 'التقرير المجمع'
+ return 'الإدارة المالية'
 }
 
 function shell(title,subtitle,body){
@@ -51,40 +48,31 @@ function shell(title,subtitle,body){
  <aside class="sidebar">
   <div class="brand"><div class="logo">A</div><div><b>AMMCO</b><small>Management Intelligence</small></div></div>
 
-  <div class="nav-title">التقرير المجمع</div><nav class="nav">
+  <div class="nav-title">الإدارة المالية</div><nav class="nav">
    <a class="${r==='dashboard'?'active':''}" href="#/dashboard">لوحة الإدارة</a>
    <a class="${r==='executive'?'active':''}" href="#/executive">التقرير التنفيذي</a>
-   <a class="${r==='receivables'?'active':''}" href="#/receivables">المديونيات والتحصيل</a>
    <a class="${r==='monthly'?'active':''}" href="#/monthly">التحليل الشهري وYTD</a>
   </nav>
 
-  <div class="nav-title">البيعات اصناف</div><nav class="nav">
+  <div class="nav-title">المبيعات والعملاء</div><nav class="nav">
    <a class="${r==='sales'?'active':''}" href="#/sales">المبيعات</a>
+   <a class="${r==='receivables'?'active':''}" href="#/receivables">المديونيات والتحصيل</a>
+   <a class="${r==='reps'?'active':''}" href="#/reps">أداء المناديب</a>
   </nav>
 
-  <div class="nav-title">رصيد الفروع</div><nav class="nav">
-   <a class="${r==='products'?'active':''}" href="#/products">مصفوفة الأصناف والأرصدة</a>
+  <div class="nav-title">المصروفات والتكاليف</div><nav class="nav">
+   <a class="${r==='expense-matrix'?'active':''}" href="#/expense-matrix">تحليلي المصروفات</a>
+   <a class="${r==='expenses'?'active':''}" href="#/expenses">تقرير المصروفات</a>
   </nav>
 
-  <div class="nav-title">تحليلي مصروفات</div><nav class="nav">
-   <a class="${r==='expense-matrix'?'active':''}" href="#/expense-matrix">مصفوفة المصروفات</a>
+  <div class="nav-title">المخزون والأصناف</div><nav class="nav">
+   <a class="${r==='inventory'?'active':''}" href="#/inventory">حركة المخزون</a>
+   <a class="${r==='products'?'active':''}" href="#/products">أرصدة ومصفوفة الأصناف</a>
   </nav>
 
-  <div class="nav-title">تقرير المصروفات</div><nav class="nav">
-   <a class="${r==='expenses'?'active':''}" href="#/expenses">تفاصيل المصروفات</a>
-  </nav>
-
-  <div class="nav-title">تحويل مصنع</div><nav class="nav">
+  <div class="nav-title">النقدية والبنوك</div><nav class="nav">
    <a class="${r==='treasury'?'active':''}" href="#/treasury">الخزينة والبنوك</a>
    <a class="${r==='banks'?'active':''}" href="#/banks">البنوك وYTD</a>
-  </nav>
-
-  <div class="nav-title">حركة مخزون</div><nav class="nav">
-   <a class="${r==='inventory'?'active':''}" href="#/inventory">حركة المخزون</a>
-  </nav>
-
-  <div class="nav-title">بترو اب</div><nav class="nav">
-   <a class="${r==='reps'?'active':''}" href="#/reps">أداء المناديب</a>
   </nav>
 
   <div class="nav-title system-nav-title">إدارة النظام</div><nav class="nav">
