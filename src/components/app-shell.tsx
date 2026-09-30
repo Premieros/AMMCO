@@ -20,11 +20,15 @@ export function AppShell({
         <div className="header-start">
           <div className="header-context">
             <span className="header-dot" />
-            <span>AMMCO Intelligence</span>
+            <span>مركز الإدارة</span>
+          </div>
+          <div className="header-quick-actions">
+            <Link className="header-action primary" href="/branches#add-branch">+ إضافة فرع</Link>
+            <Link className="header-action" href="/uploads">رفع شيت</Link>
           </div>
         </div>
         <div className="header-end">
-          <div className="header-chip">الإدارة المركزية</div>
+          <Link className="header-chip" href="/executive-comparison">تقارير الإدارة</Link>
           <div className="user-identity">
             <span className="user-avatar">A</span>
             <div>
@@ -40,7 +44,7 @@ export function AppShell({
           <div className="logo-symbol">A</div>
           <div className="logo-copy">
             <strong>AMMCO</strong>
-            <small>Branch Intelligence</small>
+            <small>Management Intelligence</small>
           </div>
         </div>
 
@@ -48,7 +52,7 @@ export function AppShell({
 
         <div className="sidebar-footer">
           <span>AMMCO</span>
-          <small>Management System</small>
+          <small>Executive Control Center</small>
         </div>
       </aside>
 
