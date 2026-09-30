@@ -328,15 +328,20 @@ async function renderDashboard(){
  const {branch,from,to}=currentFilters()
  const daily=await loadDaily(branch,from,to),ids=await approvedIds()
  let whQ=supabase.from('warehouse_daily_summary')
-  .select('branch_id,business_date,sales_qty,closing_qty,closing_value')
+  .select('branch_id,business_date,closing_qty,closing_value')
   .in('batch_id',ids.length?ids:['00000000-0000-0000-0000-000000000000'])
   .gte('business_date',from).lte('business_date',to).order('business_date')
+ let invQ=supabase.from('inventory_daily')
+  .select('branch_id,product_id,sales_qty')
+  .in('batch_id',ids.length?ids:['00000000-0000-0000-0000-000000000000'])
+  .gte('business_date',from).lte('business_date',to)
+ let prodQ=supabase.from('products').select('id,box_count').eq('is_active',true)
  let expQ=supabase.from('v_expense_analysis')
   .select('branch_id,canonical_category,expense_group,amount')
   .gte('entry_date',from).lte('entry_date',to)
- if(branch){whQ=whQ.eq('branch_id',branch);expQ=expQ.eq('branch_id',branch)}
- const extra=await Promise.all([whQ,expQ]),warehouse=extra[0].data||[],expenses=extra[1].data||[]
- if(extra[0].error||extra[1].error)throw extra[0].error||extra[1].error
+ if(branch){whQ=whQ.eq('branch_id',branch);invQ=invQ.eq('branch_id',branch);expQ=expQ.eq('branch_id',branch)}
+ const extra=await Promise.all([whQ,invQ,prodQ,expQ]),warehouse=extra[0].data||[],inventoryRows=extra[1].data||[],productRows=extra[2].data||[],expenses=extra[3].data||[]
+ if(extra[0].error||extra[1].error||extra[2].error||extra[3].error)throw extra[0].error||extra[1].error||extra[2].error||extra[3].error
 
  const by=new Map()
  daily.forEach(r=>{
@@ -347,11 +352,16 @@ async function renderDashboard(){
   by.set(k,x)
  })
 
- const whLatest=new Map(),salesQtyBy=new Map()
+ const whLatest=new Map()
  warehouse.forEach(r=>{
-  salesQtyBy.set(r.branch_id,(salesQtyBy.get(r.branch_id)||0)+Number(r.sales_qty||0))
   const prev=whLatest.get(r.branch_id)
   if(!prev||String(r.business_date)>=String(prev.business_date))whLatest.set(r.branch_id,r)
+ })
+ const boxCountByProduct=new Map(productRows.map(p=>[p.id,Number(p.box_count||0)])),equivCartonsBy=new Map()
+ inventoryRows.forEach(r=>{
+  const boxCount=boxCountByProduct.get(r.product_id)||0
+  const factor=boxCount===12?2:1
+  equivCartonsBy.set(r.branch_id,(equivCartonsBy.get(r.branch_id)||0)+(Number(r.sales_qty||0)*factor))
  })
 
  const carBy=new Map()
@@ -364,8 +374,8 @@ async function renderDashboard(){
  })
 
  const raw=[...by.entries()].map(([id,x])=>{
-  const wh=whLatest.get(id)||{},car=carBy.get(id)||{fuel:0,petro:0,maintenance:0},salesQty=Number(salesQtyBy.get(id)||0)
-  return {...x,id,salesQty,avgPrice:salesQty?x.net/salesQty:0,fuel:car.fuel,petro:car.petro,maintenance:car.maintenance,inventoryQty:Number(wh.closing_qty||0),inventoryValue:Number(wh.closing_value||0)}
+  const wh=whLatest.get(id)||{},car=carBy.get(id)||{fuel:0,petro:0,maintenance:0},equivCartons=Number(equivCartonsBy.get(id)||0)
+  return {...x,id,equivCartons,avgPrice:equivCartons?x.net/equivCartons:0,fuel:car.fuel,petro:car.petro,maintenance:car.maintenance,inventoryQty:Number(wh.closing_qty||0),inventoryValue:Number(wh.closing_value||0)}
  }).sort((a,b)=>b.net-a.net)
 
  const rows=raw.map(x=>({
@@ -383,10 +393,10 @@ async function renderDashboard(){
   inventory_qty:qty(x.inventoryQty),
   inventory_value:money(x.inventoryValue)
  }))
- const t=raw.reduce((a,x)=>{a.opening+=x.opening;a.sales+=x.net;a.collections+=x.coll;a.cumulative+=x.debt;a.discount+=x.disc;a.gross+=x.gross;a.salesQty+=x.salesQty;a.fuel+=x.fuel;a.petro+=x.petro;a.maintenance+=x.maintenance;a.inventoryQty+=x.inventoryQty;a.inventoryValue+=x.inventoryValue;return a},{opening:0,sales:0,collections:0,cumulative:0,discount:0,gross:0,salesQty:0,fuel:0,petro:0,maintenance:0,inventoryQty:0,inventoryValue:0})
+ const t=raw.reduce((a,x)=>{a.opening+=x.opening;a.sales+=x.net;a.collections+=x.coll;a.cumulative+=x.debt;a.discount+=x.disc;a.gross+=x.gross;a.equivCartons+=x.equivCartons;a.fuel+=x.fuel;a.petro+=x.petro;a.maintenance+=x.maintenance;a.inventoryQty+=x.inventoryQty;a.inventoryValue+=x.inventoryValue;return a},{opening:0,sales:0,collections:0,cumulative:0,discount:0,gross:0,equivCartons:0,fuel:0,petro:0,maintenance:0,inventoryQty:0,inventoryValue:0})
  const totalRow='<tr class="total"><th>الإجمالي</th>'+
   '<th class="num">'+money(t.opening)+'</th><th class="num">'+money(t.sales)+'</th><th class="num">'+money(t.collections)+'</th><th class="num">'+money(t.cumulative)+'</th>'+
-  '<th class="num">'+money(t.discount)+'</th><th>'+pct(t.gross?t.discount/t.gross:0)+'</th><th class="num">'+money(t.salesQty?t.sales/t.salesQty:0)+'</th>'+
+  '<th class="num">'+money(t.discount)+'</th><th>'+pct(t.gross?t.discount/t.gross:0)+'</th><th class="num">'+money(t.equivCartons?t.sales/t.equivCartons:0)+'</th>'+
   '<th class="num">'+money(t.fuel)+'</th><th class="num">'+money(t.petro)+'</th><th class="num">'+money(t.maintenance)+'</th>'+
   '<th class="num">'+qty(t.inventoryQty)+'</th><th class="num">'+money(t.inventoryValue)+'</th></tr>'
 
@@ -398,10 +408,12 @@ async function renderExecutive(){
  const daily=await loadDaily(branch,from,to)
  const ids=await approvedIds()
  let whQ=supabase.from('warehouse_daily_summary').select('branch_id,business_date,opening_qty,opening_value,incoming_factory_qty,incoming_factory_value,incoming_branches_qty,incoming_branches_value,sales_qty,sales_value,bonus_qty,bonus_value,gifts_qty,gifts_value,damages_qty,damages_value,return_factory_qty,return_factory_value,outgoing_branches_qty,outgoing_branches_value,adjustment_qty,adjustment_value,closing_qty,closing_value').in('batch_id',ids.length?ids:['00000000-0000-0000-0000-000000000000']).gte('business_date',from).lte('business_date',to).order('business_date')
+ let invQ=supabase.from('inventory_daily').select('branch_id,product_id,sales_qty').in('batch_id',ids.length?ids:['00000000-0000-0000-0000-000000000000']).gte('business_date',from).lte('business_date',to)
+ let prodQ=supabase.from('products').select('id,box_count').eq('is_active',true)
  let expQ=supabase.from('v_expense_analysis').select('branch_id,canonical_category,expense_group,amount').gte('entry_date',from).lte('entry_date',to)
- if(branch){whQ=whQ.eq('branch_id',branch);expQ=expQ.eq('branch_id',branch)}
- const pair=await Promise.all([whQ,expQ]),warehouse=pair[0].data||[],expenseRows=pair[1].data||[]
- if(pair[0].error||pair[1].error)throw pair[0].error||pair[1].error
+ if(branch){whQ=whQ.eq('branch_id',branch);invQ=invQ.eq('branch_id',branch);expQ=expQ.eq('branch_id',branch)}
+ const pair=await Promise.all([whQ,invQ,prodQ,expQ]),warehouse=pair[0].data||[],inventoryRows=pair[1].data||[],productRows=pair[2].data||[],expenseRows=pair[3].data||[]
+ if(pair[0].error||pair[1].error||pair[2].error||pair[3].error)throw pair[0].error||pair[1].error||pair[2].error||pair[3].error
 
  const by=new Map()
  daily.forEach(function(r){
@@ -424,11 +436,15 @@ async function renderExecutive(){
   const x=by.get(r.branch_id);if(!x)return
   x.last7Sales+=Number(r.net_sales||0);x.last7Collections+=Number(r.collections||0);x.last7Returns+=Number(r.returns_value||0);x.last7Discount+=Number(r.discounts||0)
  })
- const whLatest=new Map(),whSalesQty=new Map()
+ const whLatest=new Map()
  warehouse.forEach(function(r){
   const prev=whLatest.get(r.branch_id)
   if(!prev||String(r.business_date)>=String(prev.business_date))whLatest.set(r.branch_id,r)
-  whSalesQty.set(r.branch_id,(whSalesQty.get(r.branch_id)||0)+Number(r.sales_qty||0))
+ })
+ const boxCountByProduct=new Map(productRows.map(p=>[p.id,Number(p.box_count||0)])),equivCartonsBy=new Map()
+ inventoryRows.forEach(r=>{
+  const factor=(boxCountByProduct.get(r.product_id)||0)===12?2:1
+  equivCartonsBy.set(r.branch_id,(equivCartonsBy.get(r.branch_id)||0)+(Number(r.sales_qty||0)*factor))
  })
  const carExp=new Map()
  expenseRows.forEach(function(r){
@@ -441,7 +457,7 @@ async function renderExecutive(){
  })
  const raw=[...by.entries()].map(([id,x])=>{
   const wh=whLatest.get(id)||{},car=carExp.get(id)||{fuel:0,petro:0,maintenance:0}
-  return {id,...x,inventoryQty:Number(wh.closing_qty||0),inventoryValue:Number(wh.closing_value||x.inventoryValue||0),salesQty:Number(whSalesQty.get(id)||0),fuel:car.fuel,petro:car.petro,maintenance:car.maintenance}
+  return {id,...x,inventoryQty:Number(wh.closing_qty||0),inventoryValue:Number(wh.closing_value||x.inventoryValue||0),equivCartons:Number(equivCartonsBy.get(id)||0),fuel:car.fuel,petro:car.petro,maintenance:car.maintenance}
  }).sort((a,b)=>b.net-a.net)
 
  const rows=raw.map(x=>({
@@ -459,7 +475,7 @@ async function renderExecutive(){
   discount7:money(x.last7Discount),
   discount:money(x.disc),
   discount_rate:pct(x.gross?x.disc/x.gross:0),
-  avg_price:money(x.salesQty?x.net/x.salesQty:0),
+  avg_price:money(x.equivCartons?x.net/x.equivCartons:0),
   fuel:money(x.fuel),
   petro:money(x.petro),
   maintenance:money(x.maintenance),
