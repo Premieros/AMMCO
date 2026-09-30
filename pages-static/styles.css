@@ -961,3 +961,123 @@ tbody tr:hover td{background:#fff5cf}
   .nav a{font-size:11.5px}
   .pagehead h1{font-size:23px}
 }
+
+
+/* Typography clarity pass */
+html,body{
+  font-size:14px;
+  color:#122235;
+  -webkit-font-smoothing:antialiased;
+  text-rendering:optimizeLegibility;
+}
+.brand b{
+  font-size:20px;
+  font-weight:800;
+  color:#13283b;
+}
+.brand small{
+  font-size:10px;
+  font-weight:600;
+  color:#607185;
+}
+.nav-title{
+  font-size:12px;
+  font-weight:800;
+  color:#3f556a;
+}
+.nav a{
+  font-size:13px;
+  font-weight:700;
+  color:#2b3f52;
+}
+.nav a.active{
+  color:#155b86;
+  font-weight:800;
+}
+.topbar-context span{
+  font-size:11.5px;
+  font-weight:700;
+  color:#66778a;
+}
+.topbar-context b{
+  font-size:14px!important;
+  font-weight:800;
+  color:#183047;
+}
+.sheet-context{
+  font-size:11px;
+  font-weight:800;
+  color:#3f617b;
+}
+.pagehead h1{
+  font-size:27px;
+  font-weight:800;
+  color:#102438;
+}
+.pagehead .muted{
+  font-size:12px;
+  font-weight:600;
+  color:#5f7185;
+}
+.field label{
+  font-size:10.5px;
+  font-weight:800;
+  color:#4f6174;
+}
+.field input,.field select{
+  font-size:12px;
+  font-weight:600;
+  color:#172a3d;
+}
+.btn{
+  font-size:12px;
+  font-weight:800;
+}
+.report-meta{
+  font-size:11px;
+  font-weight:600;
+  color:#5e7185;
+}
+.kpi span{
+  font-size:11px;
+  font-weight:800;
+  color:#53687c;
+}
+.kpi strong{
+  font-size:27px;
+  font-weight:800;
+  color:#10283f;
+}
+.table-head h2{
+  font-size:14px;
+  font-weight:800;
+  color:#172c40;
+}
+.table-head small{
+  font-size:10px;
+  font-weight:600;
+  color:#6f7f8f;
+}
+.table-card th{
+  font-size:11px;
+  font-weight:800;
+  color:#1d3348;
+}
+.table-card td{
+  font-size:11.5px;
+  font-weight:600;
+  color:#24394d;
+}
+.table-card .num{
+  font-size:12px;
+  font-weight:700;
+  color:#12293f;
+}
+.search,.tool-btn{
+  font-size:10.5px;
+  font-weight:700;
+}
+.notice,.error,.success{
+  font-size:10.5px;
+  font-weight:600;
+}
