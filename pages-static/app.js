@@ -1570,12 +1570,32 @@ async function renderImports(){
   approved_at:r.approved_at?new Date(r.approved_at).toLocaleString('en-GB'):'',
   action:r.status==='validated'&&profile?.role==='admin'
     ? `<button class="btn" onclick="approveBatch('${r.id}')">اعتماد</button>`
-    : ['uploaded','failed','rejected','processing'].includes(r.status)
-      ? `<button class="btn secondary" onclick="processBatch('${r.id}')">إعادة التحليل</button>`
-      : (r.failure_message||'—')
+    : r.status==='rejected'
+      ? `<button class="btn secondary" onclick="viewBatchIssues('${r.id}')">عرض أسباب المراجعة</button>`
+      : ['uploaded','failed'].includes(r.status)
+        ? `<button class="btn secondary" onclick="processBatch('${r.id}')">إعادة التحليل</button>`
+        : r.status==='processing'
+          ? '<span class="chip">قيد المعالجة</span>'
+          : (r.failure_message||'—')
  }))
  shell('سجل الرفع','كل نسخ الشيتات وحالة الاعتماد',`<div id="imports-msg"></div>`+table('نسخ الشيتات',[{key:'branch_name',label:'الفرع'},{key:'period',label:'الفترة'},{key:'file',label:'الملف'},{key:'version',label:'الإصدار',num:1},{key:'status',label:'الحالة'},{key:'uploaded_at',label:'وقت الرفع'},{key:'approved_at',label:'وقت الاعتماد'},{key:'action',label:'إجراء'}],rows))
 }
+window.viewBatchIssues=async id=>{
+ const msg=document.getElementById('imports-msg')
+ if(msg)msg.innerHTML='<div class="notice">جاري تحميل أسباب المراجعة…</div>'
+ const {data,error}=await supabase.from('import_validation_issues')
+  .select('code,severity,message,sheet_name,row_number')
+  .eq('batch_id',id)
+  .order('severity',{ascending:true})
+  .limit(200)
+ if(error){if(msg)msg.innerHTML='<div class="error">'+escapeHtml(error.message)+'</div>';return}
+ const rows=data||[]
+ if(!rows.length){if(msg)msg.innerHTML='<div class="notice">لا توجد ملاحظات مسجلة لهذه الدفعة.</div>';return}
+ const errors=rows.filter(x=>x.severity==='error').length,warnings=rows.filter(x=>x.severity==='warning').length
+ if(msg)msg.innerHTML='<div class="notice"><b>أسباب المراجعة:</b> '+errors+' خطأ • '+warnings+' تحذير</div>'+
+  '<div class="review-issues-list">'+rows.map(x=>'<div class="review-issue '+escapeAttr(x.severity||'')+'"><b>'+escapeHtml(x.message||x.code||'ملاحظة')+'</b><span>'+escapeHtml([x.sheet_name,x.row_number?('صف '+x.row_number):''].filter(Boolean).join(' • '))+'</span></div>').join('')+'</div>'
+}
+
 window.processBatch=async id=>{
  const msg=document.getElementById('imports-msg'); if(msg)msg.innerHTML='<div class="notice">جاري تحليل الملف…</div>'
  try{
