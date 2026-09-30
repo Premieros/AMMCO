@@ -161,6 +161,42 @@ async function renderDashboard(){
  </section>`+table('مقارنة الفروع',[{key:'branch_name',label:'الفرع'},{key:'net',label:'صافي البيع',num:1},{key:'coll',label:'التحصيل',num:1},{key:'disc',label:'الخصم',num:1},{key:'exp',label:'المصروفات',num:1},{key:'debt',label:'مديونية آخر',num:1}],rows,totalRow));bindFilters('dashboard')
 }
 async function renderExecutive(){const {branch,from,to}=currentFilters();const daily=await loadDaily(branch,from,to);const by=new Map();daily.forEach(r=>{const k=r.branch_id;const x=by.get(k)||{branch_name:r.branch_name,gross:0,disc:0,net:0,coll:0,open:+r.opening_receivables||0,debt:0,exp:0};x.gross+=+r.gross_sales||0;x.disc+=+r.discounts||0;x.net+=+r.net_sales||0;x.coll+=+r.collections||0;x.exp+=+r.expenses||0;x.debt=+r.closing_receivables||x.debt;by.set(k,x)});const rows=[...by.values()].map(x=>({...x,gross:money(x.gross),disc:money(x.disc),net:money(x.net),coll:money(x.coll),open:money(x.open),debt:money(x.debt),exp:money(x.exp)}));shell('التقرير التنفيذي','مقارنة الإدارة حسب الفروع',filters(from,to,branch)+scope(from,to,branch)+table('الملخص التنفيذي',[{key:'branch_name',label:'الفرع'},{key:'gross',label:'قبل الخصم',num:1},{key:'disc',label:'الخصم',num:1},{key:'net',label:'صافي البيع',num:1},{key:'coll',label:'التحصيل',num:1},{key:'open',label:'مديونية أول',num:1},{key:'debt',label:'مديونية آخر',num:1},{key:'exp',label:'المصروفات',num:1}],rows));bindFilters('executive')}
+
+async function renderTreasury(){
+ const cfg=currentFilters(),branch=cfg.branch,from=cfg.from,to=cfg.to
+ let accountQ=supabase.from('treasury_accounts').select('id,branch_id,name,code,account_type,is_default,is_active').eq('is_active',true)
+ let entryQ=supabase.from('cash_entries').select('id,branch_id,entry_date,direction,description,amount,running_balance,canonical_category,expense_group,entry_kind,treasury_account_id').gte('entry_date',from).lte('entry_date',to).order('entry_date',{ascending:false})
+ if(branch){accountQ=accountQ.eq('branch_id',branch);entryQ=entryQ.eq('branch_id',branch)}
+ const rs=await Promise.all([accountQ,entryQ]),accounts=rs[0].data||[],entries=rs[1].data||[]
+ if(rs[0].error||rs[1].error)throw rs[0].error||rs[1].error
+ const branchMap=new Map(branches.map(function(b){return [b.id,b.name]}))
+ const accountMap=new Map(accounts.map(function(a){return [a.id,a]}))
+ const totals=new Map()
+ accounts.forEach(function(a){totals.set(a.id,{incoming:0,outgoing:0})})
+ entries.forEach(function(e){
+  if(!e.treasury_account_id)return
+  const x=totals.get(e.treasury_account_id)||{incoming:0,outgoing:0}
+  if(e.direction==='in')x.incoming+=Number(e.amount||0);else x.outgoing+=Number(e.amount||0)
+  totals.set(e.treasury_account_id,x)
+ })
+ const accountRows=accounts.map(function(a){
+  const x=totals.get(a.id)||{incoming:0,outgoing:0}
+  return {branch_name:branchMap.get(a.branch_id)||'—',name:escapeHtml(a.name),type:a.account_type==='bank'?'بنك':'خزينة',incoming:money(x.incoming),outgoing:money(x.outgoing),net:money(x.incoming-x.outgoing)}
+ })
+ const entryRows=entries.map(function(e){
+  return {entry_date:e.entry_date||'—',branch_name:branchMap.get(e.branch_id)||'—',account:escapeHtml((accountMap.get(e.treasury_account_id)||{}).name||'غير موجه'),direction:e.direction==='in'?'داخل':'خارج',description:escapeHtml(e.description||'—'),category:escapeHtml(e.canonical_category||e.entry_kind||'—'),amount:money(e.amount),balance:money(e.running_balance)}
+ })
+ const body=filters(from,to,branch)+scope(from,to,branch)+
+  table('أرصدة وحركة الحسابات',[
+   {key:'branch_name',label:'الفرع'},{key:'name',label:'الحساب'},{key:'type',label:'النوع'},{key:'incoming',label:'داخل',num:1},{key:'outgoing',label:'خارج',num:1},{key:'net',label:'صافي الحركة',num:1}
+  ],accountRows)+'<div class="section-gap"></div>'+
+  table('تفاصيل حركة الخزينة',[
+   {key:'entry_date',label:'التاريخ'},{key:'branch_name',label:'الفرع'},{key:'account',label:'الخزينة / البنك'},{key:'direction',label:'الحركة'},{key:'description',label:'البيان'},{key:'category',label:'التوجيه'},{key:'amount',label:'القيمة',num:1},{key:'balance',label:'الرصيد',num:1}
+  ],entryRows)
+ shell('الخزينة والبنوك','الحركة الفعلية حسب الفرع والحساب',body)
+ bindFilters('treasury')
+}
+
 async function renderSales(){const {branch,from,to}=currentFilters();const daily=await loadDaily(branch,from,to);const rows=daily.map(r=>({business_date:r.business_date,branch_name:r.branch_name,gross:money(r.gross_sales),discounts:money(r.discounts),net:money(r.net_sales),collections:money(r.collections),expenses:money(r.expenses)}));shell('تقرير المبيعات','تفاصيل المبيعات اليومية حسب الفرع',filters(from,to,branch)+scope(from,to,branch)+table('المبيعات اليومية',[{key:'business_date',label:'التاريخ'},{key:'branch_name',label:'الفرع'},{key:'gross',label:'قبل الخصم',num:1},{key:'discounts',label:'الخصم',num:1},{key:'net',label:'صافي البيع',num:1},{key:'collections',label:'التحصيل',num:1},{key:'expenses',label:'المصروفات',num:1}],rows));bindFilters('sales')}
 async function renderExpenses(){const {branch,from,to}=currentFilters();let q=supabase.from('v_expense_analysis').select('entry_date,branch_id,branch_name,canonical_category,expense_group,description,amount').gte('entry_date',from).lte('entry_date',to).order('entry_date');if(branch)q=q.eq('branch_id',branch);const {data,error}=await q;if(error)throw error;const rows=(data||[]).map(r=>({...r,amount:money(r.amount)}));shell('تفاصيل المصروفات','كل بند مع الفرع والمجموعة',filters(from,to,branch)+scope(from,to,branch)+table('المصروفات',[{key:'entry_date',label:'التاريخ'},{key:'branch_name',label:'الفرع'},{key:'canonical_category',label:'البند'},{key:'expense_group',label:'المجموعة'},{key:'description',label:'البيان'},{key:'amount',label:'القيمة',num:1}],rows));bindFilters('expenses')}
 
