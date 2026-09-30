@@ -47,11 +47,15 @@ export default async function ExecutiveBranchComparison({
   const prevFrom = iso(prevStartDate)
   const prevTo = iso(prevEndDate)
 
+  const { data: approvedBatches } = await supabase.from('import_batches').select('id').eq('status','approved')
+  const approvedIds = (approvedBatches ?? []).map((batch) => batch.id)
+  const approvedFilter = approvedIds.length ? approvedIds : ['00000000-0000-0000-0000-000000000000']
+
   const [{ data: currentData }, { data: prevData }, { data: ytdData }, { data: warehouseData }] = await Promise.all([
     supabase.from('v_branch_daily_kpis').select('*').gte('business_date',from).lte('business_date',to).order('business_date'),
     supabase.from('v_branch_daily_kpis').select('*').gte('business_date',prevFrom).lte('business_date',prevTo).order('business_date'),
     supabase.from('v_branch_daily_kpis').select('branch_id,branch_name,net_sales').gte('business_date',ytdStart).lte('business_date',to),
-    supabase.from('warehouse_daily_summary').select('branch_id,business_date,closing_qty,closing_value').gte('business_date',from).lte('business_date',to).order('business_date'),
+    supabase.from('warehouse_daily_summary').select('branch_id,business_date,closing_qty,closing_value').in('batch_id',approvedFilter).gte('business_date',from).lte('business_date',to).order('business_date'),
   ])
 
   const current=(currentData??[]) as Daily[]
@@ -59,14 +63,15 @@ export default async function ExecutiveBranchComparison({
   const ytd=(ytdData??[]) as Pick<Daily,'branch_id'|'branch_name'|'net_sales'>[]
   const warehouse=(warehouseData??[]) as Warehouse[]
 
-  type Row={name:string;gross:number;net:number;collections:number;discounts:number;expenses:number;openingDebt:number;closingDebt:number;prevNet:number;hasPrev:boolean;ytdNet:number;stockQty:number;stockValue:number}
+  type Row={name:string;gross:number;net:number;collections:number;discounts:number;expenses:number;openingDebt:number;closingDebt:number;firstDate:string;lastDate:string;prevNet:number;hasPrev:boolean;ytdNet:number;stockQty:number;stockValue:number}
   const rows=new Map<string,Row>()
   for(const d of current){
     const id=d.branch_id??''
-    const r=rows.get(id)??{name:d.branch_name??'-',gross:0,net:0,collections:0,discounts:0,expenses:0,openingDebt:0,closingDebt:0,prevNet:0,hasPrev:false,ytdNet:0,stockQty:0,stockValue:0}
-    if(r.gross===0 && r.net===0 && r.collections===0) r.openingDebt=n(d.opening_receivables)
+    const date=d.business_date??''
+    const r=rows.get(id)??{name:d.branch_name??'-',gross:0,net:0,collections:0,discounts:0,expenses:0,openingDebt:n(d.opening_receivables),closingDebt:n(d.closing_receivables),firstDate:date,lastDate:date,prevNet:0,hasPrev:false,ytdNet:0,stockQty:0,stockValue:0}
+    if(date && (!r.firstDate || date<r.firstDate)){r.firstDate=date;r.openingDebt=n(d.opening_receivables)}
+    if(date && (!r.lastDate || date>=r.lastDate)){r.lastDate=date;r.closingDebt=n(d.closing_receivables)}
     r.gross+=n(d.gross_sales); r.net+=n(d.net_sales); r.collections+=n(d.collections); r.discounts+=n(d.discounts); r.expenses+=n(d.expenses)
-    r.closingDebt=n(d.closing_receivables)
     rows.set(id,r)
   }
   for(const d of previous){ const id=d.branch_id??''; const r=rows.get(id); if(r){ r.prevNet+=n(d.net_sales); r.hasPrev=true } }
