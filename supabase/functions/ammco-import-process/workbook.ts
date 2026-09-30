@@ -1,6 +1,69 @@
-import ExcelJS from 'npm:exceljs@4.4.0'
+import * as XLSX from 'npm:xlsx@0.18.5'
 import { Buffer } from 'node:buffer'
 type Json = any
+
+type CellLike = { value: unknown; address: string }
+type RowLike = { cellCount: number; getCell: (column: number) => CellLike }
+type WorksheetLike = {
+  name: string
+  rowCount: number
+  actualRowCount: number
+  columnCount: number
+  actualColumnCount: number
+  getCell: ((address: string) => CellLike) & ((row: number, column: number) => CellLike)
+  eachRow: (options: { includeEmpty: boolean }, callback: (row: RowLike, rowNumber: number) => void) => void
+}
+
+function xlsxCellValue(cell: XLSX.CellObject | undefined): unknown {
+  if (!cell) return null
+  const value = cell.v ?? null
+  if (cell.f) return { formula: cell.f, result: value }
+  return value
+}
+
+function wrapWorksheet(name: string, sheet: XLSX.WorkSheet): WorksheetLike {
+  const range = XLSX.utils.decode_range(sheet['!ref'] || 'A1:A1')
+  const rowCount = Math.max(1, range.e.r + 1)
+  const columnCount = Math.max(1, range.e.c + 1)
+
+  const getCellImpl = (a: string | number, b?: number): CellLike => {
+    const address = typeof a === 'string'
+      ? a
+      : XLSX.utils.encode_cell({ r: Math.max(0, a - 1), c: Math.max(0, (b ?? 1) - 1) })
+    return { value: xlsxCellValue(sheet[address]), address }
+  }
+
+  const eachRow = (options: { includeEmpty: boolean }, callback: (row: RowLike, rowNumber: number) => void) => {
+    for (let rowNumber = 1; rowNumber <= rowCount; rowNumber += 1) {
+      let hasValue = false
+      let lastColumn = 0
+      for (let column = 1; column <= columnCount; column += 1) {
+        const address = XLSX.utils.encode_cell({ r: rowNumber - 1, c: column - 1 })
+        const value = xlsxCellValue(sheet[address])
+        if (value !== null && value !== undefined && value !== '') {
+          hasValue = true
+          lastColumn = column
+        }
+      }
+      if (!options.includeEmpty && !hasValue) continue
+      const row: RowLike = {
+        cellCount: Math.max(lastColumn, 1),
+        getCell: (column: number) => getCellImpl(rowNumber, column),
+      }
+      callback(row, rowNumber)
+    }
+  }
+
+  return {
+    name,
+    rowCount,
+    actualRowCount: rowCount,
+    columnCount,
+    actualColumnCount: columnCount,
+    getCell: getCellImpl as WorksheetLike['getCell'],
+    eachRow,
+  }
+}
 
 export type ParsedRow = {
   rowNumber: number
@@ -235,7 +298,7 @@ function isMeaningful(value: Json) {
   return true
 }
 
-function cellResult(cell: ExcelJS.Cell): unknown {
+function cellResult(cell: CellLike): unknown {
   const value = cell.value
   if (value && typeof value === 'object' && 'result' in value) {
     return (value as { result?: unknown }).result
@@ -243,7 +306,7 @@ function cellResult(cell: ExcelJS.Cell): unknown {
   return value
 }
 
-function textCell(cell: ExcelJS.Cell) {
+function textCell(cell: CellLike) {
   const value = cellResult(cell)
   if (value === null || value === undefined) return ''
   if (typeof value === 'string') return value.trim()
@@ -254,7 +317,7 @@ function textCell(cell: ExcelJS.Cell) {
   return ''
 }
 
-function numberCell(cell: ExcelJS.Cell) {
+function numberCell(cell: CellLike) {
   const value = cellResult(cell)
   if (typeof value === 'number' && Number.isFinite(value)) return value
   if (typeof value === 'string') {
@@ -265,7 +328,7 @@ function numberCell(cell: ExcelJS.Cell) {
   return 0
 }
 
-function dateCell(cell: ExcelJS.Cell) {
+function dateCell(cell: CellLike) {
   const value = cellResult(cell)
   if (value instanceof Date && !Number.isNaN(value.getTime())) {
     return value.toISOString().slice(0, 10)
@@ -277,14 +340,14 @@ function dateCell(cell: ExcelJS.Cell) {
   return null
 }
 
-function nullableNumber(cell: ExcelJS.Cell) {
+function nullableNumber(cell: CellLike) {
   const value = cellResult(cell)
   if (value === null || value === undefined || value === '') return null
   const number = numberCell(cell)
   return Number.isFinite(number) ? number : null
 }
 
-function extractProducts(worksheet: ExcelJS.Worksheet) {
+function extractProducts(worksheet: WorksheetLike) {
   const products: ParsedProduct[] = []
 
   for (let row = 4; row <= worksheet.rowCount; row += 1) {
@@ -331,7 +394,7 @@ function extractProducts(worksheet: ExcelJS.Worksheet) {
   return products
 }
 
-function extractRemittances(worksheet: ExcelJS.Worksheet) {
+function extractRemittances(worksheet: WorksheetLike) {
   const rows: RepRemittanceRow[] = []
   const groupStarts = [2, 5, 8, 11, 14, 17, 20, 23, 26, 29, 32, 35]
 
@@ -371,7 +434,7 @@ function extractRemittances(worksheet: ExcelJS.Worksheet) {
   return rows
 }
 
-function extractInventoryCounts(worksheet: ExcelJS.Worksheet, countDate?: string) {
+function extractInventoryCounts(worksheet: WorksheetLike, countDate?: string) {
   const rows: InventoryCountRow[] = []
   if (!countDate) return rows
 
@@ -588,7 +651,7 @@ function classifyTreasury(
 }
 
 function extractTreasuryEntries(
-  worksheet: ExcelJS.Worksheet,
+  worksheet: WorksheetLike,
   issues: WorkbookIssue[],
 ) {
   const entries: TreasuryEntry[] = []
@@ -658,7 +721,7 @@ function extractTreasuryEntries(
   return entries
 }
 
-function extractWarehouseDaily(worksheet: ExcelJS.Worksheet) {
+function extractWarehouseDaily(worksheet: WorksheetLike) {
   const rows: WarehouseDailySummary[] = []
 
   for (let qtyRow = 3; qtyRow <= worksheet.rowCount; qtyRow += 2) {
@@ -726,7 +789,7 @@ function dateForDailySheet(sheetName: string, periodStart?: string) {
 }
 
 function extractInventoryDaily(
-  worksheet: ExcelJS.Worksheet,
+  worksheet: WorksheetLike,
   businessDate: string,
 ): InventoryDailyRow[] {
   const rows: InventoryDailyRow[] = []
@@ -788,7 +851,7 @@ function extractInventoryDaily(
 }
 
 function extractRepresentativeDay(
-  worksheet: ExcelJS.Worksheet,
+  worksheet: WorksheetLike,
   businessDate: string,
   issues: WorkbookIssue[],
 ): RepresentativeDay {
@@ -862,8 +925,17 @@ export async function parseWorkbook(
   buffer: Buffer,
   options: { periodStart?: string; periodEnd?: string } = {},
 ) {
-  const workbook = new ExcelJS.Workbook()
-  await workbook.xlsx.load(buffer as unknown as Parameters<typeof workbook.xlsx.load>[0])
+  const rawWorkbook = XLSX.read(buffer, {
+    type: 'buffer',
+    cellDates: true,
+    cellFormula: true,
+    cellNF: false,
+    cellText: false,
+    dense: false,
+  })
+  const workbook = {
+    worksheets: rawWorkbook.SheetNames.map((name) => wrapWorksheet(name, rawWorkbook.Sheets[name])),
+  }
 
   const issues: WorkbookIssue[] = []
   const sheets: ParsedSheet[] = []
