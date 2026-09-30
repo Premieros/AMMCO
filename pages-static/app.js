@@ -33,6 +33,14 @@ window.addEventListener('hashchange',render)
 supabase.auth.onAuthStateChange((_e,s)=>{session=s;setTimeout(boot,0)})
 
 const sheetSectionForRoute=r=>{
+ if(r==='reports'){
+  const report=selectedReport()
+  if(['executive','monthly'].includes(report))return 'الإدارة المالية'
+  if(['sales','receivables','reps'].includes(report))return 'المبيعات والعملاء'
+  if(['expense-matrix','expenses'].includes(report))return 'المصروفات والتكاليف'
+  if(['inventory','products'].includes(report))return 'المخزون والأصناف'
+  if(['treasury','banks'].includes(report))return 'النقدية والبنوك'
+ }
  if(['dashboard','executive','monthly'].includes(r))return 'الإدارة المالية'
  if(['sales','receivables','reps'].includes(r))return 'المبيعات والعملاء'
  if(['expense-matrix','expenses'].includes(r))return 'المصروفات والتكاليف'
@@ -51,10 +59,11 @@ const REPORT_GROUPS=[
 ]
 const selectedReport=()=>qs().get('report')||'executive'
 function reportsHubNav(){
- const selected=selectedReport()
+ const selected=selectedReport(),p=qs(),branch=p.get('branch')||'',from=p.get('from')||'',to=p.get('to')||''
+ const suffix='&branch='+encodeURIComponent(branch)+(from?'&from='+encodeURIComponent(from):'')+(to?'&to='+encodeURIComponent(to):'')
  return '<section class="reports-hub-nav">'+REPORT_GROUPS.map(g=>
   '<div class="report-group"><div class="report-group-title">'+g.label+'</div><div class="report-group-links">'+
-  g.items.map(item=>'<a class="report-chip '+(selected===item[0]?'active':'')+'" href="#/reports?report='+item[0]+'">'+item[1]+'</a>').join('')+
+  g.items.map(item=>'<a class="report-chip '+(selected===item[0]?'active':'')+'" href="#/reports?report='+item[0]+suffix+'">'+item[1]+'</a>').join('')+
   '</div></div>'
  ).join('')+'</section>'
 }
