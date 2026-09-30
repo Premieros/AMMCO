@@ -1135,3 +1135,31 @@ html,body{
   text-overflow:ellipsis;
   white-space:nowrap;
 }
+
+
+/* Sticky table header + first data row */
+.table-wrap{
+  position:relative;
+  max-height:68vh;
+  overflow:auto;
+}
+.table-card thead th{
+  position:sticky;
+  top:0;
+  z-index:20;
+}
+.table-card tbody tr:first-child td,
+.table-card tbody tr:first-child th{
+  position:sticky;
+  top:34px;
+  z-index:15;
+  background:#f7fafc;
+  box-shadow:0 1px 0 #d9e1e8,0 3px 8px rgba(15,23,42,.04);
+}
+.table-card tbody tr:first-child .row-label{
+  background:#eef4f8!important;
+}
+.table-card .total td,
+.table-card .total th{
+  position:static;
+}
