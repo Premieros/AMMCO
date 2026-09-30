@@ -1467,3 +1467,41 @@ th, td { padding: 10px 11px; }
 .smart-table-card .enterprise-table tbody tr:hover td {
   background:#fff7d6;
 }
+
+
+@media print {
+  .app-header,
+  .app-sidebar,
+  .filters,
+  .page-actions,
+  .smart-table-tools,
+  .report-section-tabs {
+    display: none !important;
+  }
+  .app-main {
+    margin: 0 !important;
+    padding: 0 !important;
+  }
+  .page-container {
+    max-width: none !important;
+    padding: 0 !important;
+  }
+  .page-header {
+    margin: 0 0 10px !important;
+  }
+  .card,
+  .report-sheet,
+  .smart-table-card {
+    box-shadow: none !important;
+    break-inside: avoid;
+  }
+  .table-wrap {
+    overflow: visible !important;
+  }
+  table {
+    font-size: 9px !important;
+  }
+  th, td {
+    padding: 5px 6px !important;
+  }
+}
