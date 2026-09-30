@@ -1221,3 +1221,38 @@ html,body{
 .table-wrap textarea{
   user-select:auto;
 }
+
+
+/* Freeze first column during horizontal scrolling */
+.table-card thead tr > th:first-child,
+.table-card tbody tr > td:first-child,
+.table-card tbody tr > th:first-child{
+  position:sticky;
+  right:0;
+  z-index:18;
+  background:#f7fafc;
+  box-shadow:-1px 0 0 #d6dee7,-5px 0 10px rgba(15,23,42,.035);
+}
+.table-card thead tr > th:first-child{
+  z-index:28;
+  background:#dce9f4;
+}
+.table-card tbody tr:first-child > td:first-child,
+.table-card tbody tr:first-child > th:first-child{
+  z-index:26;
+  background:#eef4f8!important;
+}
+.table-card .total > td:first-child,
+.table-card .total > th:first-child{
+  z-index:19;
+  background:#e4eef6!important;
+}
+.management-dashboard-table .group-header-row > th:first-child{
+  right:0;
+  z-index:32;
+  background:#d5e6f3!important;
+}
+.management-dashboard-table .column-header-row > th:first-child{
+  right:0;
+  z-index:31;
+}
