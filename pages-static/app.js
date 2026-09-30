@@ -271,33 +271,117 @@ async function renderDashboard(){
 async function renderExecutive(){
  const cfg=currentFilters(),branch=cfg.branch,from=cfg.from,to=cfg.to
  const daily=await loadDaily(branch,from,to)
+ const ids=await approvedIds()
+ let whQ=supabase.from('warehouse_daily_summary').select('branch_id,business_date,closing_qty,closing_value').in('batch_id',ids.length?ids:['00000000-0000-0000-0000-000000000000']).gte('business_date',from).lte('business_date',to).order('business_date')
+ let expQ=supabase.from('v_expense_analysis').select('branch_id,canonical_category,expense_group,amount').gte('entry_date',from).lte('entry_date',to)
+ if(branch){whQ=whQ.eq('branch_id',branch);expQ=expQ.eq('branch_id',branch)}
+ const pair=await Promise.all([whQ,expQ]),warehouse=pair[0].data||[],expenseRows=pair[1].data||[]
+ if(pair[0].error||pair[1].error)throw pair[0].error||pair[1].error
+
  const by=new Map()
  daily.forEach(function(r){
   const k=r.branch_id
-  const x=by.get(k)||{branch_name:r.branch_name,gross:0,disc:0,net:0,coll:0,open:Number(r.opening_receivables||0),debt:0,exp:0}
-  x.gross+=Number(r.gross_sales||0);x.disc+=Number(r.discounts||0);x.net+=Number(r.net_sales||0);x.coll+=Number(r.collections||0);x.exp+=Number(r.expenses||0);x.debt=Number(r.closing_receivables||x.debt)
+  const x=by.get(k)||{
+   branch_name:r.branch_name,dates:[],opening:0,gross:0,net:0,coll:0,disc:0,returns:0,expenses:0,closingDebt:0,closingCash:0,
+   last7Sales:0,last7Collections:0,last7Returns:0,last7Discount:0,inventoryValue:0
+  }
+  x.dates.push(r.business_date)
+  if(x.dates.length===1)x.opening=Number(r.opening_receivables||0)
+  x.gross+=Number(r.gross_sales||0);x.net+=Number(r.net_sales||0);x.coll+=Number(r.collections||0);x.disc+=Number(r.discounts||0)
+  x.returns+=Number(r.returns_value||0);x.expenses+=Number(r.expenses||0)
+  x.closingDebt=Number(r.closing_receivables||x.closingDebt);x.closingCash=Number(r.closing_cash||x.closingCash);x.inventoryValue=Number(r.inventory_value||x.inventoryValue)
   by.set(k,x)
  })
- const raw=[...by.values()].sort(function(a,b){return b.net-a.net})
- const totals=raw.reduce(function(a,x){a.gross+=x.gross;a.disc+=x.disc;a.net+=x.net;a.coll+=x.coll;a.open+=x.open;a.debt+=x.debt;a.exp+=x.exp;return a},{gross:0,disc:0,net:0,coll:0,open:0,debt:0,exp:0})
- const rows=raw.map(function(x){return{
-  branch_name:x.branch_name,gross:money(x.gross),disc:money(x.disc),disc_rate:pct(x.gross?x.disc/x.gross:0),net:money(x.net),
-  coll:money(x.coll),coll_rate:pct(x.net?x.coll/x.net:0),open:money(x.open),debt:money(x.debt),exp:money(x.exp),exp_rate:pct(x.net?x.exp/x.net:0)
- }})
- const totalRow='<tr class="total"><th>إجمالي الشركة</th><th class="num">'+money(totals.gross)+'</th><th class="num">'+money(totals.disc)+'</th><th>'+pct(totals.gross?totals.disc/totals.gross:0)+'</th><th class="num">'+money(totals.net)+'</th><th class="num">'+money(totals.coll)+'</th><th>'+pct(totals.net?totals.coll/totals.net:0)+'</th><th class="num">'+money(totals.open)+'</th><th class="num">'+money(totals.debt)+'</th><th class="num">'+money(totals.exp)+'</th><th>'+pct(totals.net?totals.exp/totals.net:0)+'</th></tr>'
- const kpis='<section class="kpis dashboard-kpis">'+
-  '<div class="kpi"><span>صافي المبيعات</span><strong>'+money(totals.net)+'</strong></div>'+
-  '<div class="kpi"><span>التحصيل</span><strong>'+money(totals.coll)+'</strong></div>'+
-  '<div class="kpi"><span>مديونية آخر</span><strong>'+money(totals.debt)+'</strong></div>'+
-  '<div class="kpi"><span>المصروفات</span><strong>'+money(totals.exp)+'</strong></div></section>'
- shell('التقرير التنفيذي','مقارنة الإدارة حسب الفروع',filters(from,to,branch)+scope(from,to,branch)+kpis+table('الملخص التنفيذي',[
-  {key:'branch_name',label:'الفرع'},{key:'gross',label:'قبل الخصم',num:1},{key:'disc',label:'الخصم',num:1},{key:'disc_rate',label:'% الخصم'},
-  {key:'net',label:'صافي البيع',num:1},{key:'coll',label:'التحصيل',num:1},{key:'coll_rate',label:'% التحصيل'},
-  {key:'open',label:'مديونية أول',num:1},{key:'debt',label:'مديونية آخر',num:1},{key:'exp',label:'المصروفات',num:1},{key:'exp_rate',label:'% المصروف'}
+ const allDates=[...new Set(daily.map(r=>r.business_date))].sort()
+ const last7Set=new Set(allDates.slice(-7))
+ daily.forEach(function(r){
+  if(!last7Set.has(r.business_date))return
+  const x=by.get(r.branch_id);if(!x)return
+  x.last7Sales+=Number(r.net_sales||0);x.last7Collections+=Number(r.collections||0);x.last7Returns+=Number(r.returns_value||0);x.last7Discount+=Number(r.discounts||0)
+ })
+ const whLatest=new Map()
+ warehouse.forEach(function(r){
+  const prev=whLatest.get(r.branch_id)
+  if(!prev||String(r.business_date)>=String(prev.business_date))whLatest.set(r.branch_id,r)
+ })
+ const carExp=new Map()
+ expenseRows.forEach(function(r){
+  const txt=((r.canonical_category||'')+' '+(r.expense_group||'')).toLowerCase()
+  const x=carExp.get(r.branch_id)||{fuel:0,petro:0,maintenance:0}
+  if(/سولار|وقود|fuel/.test(txt))x.fuel+=Number(r.amount||0)
+  if(/بترو|petro/.test(txt))x.petro+=Number(r.amount||0)
+  if(/صيان|maintenance/.test(txt))x.maintenance+=Number(r.amount||0)
+  carExp.set(r.branch_id,x)
+ })
+ const raw=[...by.entries()].map(([id,x])=>{
+  const wh=whLatest.get(id)||{},car=carExp.get(id)||{fuel:0,petro:0,maintenance:0}
+  return {id,...x,inventoryQty:Number(wh.closing_qty||0),inventoryValue:Number(wh.closing_value||x.inventoryValue||0),fuel:car.fuel,petro:car.petro,maintenance:car.maintenance}
+ }).sort((a,b)=>b.net-a.net)
+
+ const rows=raw.map(x=>({
+  branch_name:x.branch_name,
+  opening:money(x.opening),
+  last7_sales:money(x.last7Sales),
+  last7_collections:money(x.last7Collections),
+  last7_returns:money(x.last7Returns),
+  legal:'—',
+  previous_debt:money(x.opening),
+  sales:money(x.net),
+  collections:money(x.coll),
+  month_debt:money(x.closingDebt),
+  cumulative_debt:money(x.closingDebt),
+  discount7:money(x.last7Discount),
+  discount:money(x.disc),
+  discount_rate:pct(x.gross?x.disc/x.gross:0),
+  avg_price:money(x.net?x.gross?x.net/Math.max(1,x.gross/x.net):0:0),
+  fuel:money(x.fuel),
+  petro:money(x.petro),
+  maintenance:money(x.maintenance),
+  inventory_qty:qty(x.inventoryQty),
+  inventory_value:money(x.inventoryValue),
+  treasury:money(x.closingCash),
+  expense_rate:pct(x.net?x.expenses/x.net:0),
+  treasury_variance:'—'
+ }))
+ const totals=raw.reduce((a,x)=>{
+  a.opening+=x.opening;a.last7Sales+=x.last7Sales;a.last7Collections+=x.last7Collections;a.last7Returns+=x.last7Returns;a.net+=x.net;a.coll+=x.coll
+  a.closingDebt+=x.closingDebt;a.last7Discount+=x.last7Discount;a.disc+=x.disc;a.gross+=x.gross;a.fuel+=x.fuel;a.petro+=x.petro;a.maintenance+=x.maintenance
+  a.inventoryQty+=x.inventoryQty;a.inventoryValue+=x.inventoryValue;a.closingCash+=x.closingCash;a.expenses+=x.expenses;return a
+ },{opening:0,last7Sales:0,last7Collections:0,last7Returns:0,net:0,coll:0,closingDebt:0,last7Discount:0,disc:0,gross:0,fuel:0,petro:0,maintenance:0,inventoryQty:0,inventoryValue:0,closingCash:0,expenses:0})
+ const totalRow='<tr class="total">'+
+  '<th>الإجمالي</th><th class="num">'+money(totals.opening)+'</th><th class="num">'+money(totals.last7Sales)+'</th><th class="num">'+money(totals.last7Collections)+'</th><th class="num">'+money(totals.last7Returns)+'</th>'+
+  '<th>—</th><th class="num">'+money(totals.opening)+'</th><th class="num">'+money(totals.net)+'</th><th class="num">'+money(totals.coll)+'</th><th class="num">'+money(totals.closingDebt)+'</th><th class="num">'+money(totals.closingDebt)+'</th>'+
+  '<th class="num">'+money(totals.last7Discount)+'</th><th class="num">'+money(totals.disc)+'</th><th>'+pct(totals.gross?totals.disc/totals.gross:0)+'</th><th>—</th>'+
+  '<th class="num">'+money(totals.fuel)+'</th><th class="num">'+money(totals.petro)+'</th><th class="num">'+money(totals.maintenance)+'</th>'+
+  '<th class="num">'+qty(totals.inventoryQty)+'</th><th class="num">'+money(totals.inventoryValue)+'</th><th class="num">'+money(totals.closingCash)+'</th><th>'+pct(totals.net?totals.expenses/totals.net:0)+'</th><th>—</th></tr>'
+
+ shell('التقرير المجمع','مطابقة ورقة الإدارة بالأعمدة المتاحة من البيانات المعتمدة',filters(from,to,branch)+scope(from,to,branch)+table('التقرير المجمع',[
+  {key:'branch_name',label:'الفرع'},
+  {key:'opening',label:'افتتاحي مديونية'},
+  {key:'last7_sales',label:'مبيعات آخر 7'},
+  {key:'last7_collections',label:'تحصيل آخر 7'},
+  {key:'last7_returns',label:'مرتجع'},
+  {key:'legal',label:'شؤون قانونية'},
+  {key:'previous_debt',label:'مديونية سابقة'},
+  {key:'sales',label:'المبيعات',num:1},
+  {key:'collections',label:'التحصيل',num:1},
+  {key:'month_debt',label:'مديونية الشهر',num:1},
+  {key:'cumulative_debt',label:'تراكمي',num:1},
+  {key:'discount7',label:'خصم 7',num:1},
+  {key:'discount',label:'الخصم',num:1},
+  {key:'discount_rate',label:'% الخصم'},
+  {key:'avg_price',label:'متوسط السعر',num:1},
+  {key:'fuel',label:'سولار',num:1},
+  {key:'petro',label:'بترو أب',num:1},
+  {key:'maintenance',label:'صيانة',num:1},
+  {key:'inventory_qty',label:'كمية المخزون',num:1},
+  {key:'inventory_value',label:'قيمة المخزون',num:1},
+  {key:'treasury',label:'رصيد الخزينة',num:1},
+  {key:'expense_rate',label:'% المصروف'},
+  {key:'treasury_variance',label:'انحراف الخزينة'}
  ],rows,totalRow))
  bindFilters('executive')
 }
-
 async function renderTreasury(){
  const cfg=currentFilters(),branch=cfg.branch,from=cfg.from,to=cfg.to
  let accountQ=supabase.from('treasury_accounts').select('id,branch_id,name,code,account_type,is_default,is_active').eq('is_active',true)
