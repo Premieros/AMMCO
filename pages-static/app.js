@@ -184,10 +184,32 @@ async function renderImports(){
   status:labels[r.status]||r.status,
   uploaded_at:new Date(r.uploaded_at).toLocaleString('en-GB'),
   approved_at:r.approved_at?new Date(r.approved_at).toLocaleString('en-GB'):'',
-  action:r.status==='validated'&&profile?.role==='admin'? `<button class="btn" onclick="approveBatch('${r.id}')">اعتماد</button>` : (r.failure_message||'—')
+  action:r.status==='validated'&&profile?.role==='admin'
+    ? `<button class="btn" onclick="approveBatch('${r.id}')">اعتماد</button>`
+    : ['uploaded','failed','rejected','processing'].includes(r.status)
+      ? `<button class="btn secondary" onclick="processBatch('${r.id}')">إعادة التحليل</button>`
+      : (r.failure_message||'—')
  }))
  shell('سجل الرفع','كل نسخ الشيتات وحالة الاعتماد',`<div id="imports-msg"></div>`+table('نسخ الشيتات',[{key:'branch_name',label:'الفرع'},{key:'period',label:'الفترة'},{key:'file',label:'الملف'},{key:'version',label:'الإصدار',num:1},{key:'status',label:'الحالة'},{key:'uploaded_at',label:'وقت الرفع'},{key:'approved_at',label:'وقت الاعتماد'},{key:'action',label:'إجراء'}],rows))
 }
+window.processBatch=async id=>{
+ const msg=document.getElementById('imports-msg'); if(msg)msg.innerHTML='<div class="notice">جاري تحليل الملف…</div>'
+ try{
+  const {data:{session:active}}=await supabase.auth.getSession()
+  const res=await fetch(`${SUPABASE_URL}/functions/v1/ammco-import-process`,{
+   method:'POST',
+   headers:{Authorization:`Bearer ${active.access_token}`,apikey:SUPABASE_KEY,'Content-Type':'application/json'},
+   body:JSON.stringify({batchId:id})
+  })
+  const out=await res.json()
+  if(!res.ok) throw new Error(out.error||'تعذر تحليل الملف')
+  if(msg)msg.innerHTML=out.status==='rejected'
+    ? `<div class="error">تم التحليل ويحتاج مراجعة: ${out.issues} ملاحظة.</div>`
+    : `<div class="success">تم التحليل بنجاح: ${out.sheets} صفحة، ${out.rows} صف، ${out.products} صنف.</div>`
+  setTimeout(renderImports,500)
+ }catch(err){if(msg)msg.innerHTML=`<div class="error">${err.message||err}</div>`}
+}
+
 window.approveBatch=async id=>{
  const msg=document.getElementById('imports-msg'); if(msg)msg.innerHTML='<div class="notice">جاري اعتماد النسخة…</div>'
  const {error}=await supabase.rpc('approve_import_batch',{p_batch_id:id})
