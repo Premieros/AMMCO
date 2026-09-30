@@ -27,7 +27,7 @@ type ExpenseRow = {
 export default async function ExpensesPage({
   searchParams,
 }: {
-  searchParams: Promise<{ from?: string; to?: string }>
+  searchParams: Promise<{ branch?: string; from?: string; to?: string }>
 }) {
   const filters = await searchParams
   const supabase = await createClient()
@@ -55,10 +55,14 @@ export default async function ExpensesPage({
     .order('entry_date', { ascending: false })
     .limit(5000)
 
+  if (filters.branch) query = query.eq('branch_id', filters.branch)
   if (filters.from) query = query.gte('entry_date', filters.from)
   if (filters.to) query = query.lte('entry_date', filters.to)
 
-  const { data } = await query
+  const [{ data }, { data: branches }] = await Promise.all([
+    query,
+    supabase.from('branches').select('id,name').eq('is_active',true).order('name'),
+  ])
   const rows = (data ?? []) as ExpenseRow[]
 
   const total = rows.reduce((sum, row) => sum + Number(row.amount ?? 0), 0)
@@ -92,10 +96,13 @@ export default async function ExpensesPage({
       breadcrumbs={[{ label: 'لوحة الإدارة', href: '/' }, { label: 'تحليل المصروفات' }]}
     >
       <form className="card filters" method="get">
+        <div className="field"><label>الفرع</label><select name="branch" defaultValue={filters.branch ?? ''}><option value="">كل الفروع</option>{(branches ?? []).map((item) => <option key={item.id} value={item.id}>{item.name}</option>)}</select></div>
         <div className="field"><label>من</label><input type="date" name="from" defaultValue={filters.from ?? ''} /></div>
         <div className="field"><label>إلى</label><input type="date" name="to" defaultValue={filters.to ?? ''} /></div>
         <div className="field filter-action"><label>&nbsp;</label><button className="btn" type="submit">تطبيق الفترة</button></div>
       </form>
+
+      <div className="report-scope"><span className="scope-chip">الفرع: <strong>{(branches ?? []).find((item) => item.id === filters.branch)?.name ?? 'كل الفروع'}</strong></span><span className="scope-chip">الفترة: <strong>{filters.from || 'البداية'} → {filters.to || 'اليوم'}</strong></span></div>
 
       <section className="grid portal-kpis" style={{ marginTop: 16, marginBottom: 16 }}>
         <div className="card"><div className="kpi-label">إجمالي المصروفات</div><div className="kpi-value">{money(total)}</div></div>
