@@ -1772,7 +1772,7 @@ function renderUploads(){
   button.textContent=`جاري معالجة ${tasks.length} فرع…`
   msg.innerHTML=`<div class="notice">بدأت دفعة رفع ${tasks.length} فرع. يمكنك متابعة حالة كل مسار بشكل مستقل.</div>`
 
-  const results=await runPool(tasks,3)
+  const results=await runPool(tasks,1)
   const ok=results.filter(r=>r?.ok).length
   const failed=results.filter(r=>r&&!r.ok).length
   const review=results.filter(r=>r?.review).length
