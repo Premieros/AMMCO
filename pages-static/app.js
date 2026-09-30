@@ -1,4 +1,5 @@
 import { createClient } from 'https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2.117.2/+esm'
+import { parseWorkbookBrowser } from './workbook-parser.js'
 
 const SUPABASE_URL='https://yumeijsyiphzdsulsubf.supabase.co'
 const SUPABASE_KEY='eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6Inl1bWVpanN5aXBoemRzdWxzdWJmIiwicm9sZSI6ImFub24iLCJpYXQiOjE3OTA2ODk1ODAsImV4cCI6MjEwNjI2NTU4MH0.Hpy2VZpttnQGdrx6_6Y1c9w4iHG2HhopvFdrohk3BBE'
@@ -235,9 +236,17 @@ function renderUploads(){
  document.getElementById('upload-form')?.addEventListener('submit',async e=>{
   e.preventDefault()
   const button=document.getElementById('upload-btn'); const msg=document.getElementById('upload-msg')
-  button.disabled=true; button.textContent='جاري الرفع…'; msg.innerHTML=''
+  button.disabled=true; button.textContent='جاري القراءة…'; msg.innerHTML=''
   try{
    const fd=new FormData(e.currentTarget)
+   const file=fd.get('file')
+   if(!(file instanceof File)) throw new Error('اختر ملف Excel')
+   const periodStart=String(fd.get('period_start')||'')
+   const periodEnd=String(fd.get('period_end')||'')
+   msg.innerHTML='<div class="notice">جاري قراءة وتحليل ملف Excel على جهازك…</div>'
+   const parsed=await parseWorkbookBrowser(file,{periodStart,periodEnd})
+   msg.innerHTML=`<div class="notice">تمت قراءة ${parsed.stats.sheetCount} صفحة و${parsed.stats.productCount} صنف. جاري حفظ الملف والبيانات…</div>`
+   button.textContent='جاري الحفظ…'
    const {data:{session:active}}=await supabase.auth.getSession()
    const res=await fetch(`${SUPABASE_URL}/functions/v1/ammco-import-upload`,{
     method:'POST',
@@ -246,18 +255,17 @@ function renderUploads(){
    })
    const out=await res.json()
    if(!res.ok) throw new Error(out.error||'تعذر رفع الملف')
-   msg.innerHTML=`<div class="notice">تم رفع الإصدار ${out.version}. جاري تحليل الشيت والتحقق من البيانات…</div>`
    const processRes=await fetch(`${SUPABASE_URL}/functions/v1/ammco-import-process`,{
     method:'POST',
     headers:{Authorization:`Bearer ${active.access_token}`,apikey:SUPABASE_KEY,'Content-Type':'application/json'},
-    body:JSON.stringify({batchId:out.batchId})
+    body:JSON.stringify({batchId:out.batchId,parsed})
    })
    const processed=await processRes.json()
-   if(!processRes.ok) throw new Error(processed.error||'تم رفع الملف لكن تعذر تحليل محتواه')
+   if(!processRes.ok) throw new Error(processed.error||'تم حفظ الملف لكن تعذر تسجيل البيانات')
    if(processed.status==='rejected'){
-    msg.innerHTML=`<div class="error">تم حفظ الملف وتحليله، لكنه يحتاج مراجعة: ${processed.issues} ملاحظة تحقق.</div>`
+    msg.innerHTML=`<div class="error">تم حفظ وتحليل الملف، لكنه يحتاج مراجعة: ${processed.issues} ملاحظة تحقق.</div>`
    }else{
-    msg.innerHTML=`<div class="success">تم رفع وتحليل الإصدار ${out.version} بنجاح: ${processed.sheets} صفحة، ${processed.rows} صف، ${processed.products} صنف.</div>`
+    msg.innerHTML=`<div class="success">تم رفع وتحليل الإصدار ${out.version} بنجاح: ${parsed.stats.sheetCount} صفحة، ${parsed.stats.representativeRowCount} سجل مندوب، ${parsed.stats.inventoryDailyRowCount} حركة صنف، ${parsed.stats.productCount} صنف.</div>`
    }
    e.currentTarget.reset()
   }catch(err){msg.innerHTML=`<div class="error">${err.message||err}</div>`}
