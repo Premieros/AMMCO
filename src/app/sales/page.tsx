@@ -16,11 +16,12 @@ function pct(value: number) {
 export default async function SalesPage({
   searchParams,
 }: {
-  searchParams: Promise<{ from?: string; to?: string }>
+  searchParams: Promise<{ branch?: string; from?: string; to?: string }>
 }) {
   const filters = await searchParams
   const from = filters.from ?? ''
   const to = filters.to ?? ''
+  const branch = filters.branch ?? ''
   const supabase = await createClient()
   const { data: auth } = await supabase.auth.getClaims()
   if (!auth?.claims?.sub) redirect('/login')
@@ -38,6 +39,10 @@ export default async function SalesPage({
     .order('business_date', { ascending: false })
     .limit(5000)
 
+  if (branch) {
+    dailyQuery = dailyQuery.eq('branch_id', branch)
+    warehouseQuery = warehouseQuery.eq('branch_id', branch)
+  }
   if (from) {
     dailyQuery = dailyQuery.gte('business_date', from)
     warehouseQuery = warehouseQuery.gte('business_date', from)
@@ -47,9 +52,10 @@ export default async function SalesPage({
     warehouseQuery = warehouseQuery.lte('business_date', to)
   }
 
-  const [{ data: daily }, { data: warehouse }] = await Promise.all([
+  const [{ data: daily }, { data: warehouse }, { data: branches }] = await Promise.all([
     dailyQuery,
     warehouseQuery,
+    supabase.from('branches').select('id,name').eq('is_active',true).order('name'),
   ])
 
   const warehouseByKey = new Map(
@@ -90,10 +96,13 @@ export default async function SalesPage({
       breadcrumbs={[{ label: 'لوحة الإدارة', href: '/' }, { label: 'المبيعات' }]}
     >
       <form className="card filters" method="get" style={{ marginBottom: 16 }}>
+        <div className="field"><label>الفرع</label><select name="branch" defaultValue={branch}><option value="">كل الفروع</option>{(branches ?? []).map((item) => <option key={item.id} value={item.id}>{item.name}</option>)}</select></div>
         <div className="field"><label>من</label><input name="from" type="date" defaultValue={from} /></div>
         <div className="field"><label>إلى</label><input name="to" type="date" defaultValue={to} /></div>
         <div className="field filter-action"><label>&nbsp;</label><button className="btn" type="submit">تطبيق الفترة</button></div>
       </form>
+
+      <div className="report-scope"><span className="scope-chip">الفرع: <strong>{(branches ?? []).find((item) => item.id === branch)?.name ?? 'كل الفروع'}</strong></span><span className="scope-chip">الفترة: <strong>{from || 'البداية'} → {to || 'اليوم'}</strong></span></div>
 
       <section className="grid portal-kpis" style={{ marginBottom: 16 }}>
         <div className="card"><div className="kpi-label">صافي المبيعات</div><div className="kpi-value">{money(totalNet)}</div></div>
