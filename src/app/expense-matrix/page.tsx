@@ -7,7 +7,7 @@ export const dynamic='force-dynamic'
 type Expense={id:number;branch_id:string;branch_name:string;canonical_category:string|null;expense_group:string|null;amount:number;entry_date:string}
 type Sale={branch_id:string|null;branch_name:string|null;net_sales:number|null}
 function n(v:unknown){return Number(v??0)}
-function money(v:number){return new Intl.NumberFormat('en-US',{style:'currency',currency:'EGP',maximumFractionDigits:0}).format(v)}
+function money(v:number){return new Intl.NumberFormat('en-US',{maximumFractionDigits:2}).format(v)}
 function pct(v:number){return `${new Intl.NumberFormat('en-US',{maximumFractionDigits:1}).format(v*100)}%`}
 
 export default async function ExpenseMatrix({searchParams}:{searchParams:Promise<{branch?:string;from?:string;to?:string}>}){
@@ -29,14 +29,15 @@ export default async function ExpenseMatrix({searchParams}:{searchParams:Promise
  return <AppShell title="مصفوفة المصروفات" subtitle="بند المصروف × الفرع، مع الإجمالي والنسبة من صافي المبيعات">
   <form className="card filters" method="get"><div className="field"><label>الفرع</label><select name="branch" defaultValue={f.branch??''}><option value="">كل الفروع</option>{allBranches.map(b=><option key={b.id} value={b.id}>{b.name}</option>)}</select></div><div className="field"><label>من</label><input type="date" name="from" defaultValue={from}/></div><div className="field"><label>إلى</label><input type="date" name="to" defaultValue={to}/></div><div className="field filter-action"><label>&nbsp;</label><button className="btn" type="submit">تطبيق</button></div></form>
   <div className="report-scope"><span className="scope-chip">الفرع: <strong>{allBranches.find(b=>b.id===f.branch)?.name??'كل الفروع'}</strong></span><span className="scope-chip">الفترة: <strong>{from} → {to}</strong></span></div>
-  <section className="card"><div className="section-head"><h2>مصفوفة المصروفات حسب الفرع</h2><span className="muted">اضغط على القيمة لفتح تفاصيل المصروفات</span></div>
-   <div className="table-wrap"><table><thead><tr><th>البند</th>{branches.map(b=><th key={b.id}>{b.name}</th>)}<th>إجمالي الشركة</th><th>% من مبيعات الشركة</th></tr></thead>
+  <section className="report-sheet"><div className="report-sheet-head"><h2>مصفوفة المصروفات حسب الفرع</h2><span>اضغط على القيمة لفتح تفاصيل المصروفات</span></div>
+   <div className="table-wrap"><table><thead><tr><th className="group-slate">البند</th>{branches.map((b,i)=><th className={i%2===0?'group-blue':'group-green'} key={b.id}>{b.name}</th>)}<th className="group-gold">إجمالي الشركة</th><th className="group-orange">% من مبيعات الشركة</th></tr></thead>
    <tbody>{[...matrix.entries()].sort((a,b)=>[...b[1].values()].reduce((x,y)=>x+y,0)-[...a[1].values()].reduce((x,y)=>x+y,0)).map(([cat,row])=>{
     const total=[...row.values()].reduce((a,b)=>a+b,0); const companySales=[...salesByBranch.values()].reduce((a,b)=>a+b,0)
-    return <tr key={cat}><td>{cat}</td>{branches.map(b=><td key={b.id}><Link className="row-link" href={`/expenses?branch=${b.id}&from=${from}&to=${to}&search=${encodeURIComponent(cat)}`}>{money(row.get(b.id)??0)}</Link></td>)}<td>{money(total)}</td><td>{pct(companySales?total/companySales:0)}</td></tr>
+    return <tr key={cat}><td className="row-label">{cat}</td>{branches.map(b=><td className="num" key={b.id}><Link className="row-link" href={`/expenses?branch=${b.id}&from=${from}&to=${to}&search=${encodeURIComponent(cat)}`}>{money(row.get(b.id)??0)}</Link></td>)}<td className="num"><strong>{money(total)}</strong></td><td className="num">{pct(companySales?total/companySales:0)}</td></tr>
    })}
-   <tr><th>إجمالي الفرع</th>{branches.map(b=><th key={b.id}>{money(branchTotals.get(b.id)??0)}<div className="muted">{pct((salesByBranch.get(b.id)??0)?(branchTotals.get(b.id)??0)/(salesByBranch.get(b.id)??1):0)}</div></th>)}<th>{money(expenses.reduce((s,e)=>s+n(e.amount),0))}</th><th>-</th></tr>
+   <tr className="total-row"><th>إجمالي الفرع</th>{branches.map(b=><th key={b.id}>{money(branchTotals.get(b.id)??0)}<div>{pct((salesByBranch.get(b.id)??0)?(branchTotals.get(b.id)??0)/(salesByBranch.get(b.id)??1):0)}</div></th>)}<th>{money(expenses.reduce((s,e)=>s+n(e.amount),0))}</th><th>-</th></tr>
    </tbody></table></div>
+   <div className="report-sheet-caption">النسبة أسفل إجمالي كل فرع = إجمالي مصروفات الفرع ÷ صافي مبيعات الفرع خلال الفترة المحددة.</div>
   </section>
  </AppShell>
 }
