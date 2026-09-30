@@ -59,14 +59,15 @@ const REPORT_GROUPS=[
 ]
 const selectedReport=()=>qs().get('report')||'executive'
 function reportsHubNav(){
- const selected=selectedReport(),p=qs(),branch=p.get('branch')||'',from=p.get('from')||'',to=p.get('to')||''
- const suffix='&branch='+encodeURIComponent(branch)+(from?'&from='+encodeURIComponent(from):'')+(to?'&to='+encodeURIComponent(to):'')
- return '<section class="reports-hub-nav">'+REPORT_GROUPS.map(g=>
-  '<div class="report-group"><div class="report-group-title">'+g.label+'</div><div class="report-group-links">'+
-  g.items.map(item=>'<a class="report-chip '+(selected===item[0]?'active':'')+'" href="#/reports?report='+item[0]+suffix+'">'+item[1]+'</a>').join('')+
-  '</div></div>'
- ).join('')+'</section>'
+ const selected=selectedReport(),p=qs(),branch=p.get('branch')||'',from=p.get('from')||defaultFrom,to=p.get('to')||defaultTo
+ const options=REPORT_GROUPS.map(g=>'<optgroup label="'+g.label+'">'+g.items.map(item=>'<option value="'+item[0]+'" '+(selected===item[0]?'selected':'')+'>'+item[1]+'</option>').join('')+'</optgroup>').join('')
+ return '<section class="reports-list-bar"><div class="field reports-select-field"><label>التقرير</label><select id="report-picker">'+options+'</select></div></section>'
 }
+window.changeUnifiedReport=select=>{
+ const p=qs(),branch=p.get('branch')||'',from=p.get('from')||defaultFrom,to=p.get('to')||defaultTo
+ location.hash='#/reports?report='+encodeURIComponent(select.value)+'&branch='+encodeURIComponent(branch)+'&from='+encodeURIComponent(from)+'&to='+encodeURIComponent(to)
+}
+
 function shell(title,subtitle,body){
  const r=route().split('?')[0],sheetSection=sheetSectionForRoute(r)
  app.innerHTML=`<div class="shell">
@@ -109,6 +110,7 @@ function shell(title,subtitle,body){
  </main>
  </div>`
  document.getElementById('logout')?.addEventListener('click',async()=>{await supabase.auth.signOut();location.hash='';})
+ document.getElementById('report-picker')?.addEventListener('change',e=>changeUnifiedReport(e.currentTarget))
 }
 function branchOptions(selected=''){return `<option value="">كل الفروع</option>${branches.map(b=>`<option value="${b.id}" ${selected===b.id?'selected':''}>${b.name}</option>`).join('')}`}
 function filters(from,to,branch){return `<form id="filters" class="filters compact-filters">
