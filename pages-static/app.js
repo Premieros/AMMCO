@@ -195,6 +195,40 @@ window.clearTableFilters=button=>{
  card.querySelectorAll('.excel-filter-btn').forEach(b=>b.classList.remove('active'));applyTableFilters(card.querySelector('.search'))
 }
 window.resetReportFilters=()=>{const r=route().split('?')[0];location.hash='#/'+r}
+
+window.enableTableDragScroll=()=>{
+ document.querySelectorAll('.table-wrap').forEach(wrap=>{
+  if(wrap.dataset.dragScroll==='1')return
+  wrap.dataset.dragScroll='1'
+  let down=false,startX=0,startLeft=0,moved=false
+  const interactive='button,input,select,textarea,a,label'
+  wrap.addEventListener('mousedown',e=>{
+   if(e.button!==0||e.target.closest(interactive))return
+   down=true;moved=false;startX=e.clientX;startLeft=wrap.scrollLeft
+   wrap.classList.add('dragging')
+   e.preventDefault()
+  })
+  window.addEventListener('mousemove',e=>{
+   if(!down)return
+   const dx=e.clientX-startX
+   if(Math.abs(dx)>3)moved=true
+   wrap.scrollLeft=startLeft-dx
+  })
+  window.addEventListener('mouseup',()=>{
+   if(!down)return
+   down=false
+   wrap.classList.remove('dragging')
+  })
+  wrap.addEventListener('mouseleave',()=>{
+   if(!down)return
+   wrap.classList.remove('dragging')
+  })
+  wrap.addEventListener('click',e=>{
+   if(moved&&!e.target.closest(interactive)){e.preventDefault();e.stopPropagation();moved=false}
+  },true)
+ })
+}
+
 window.exportVisibleTableXlsx=button=>{
  const card=button.closest('.table-card'),tableEl=card.querySelector('table')
  const visibleRows=[...tableEl.querySelectorAll('tr')].filter(r=>r.style.display!=='none')
@@ -215,6 +249,8 @@ window.printReportOnly=button=>{
  'body{font-family:"IBM Plex Sans Arabic","Segoe UI",Tahoma,Arial,sans-serif;margin:18px;color:#172033}h1{font-size:18px;margin:0 0 4px}.meta{font-size:11px;color:#64748b;margin-bottom:12px}table{width:100%;border-collapse:collapse;font-size:11px}th{background:#dce9f4;font-weight:700}th,td{border:1px solid #d9e1ea;padding:6px 8px;text-align:right}td.num{direction:ltr;text-align:right;font-weight:600}tr:nth-child(even) td{background:#fafbfd}.total th,.total td{background:#e4eef6;font-weight:700}@page{size:landscape;margin:10mm}</style></head><body><h1>'+escapeHtml(title)+'</h1><div class="meta">'+escapeHtml(meta)+'</div>'+table.outerHTML+'<script>window.onload=function(){window.focus();window.print()}<\/script></body></html>')
  win.document.close()
 }
+const tableDragObserver=new MutationObserver(()=>enableTableDragScroll())
+tableDragObserver.observe(app,{childList:true,subtree:true})
 async function render(){
  if(!session) return renderLogin()
  if(!profile?.is_active) return shell('AMMCO','الحساب غير مهيأ أو غير نشط','<div class="notice">راجع مدير النظام لربط الحساب بالمؤسسة.</div>')
