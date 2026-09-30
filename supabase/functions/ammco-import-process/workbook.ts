@@ -561,23 +561,33 @@ function classifyTreasury(
     }
   }
 
-  if (/ايداع/.test(nc) || /\bqnb\b/i.test(category) || nc === 'القاهره') {
+  const bankText = normalizeCategory(`${category} ${desc}`)
+  if (
+    /ايداع/.test(nc) ||
+    /ايداع/.test(nd) ||
+    /\b(qnb|cib)\b/i.test(`${category} ${desc}`) ||
+    /بنك مصر|البنك الاهلي|البنك الأهلي|القاهره/.test(bankText)
+  ) {
     return {
       entryKind: 'bank_deposit' as const,
-      canonicalCategory: category || 'ايداع بنكي',
+      canonicalCategory: category || desc || 'ايداع بنكي',
       expenseGroup: null,
       isExpense: false,
-      classificationConfidence: 'exact' as const,
+      classificationConfidence: category ? 'exact' as const : 'inferred' as const,
     }
   }
 
-  if ((/تحويل/.test(nc) && /مصنع/.test(nc)) || nc === 'دائنون') {
+  if (
+    (/تحويل/.test(nc) && /مصنع/.test(nc)) ||
+    (/تحويل/.test(nd) && /مصنع/.test(nd)) ||
+    nc === 'دائنون'
+  ) {
     return {
       entryKind: 'hq_transfer' as const,
-      canonicalCategory: category || 'تحويل للمصنع',
+      canonicalCategory: category || desc || 'تحويل للمصنع',
       expenseGroup: null,
       isExpense: false,
-      classificationConfidence: 'exact' as const,
+      classificationConfidence: category ? 'exact' as const : 'inferred' as const,
     }
   }
 
