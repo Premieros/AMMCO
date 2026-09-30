@@ -1342,3 +1342,51 @@ html,body{
   font-weight:700;
   color:#1f3448;
 }
+
+
+/* Wider reports + collapsible sidebar */
+.content{
+  padding:12px 14px 20px;
+}
+.table-card{
+  width:100%;
+}
+.table-wrap{
+  width:100%;
+  max-height:78vh;
+}
+.table-wrap table{
+  min-width:100%;
+  width:max-content;
+}
+.shell.sidebar-collapsed{
+  grid-template-columns:0 minmax(0,1fr);
+}
+.shell.sidebar-collapsed .sidebar{
+  width:0;
+  padding:0;
+  overflow:hidden;
+  border:0;
+  opacity:0;
+  pointer-events:none;
+}
+.shell.sidebar-collapsed .main{
+  width:100%;
+}
+.sidebar{
+  transition:width .18s ease,padding .18s ease,opacity .12s ease;
+}
+.sidebar-toggle{
+  white-space:nowrap;
+}
+@media(min-width:1200px){
+  .content{
+    padding-right:12px;
+    padding-left:12px;
+  }
+  .table-card th,
+  .table-card td{
+    padding-left:6px;
+    padding-right:6px;
+  }
+}
