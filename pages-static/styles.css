@@ -2111,3 +2111,28 @@ small{
   .history-mode-card{flex-direction:column;align-items:stretch}
   .history-mode-field{min-width:0}
 }
+
+
+.destination-inline-select{
+  min-width:170px;
+  max-width:240px;
+  height:34px;
+  border:1px solid #cfd9e3;
+  border-radius:7px;
+  background:#fff;
+  padding:4px 8px;
+  font-size:13px!important;
+  font-weight:700;
+  color:#17324d;
+}
+.destination-inline-select.missing{
+  border-color:#f59e0b;
+  background:#fff9eb;
+  color:#92400e;
+}
+.destination-edit-row{
+  display:flex;
+  gap:8px;
+  align-items:center;
+}
+.destination-edit-row select{flex:1}
