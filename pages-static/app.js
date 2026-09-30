@@ -135,7 +135,19 @@ function renderUploads(){
    })
    const out=await res.json()
    if(!res.ok) throw new Error(out.error||'تعذر رفع الملف')
-   msg.innerHTML=`<div class="success">تم رفع الإصدار ${out.version} بنجاح وتسجيل النسخة. Batch: ${out.batchId}</div>`
+   msg.innerHTML=`<div class="notice">تم رفع الإصدار ${out.version}. جاري تحليل الشيت والتحقق من البيانات…</div>`
+   const processRes=await fetch(`${SUPABASE_URL}/functions/v1/ammco-import-process`,{
+    method:'POST',
+    headers:{Authorization:`Bearer ${active.access_token}`,apikey:SUPABASE_KEY,'Content-Type':'application/json'},
+    body:JSON.stringify({batchId:out.batchId})
+   })
+   const processed=await processRes.json()
+   if(!processRes.ok) throw new Error(processed.error||'تم رفع الملف لكن تعذر تحليل محتواه')
+   if(processed.status==='rejected'){
+    msg.innerHTML=`<div class="error">تم حفظ الملف وتحليله، لكنه يحتاج مراجعة: ${processed.issues} ملاحظة تحقق.</div>`
+   }else{
+    msg.innerHTML=`<div class="success">تم رفع وتحليل الإصدار ${out.version} بنجاح: ${processed.sheets} صفحة، ${processed.rows} صف، ${processed.products} صنف.</div>`
+   }
    e.currentTarget.reset()
   }catch(err){msg.innerHTML=`<div class="error">${err.message||err}</div>`}
   finally{button.disabled=false;button.textContent='رفع الملف'}
