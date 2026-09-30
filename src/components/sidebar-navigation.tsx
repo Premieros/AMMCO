@@ -26,53 +26,48 @@ const groups = [
     items: [{ href: '/', label: 'لوحة الإدارة', icon: 'dashboard' as const }],
   },
   {
-    label: 'التحليل',
+    label: 'تقارير الإدارة',
     items: [
-      { href: '/executive-comparison', label: 'مقارنة الفروع', icon: 'dashboard' as const },
+      { href: '/executive-comparison', label: 'التقرير التنفيذي', icon: 'dashboard' as const },
+      { href: '/sales', label: 'المبيعات', icon: 'sales' as const },
       { href: '/representatives', label: 'أداء المناديب', icon: 'reps' as const },
       { href: '/expense-matrix', label: 'مصفوفة المصروفات', icon: 'expenses' as const },
-      { href: '/accrued-expenses', label: 'المستحق مقابل النقدي', icon: 'expenses' as const },
-      { href: '/sales', label: 'المبيعات', icon: 'sales' as const },
-      { href: '/expenses', label: 'تحليل المصروفات', icon: 'expenses' as const },
-      { href: '/treasury', label: 'الخزائن', icon: 'inventory' as const },
-      { href: '/drilldown/reps', label: 'المناديب', icon: 'reps' as const },
+      { href: '/expenses', label: 'تفاصيل المصروفات', icon: 'expenses' as const },
       { href: '/inventory-movement', label: 'حركة المخزون', icon: 'inventory' as const },
       { href: '/product-matrix', label: 'مصفوفة الأصناف', icon: 'inventory' as const },
-      { href: '/banks-ytd', label: 'البنوك وYTD', icon: 'sales' as const },
       { href: '/receivables', label: 'المديونيات والتحصيل', icon: 'sales' as const },
       { href: '/monthly-analysis', label: 'التحليل الشهري وYTD', icon: 'dashboard' as const },
-      { href: '/drilldown/inventory', label: 'المخزون', icon: 'inventory' as const },
+      { href: '/banks-ytd', label: 'البنوك وYTD', icon: 'sales' as const },
+    ],
+  },
+  {
+    label: 'التشغيل المالي',
+    items: [
+      { href: '/treasury', label: 'الخزائن والبنوك', icon: 'inventory' as const },
+      { href: '/accrued-expenses', label: 'المستحق مقابل النقدي', icon: 'expenses' as const },
     ],
   },
   {
     label: 'البيانات',
     items: [
-      { href: '/branches', label: 'الفروع', icon: 'dashboard' as const },
-      { href: '/uploads', label: 'رفع الشيت', icon: 'upload' as const },
-      { href: '/imports', label: 'سجل الرفع', icon: 'history' as const },
+      { href: '/branches', label: 'إدارة الفروع', icon: 'dashboard' as const },
+      { href: '/uploads', label: 'رفع شيت فرع', icon: 'upload' as const },
+      { href: '/imports', label: 'مراجعة وسجل الرفع', icon: 'history' as const },
     ],
   },
 ]
 
 export function SidebarNavigation() {
   const pathname = usePathname()
-
   return (
     <nav className="sidebar-nav">
       {groups.map((group) => (
         <div className="sidebar-group" key={group.label}>
           <span className="sidebar-group-label">{group.label}</span>
           {group.items.map((item) => {
-            const active = item.href === '/'
-              ? pathname === '/'
-              : pathname === item.href || pathname.startsWith(item.href + '/')
-
+            const active = item.href === '/' ? pathname === '/' : pathname === item.href || pathname.startsWith(item.href + '/')
             return (
-              <Link
-                href={item.href}
-                className={`sidebar-link${active ? ' active' : ''}`}
-                key={item.href}
-              >
+              <Link href={item.href} className={`sidebar-link${active ? ' active' : ''}`} key={item.href}>
                 <Icon type={item.icon} />
                 <span>{item.label}</span>
               </Link>
