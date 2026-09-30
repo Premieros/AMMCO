@@ -1884,3 +1884,147 @@ tfoot.smart-table-tfoot th.sticky-col{
   direction: ltr;
   text-align: right;
 }
+
+
+/* Readability pass: larger text without wasting space */
+:root{
+  --ammco-font-base:14px;
+  --ammco-font-small:12px;
+  --ammco-font-table:13px;
+}
+html,body{
+  font-size:var(--ammco-font-base);
+}
+body,
+button,
+input,
+select,
+textarea{
+  font-size:14px;
+}
+.sidebar-nav-item,
+.nav a,
+.nav-list a{
+  font-size:14px !important;
+}
+.nav-title{
+  font-size:12.5px !important;
+}
+.topbar,
+.topbar-context,
+.actions,
+.chip{
+  font-size:13px !important;
+}
+.pagehead h1,
+.content h1{
+  font-size:23px !important;
+}
+.pagehead .muted,
+.content .muted,
+.sheet-context,
+.meta,
+small{
+  font-size:12px !important;
+}
+.field label{
+  font-size:12.5px !important;
+  font-weight:700;
+}
+.field input,
+.field select,
+.search,
+.filters input,
+.filters select{
+  font-size:13.5px !important;
+}
+.btn,
+.tool-btn,
+.preset-btn,
+.chart-mode-btn{
+  font-size:13px !important;
+}
+.kpi-title{
+  font-size:13px !important;
+}
+.kpi-val{
+  font-size:22px !important;
+}
+.kpi-sub,
+.delta-badge{
+  font-size:11.5px !important;
+}
+.table-card table,
+.management-dashboard-table table,
+.matrix table{
+  font-size:13px !important;
+}
+.table-card th,
+.management-dashboard-table th,
+.matrix th{
+  font-size:12.5px !important;
+  line-height:1.35;
+}
+.table-card td,
+.management-dashboard-table td,
+.matrix td{
+  font-size:13px !important;
+  line-height:1.45;
+}
+.table-head h2{
+  font-size:15px !important;
+}
+.table-head small{
+  font-size:12px !important;
+}
+.branch-info b,
+.branch-bar-row b,
+.branch-bar-row span{
+  font-size:12.5px !important;
+}
+.branch-bars-card small,
+.branch-bar-row div[style*="font-size:9"],
+.branch-bar-row div[style*="font-size:9.5"]{
+  font-size:11.5px !important;
+}
+.anomaly-item{
+  font-size:12.5px !important;
+}
+.anomaly-item div[style*="font-size:9"],
+.anomaly-item div[style*="font-size:9.5"],
+.anomaly-item div[style*="font-size:11"]{
+  font-size:12px !important;
+}
+.chart-card,
+.chart-controls,
+.series-checkbox{
+  font-size:12.5px !important;
+}
+.upload-lane,
+.upload-lane-head,
+.upload-lane-body,
+.lane-result,
+.lane-file-name,
+.lane-status,
+.bulk-live-summary,
+.bulk-upload-footer,
+.notice,
+.success,
+.error{
+  font-size:13px !important;
+}
+.lane-title{
+  font-size:13.5px !important;
+}
+.reports-list-bar,
+.reports-select-field,
+.report-meta,
+.scope{
+  font-size:12.5px !important;
+}
+@media(max-width:900px){
+  body,button,input,select,textarea{font-size:13.5px}
+  .table-card table{font-size:12.5px !important}
+  .table-card th{font-size:12px !important}
+  .table-card td{font-size:12.5px !important}
+}
