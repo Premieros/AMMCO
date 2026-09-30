@@ -1390,3 +1390,61 @@ html,body{
     padding-right:6px;
   }
 }
+
+
+/* Compress report vertical space */
+.content{
+  padding-top:8px;
+}
+.pagehead{
+  margin:0 0 5px;
+}
+.pagehead h1{
+  margin-bottom:0;
+  font-size:20px;
+  line-height:1.15;
+}
+.pagehead .muted{
+  margin-top:1px;
+  line-height:1.2;
+}
+.sheet-context{
+  margin-bottom:2px;
+}
+.filters,
+.compact-filters{
+  margin-bottom:4px;
+  padding:6px 8px;
+  gap:6px;
+}
+.field label{
+  margin-bottom:0;
+}
+.report-meta,
+.scope{
+  min-height:18px;
+  margin:0 0 4px;
+  font-size:8.5px;
+}
+.table-head{
+  min-height:36px;
+  padding-top:4px;
+  padding-bottom:4px;
+}
+.reports-list-bar{
+  margin-bottom:6px;
+  padding:7px 9px;
+}
+.table-card{
+  margin-top:0;
+}
+@media(min-width:1100px){
+  .pagehead{
+    display:flex;
+    align-items:end;
+    min-height:0;
+  }
+  .compact-filters{
+    min-height:48px;
+  }
+}
