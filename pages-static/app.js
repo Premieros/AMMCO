@@ -219,58 +219,172 @@ window.approveBatch=async id=>{
  setTimeout(renderImports,500)
 }
 function renderUploads(){
- const branchOpts=branches.map(b=>`<option value="${b.id}">${b.name}</option>`).join('')
- shell('رفع شيت فرع','رفع آمن مباشرة إلى Supabase Edge Function',`
+ const branchOpts=selected=>`<option value="">اختر الفرع</option>${branches.map(b=>`<option value="${b.id}" ${selected===b.id?'selected':''}>${b.name}</option>`).join('')}`
+ const todayMonth=new Date().toISOString().slice(0,7)
+ const periodStart=`${todayMonth}-01`
+ const periodEnd=new Date(new Date().getFullYear(),new Date().getMonth()+1,0).toISOString().slice(0,10)
+ const lanes=Array.from({length:12},(_,i)=>({
+  index:i+1,
+  branchId:branches[i]?.id||'',
+  branchName:branches[i]?.name||'مسار إضافي'
+ }))
+ shell('رفع شيتات الفروع','12 مسار رفع في نفس الشاشة مع متابعة مستقلة لكل فرع',`
   <div id="upload-msg"></div>
-  <section class="card">
-   <div class="notice">ملف .xlsx فقط، بحد أقصى 25MB. يتم التحقق من المستخدم والفرع قبل حفظ الملف.</div>
-   <form id="upload-form" class="filters" style="grid-template-columns:1fr 1fr 1fr 1.2fr auto">
-    <div class="field"><label>الفرع</label><select name="branch_id" required><option value="">اختر الفرع</option>${branchOpts}</select></div>
-    <div class="field"><label>من</label><input type="date" name="period_start" required></div>
-    <div class="field"><label>إلى</label><input type="date" name="period_end" required></div>
-    <div class="field"><label>ملف Excel</label><input type="file" name="file" accept=".xlsx,application/vnd.openxmlformats-officedocument.spreadsheetml.sheet" required></div>
-    <div class="field"><label>&nbsp;</label><button class="btn" id="upload-btn">رفع الملف</button></div>
-   </form>
-   <div class="muted">المسار: Browser → Edge Function → Private Storage → Import Batch. المعالجة التفصيلية تنتقل الآن إلى Edge Function منفصلة.</div>
-  </section>`)
- document.getElementById('upload-form')?.addEventListener('submit',async e=>{
-  e.preventDefault()
-  const form=e.currentTarget
-  const button=document.getElementById('upload-btn'); const msg=document.getElementById('upload-msg')
-  button.disabled=true; button.textContent='جاري القراءة…'; msg.innerHTML=''
+  <section class="card bulk-upload-head">
+   <div class="notice">يمكنك تجهيز حتى 12 فرعًا ثم الضغط مرة واحدة. التحليل يتم على جهازك، والحفظ يتم في Supabase. للحفاظ على استقرار المتصفح تتم المعالجة في 3 مسارات متوازية آمنة.</div>
+   <div class="bulk-period">
+    <div class="field"><label>من</label><input id="bulk-period-start" type="date" value="${periodStart}"></div>
+    <div class="field"><label>إلى</label><input id="bulk-period-end" type="date" value="${periodEnd}"></div>
+    <div class="bulk-summary"><strong id="bulk-ready-count">0</strong><span>ملف جاهز</span></div>
+    <button class="btn" id="bulk-upload-btn">رفع وتحليل الملفات المحددة</button>
+   </div>
+  </section>
+  <section class="upload-lanes">
+   ${lanes.map(l=>`
+    <article class="upload-lane" data-lane="${l.index}">
+     <div class="upload-lane-head">
+      <span class="lane-number">${String(l.index).padStart(2,'0')}</span>
+      <strong class="lane-title">${l.branchName}</strong>
+      <span class="lane-status idle" id="lane-status-${l.index}">بانتظار ملف</span>
+     </div>
+     <div class="upload-lane-body">
+      <div class="field"><label>الفرع</label><select class="lane-branch" data-lane="${l.index}">${branchOpts(l.branchId)}</select></div>
+      <div class="field lane-file-field"><label>ملف Excel</label><input class="lane-file" data-lane="${l.index}" type="file" accept=".xlsx,application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"></div>
+      <div class="lane-file-name" id="lane-file-name-${l.index}">لم يتم اختيار ملف</div>
+     </div>
+     <div class="lane-progress"><span id="lane-progress-${l.index}"></span></div>
+     <div class="lane-result" id="lane-result-${l.index}"></div>
+    </article>`).join('')}
+  </section>
+  <div class="bulk-upload-footer">
+   <span>الفروع الموجودة حاليًا: <b>${branches.length}</b></span>
+   <span>المسارات المتاحة: <b>12</b></span>
+   <span>المسارات الإضافية: <b>${Math.max(0,12-branches.length)}</b></span>
+  </div>
+ `)
+
+ const readyCount=()=>{
+  const files=[...document.querySelectorAll('.lane-file')].filter(input=>input.files?.[0]).length
+  const el=document.getElementById('bulk-ready-count');if(el)el.textContent=String(files)
+ }
+ document.querySelectorAll('.lane-file').forEach(input=>input.addEventListener('change',()=>{
+  const lane=input.dataset.lane
+  const file=input.files?.[0]
+  const name=document.getElementById(`lane-file-name-${lane}`)
+  const status=document.getElementById(`lane-status-${lane}`)
+  if(name)name.textContent=file?file.name:'لم يتم اختيار ملف'
+  if(status){status.textContent=file?'جاهز للرفع':'بانتظار ملف';status.className=`lane-status ${file?'ready':'idle'}`}
+  readyCount()
+ }))
+ document.querySelectorAll('.lane-branch').forEach(select=>select.addEventListener('change',()=>{
+  const lane=select.dataset.lane
+  const title=select.closest('.upload-lane')?.querySelector('.lane-title')
+  const option=select.options[select.selectedIndex]
+  if(title)title.textContent=option?.text||'مسار إضافي'
+ }))
+
+ const setLane=(lane,state,label,detail='',progress=0)=>{
+  const status=document.getElementById(`lane-status-${lane}`)
+  const result=document.getElementById(`lane-result-${lane}`)
+  const bar=document.getElementById(`lane-progress-${lane}`)
+  if(status){status.textContent=label;status.className=`lane-status ${state}`}
+  if(result)result.innerHTML=detail
+  if(bar)bar.style.width=`${Math.max(0,Math.min(100,progress))}%`
+ }
+
+ const processLane=async task=>{
+  const {lane,branchId,file,periodStart,periodEnd,active}=task
   try{
-   const fd=new FormData(form)
-   const file=fd.get('file')
-   if(!(file instanceof File)) throw new Error('اختر ملف Excel')
-   const periodStart=String(fd.get('period_start')||'')
-   const periodEnd=String(fd.get('period_end')||'')
-   msg.innerHTML='<div class="notice">جاري قراءة وتحليل ملف Excel على جهازك…</div>'
+   setLane(lane,'working','قراءة الملف','جاري تحليل Excel على جهازك…',10)
    const parsed=await parseWorkbookBrowser(file,{periodStart,periodEnd})
-   msg.innerHTML=`<div class="notice">تمت قراءة ${parsed.stats.sheetCount} صفحة و${parsed.stats.productCount} صنف. جاري حفظ الملف والبيانات…</div>`
-   button.textContent='جاري الحفظ…'
-   const {data:{session:active}}=await supabase.auth.getSession()
-   const res=await fetch(`${SUPABASE_URL}/functions/v1/ammco-import-upload`,{
+   setLane(lane,'working','رفع الملف',`${parsed.stats.sheetCount} صفحة • ${parsed.stats.productCount} صنف`,35)
+
+   const fd=new FormData()
+   fd.set('branch_id',branchId)
+   fd.set('period_start',periodStart)
+   fd.set('period_end',periodEnd)
+   fd.set('file',file)
+
+   const uploadRes=await fetch(`${SUPABASE_URL}/functions/v1/ammco-import-upload`,{
     method:'POST',
     headers:{Authorization:`Bearer ${active.access_token}`,apikey:SUPABASE_KEY},
     body:fd
    })
-   const out=await res.json()
-   if(!res.ok) throw new Error(out.error||'تعذر رفع الملف')
+   const uploaded=await uploadRes.json()
+   if(!uploadRes.ok)throw new Error(uploaded.error||'تعذر رفع الملف')
+
+   setLane(lane,'working','حفظ البيانات','جاري تسجيل البيانات والتحقق…',65)
    const processRes=await fetch(`${SUPABASE_URL}/functions/v1/ammco-import-process`,{
     method:'POST',
     headers:{Authorization:`Bearer ${active.access_token}`,apikey:SUPABASE_KEY,'Content-Type':'application/json'},
-    body:JSON.stringify({batchId:out.batchId,parsed})
+    body:JSON.stringify({batchId:uploaded.batchId,parsed})
    })
    const processed=await processRes.json()
-   if(!processRes.ok) throw new Error(processed.error||'تم حفظ الملف لكن تعذر تسجيل البيانات')
+   if(!processRes.ok)throw new Error(processed.error||'تعذر تسجيل البيانات')
+
    if(processed.status==='rejected'){
-    msg.innerHTML=`<div class="error">تم حفظ وتحليل الملف، لكنه يحتاج مراجعة: ${processed.issues} ملاحظة تحقق.</div>`
-   }else{
-    msg.innerHTML=`<div class="success">تم رفع وتحليل الإصدار ${out.version} بنجاح: ${parsed.stats.sheetCount} صفحة، ${parsed.stats.representativeRowCount} سجل مندوب، ${parsed.stats.inventoryDailyRowCount} حركة صنف، ${parsed.stats.productCount} صنف.</div>`
+    setLane(lane,'warning','يحتاج مراجعة',`${processed.issues||0} ملاحظة تحقق • الإصدار ${uploaded.version}`,100)
+    return {lane,ok:true,review:true}
    }
-   form.reset()
-  }catch(err){msg.innerHTML=`<div class="error">${err.message||err}</div>`}
-  finally{button.disabled=false;button.textContent='رفع الملف'}
+   setLane(lane,'success','تم بنجاح',`الإصدار ${uploaded.version} • ${parsed.stats.representativeRowCount} سجل مندوب • ${parsed.stats.inventoryDailyRowCount} حركة صنف`,100)
+   return {lane,ok:true,review:false}
+  }catch(err){
+   setLane(lane,'error','فشل',String(err?.message||err),100)
+   return {lane,ok:false,error:String(err?.message||err)}
+  }
+ }
+
+ const runPool=async(tasks,limit=3)=>{
+  const results=[]
+  let next=0
+  const worker=async()=>{
+   while(true){
+    const i=next++
+    if(i>=tasks.length)return
+    results[i]=await processLane(tasks[i])
+   }
+  }
+  await Promise.all(Array.from({length:Math.min(limit,tasks.length)},()=>worker()))
+  return results
+ }
+
+ document.getElementById('bulk-upload-btn')?.addEventListener('click',async()=>{
+  const button=document.getElementById('bulk-upload-btn')
+  const msg=document.getElementById('upload-msg')
+  const start=document.getElementById('bulk-period-start')?.value
+  const end=document.getElementById('bulk-period-end')?.value
+  if(!start||!end){msg.innerHTML='<div class="error">حدد الفترة أولًا.</div>';return}
+  if(end<start){msg.innerHTML='<div class="error">تاريخ النهاية يجب ألا يسبق البداية.</div>';return}
+
+  const {data:{session:active}}=await supabase.auth.getSession()
+  if(!active){msg.innerHTML='<div class="error">انتهت جلسة الدخول. سجل الدخول مرة أخرى.</div>';return}
+
+  const tasks=[]
+  const usedBranches=new Set()
+  for(let lane=1;lane<=12;lane++){
+   const fileInput=document.querySelector(`.lane-file[data-lane="${lane}"]`)
+   const branchSelect=document.querySelector(`.lane-branch[data-lane="${lane}"]`)
+   const file=fileInput?.files?.[0]
+   if(!file)continue
+   const branchId=branchSelect?.value||''
+   if(!branchId){setLane(lane,'error','حدد الفرع','اختر الفرع قبل الرفع',0);continue}
+   if(usedBranches.has(branchId)){setLane(lane,'error','فرع مكرر','كل فرع يجب أن يظهر مرة واحدة في الدفعة',0);continue}
+   usedBranches.add(branchId)
+   tasks.push({lane,branchId,file,periodStart:start,periodEnd:end,active})
+  }
+  if(!tasks.length){msg.innerHTML='<div class="error">اختر ملفًا واحدًا على الأقل.</div>';return}
+
+  button.disabled=true
+  button.textContent=`جاري معالجة ${tasks.length} فرع…`
+  msg.innerHTML=`<div class="notice">بدأت دفعة رفع ${tasks.length} فرع. يمكنك متابعة حالة كل مسار بشكل مستقل.</div>`
+
+  const results=await runPool(tasks,3)
+  const ok=results.filter(r=>r?.ok).length
+  const failed=results.filter(r=>r&&!r.ok).length
+  const review=results.filter(r=>r?.review).length
+  msg.innerHTML=`<div class="${failed?'notice':'success'}">انتهت الدفعة: ${ok} نجح • ${review} يحتاج مراجعة • ${failed} فشل.</div>`
+  button.disabled=false
+  button.textContent='رفع وتحليل الملفات المحددة'
  })
 }
 
