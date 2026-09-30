@@ -401,6 +401,77 @@ Deno.serve(async (req: Request) => {
 
     const allHistoricalChanges = [...historicalChanges, ...legacyChanges]
 
+    // Reject invalid or historically changed uploads before heavy fact-table writes.
+    // This keeps review uploads fast and prevents Edge Function timeouts that leave batches stuck in processing.
+    const preflightHasErrors = parsed.issues.some((issue) => issue.severity === 'error')
+    if (preflightHasErrors) {
+      await Promise.all([
+        admin.from('import_sheets').delete().eq('batch_id', batchId),
+        admin.from('import_validation_issues').delete().eq('batch_id', batchId),
+        admin.from('import_day_changes').delete().eq('batch_id', batchId),
+        admin.from('import_day_snapshots').delete().eq('batch_id', batchId),
+      ])
+
+      if (parsed.sheets.length > 0) {
+        const { error } = await admin.from('import_sheets').insert(
+          parsed.sheets.map((sheet) => ({
+            batch_id: batchId,
+            sheet_name: sheet.name,
+            sheet_index: sheet.index,
+            row_count: sheet.rowCount,
+            column_count: sheet.columnCount,
+            metadata: { imported_rows: sheet.rows.length },
+          })),
+        )
+        if (error) throw error
+      }
+
+      if (parsed.issues.length > 0) {
+        const { error } = await admin.from('import_validation_issues').insert(
+          parsed.issues.map((issue) => ({
+            batch_id: batchId,
+            sheet_name: issue.sheetName ?? null,
+            cell_ref: issue.cellRef ?? null,
+            row_number: issue.rowNumber ?? null,
+            code: issue.code,
+            severity: issue.severity,
+            message: issue.message,
+            raw_value: issue.rawValue ?? null,
+          })),
+        )
+        if (error) throw error
+      }
+
+      if (allHistoricalChanges.length > 0) {
+        const { error } = await admin.from('import_day_changes').insert(allHistoricalChanges)
+        if (error) throw error
+      }
+
+      const { error: rejectError } = await admin
+        .from('import_batches')
+        .update({
+          status: 'rejected',
+          validated_at: new Date().toISOString(),
+          workbook_schema_version: parsed.schemaVersion,
+          metadata: {
+            ...(batch.metadata && typeof batch.metadata === 'object' ? batch.metadata : {}),
+            workbook_stats: parsed.stats,
+            preflight_rejected: true,
+          },
+        })
+        .eq('id', batchId)
+
+      if (rejectError) throw rejectError
+
+      return json({
+        status: 'rejected',
+        issues: parsed.issues.length,
+        historicalDayChanges: allHistoricalChanges.length,
+        sheets: parsed.stats.sheetCount,
+        rows: parsed.stats.rawRowCount,
+      })
+    }
+
     await Promise.all([
       admin.from('import_sheets').delete().eq('batch_id', batchId),
       admin.from('import_validation_issues').delete().eq('batch_id', batchId),
