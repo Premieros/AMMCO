@@ -12,6 +12,7 @@ import {
   LineChart,
   FileSpreadsheet,
   ShieldAlert,
+  Bot,
   Settings,
   Upload,
 } from 'lucide-react'
@@ -26,6 +27,7 @@ const navItems = [
   { href: '/analytics', label: 'التحليلات', icon: LineChart },
   { href: '/reports', label: 'التقارير', icon: FileSpreadsheet },
   { href: '/management-center', label: 'مراجعة البيانات', icon: ShieldAlert },
+  { href: '/ai', label: 'AI Developer', icon: Bot },
   { href: '/settings', label: 'الإعدادات', icon: Settings },
 ]
 
