@@ -52,6 +52,7 @@ export default async function AiDeveloperPage() {
         databaseRef="yumeijsyiphzdsulsubf"
         databaseHealthy={!healthError}
         aiConfigured={aiStatus.configured}
+        githubWriteConfigured={Boolean(process.env.GITHUB_TOKEN)}
         model={aiStatus.model}
       />
     </AppShell>
