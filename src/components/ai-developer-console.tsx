@@ -1,7 +1,7 @@
 'use client'
 
 import { FormEvent, useState } from 'react'
-import { Bot, CircleCheck, CircleX, Database, Github, Loader2, Send, ShieldCheck } from 'lucide-react'
+import { Bot, CircleCheck, CircleX, Database, GitBranch, Loader2, Send, ShieldCheck } from 'lucide-react'
 import styles from './ai-developer-console.module.css'
 
 type Message = {
@@ -104,7 +104,7 @@ export function AiDeveloperConsole({
     <div className={styles.console}>
       <section className={styles.statusGrid} aria-label="حالة اتصالات AI Developer">
         <div className={styles.statusCard}>
-          <div className={styles.statusIcon}><Github size={18} /></div>
+          <div className={styles.statusIcon}><GitBranch size={18} /></div>
           <div className={styles.statusCopy}>
             <strong>GitHub</strong>
             <span>{repository} · قراءة فقط</span>
