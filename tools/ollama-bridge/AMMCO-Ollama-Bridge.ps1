@@ -155,7 +155,7 @@ function Send-HttpResponse {
   )
 
   if ($null -eq $Body) { $Body = [byte[]]@() }
-  $crlf = [char]13 + [char]10
+  $crlf = [Environment]::NewLine
   $header = "HTTP/1.1 $Status $Reason$crlf" +
             "Content-Type: $ContentType$crlf" +
             "Content-Length: $($Body.Length)$crlf" +
