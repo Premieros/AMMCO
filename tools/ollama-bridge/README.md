@@ -20,12 +20,18 @@ Public tunnel
 
 The bridge binds to localhost by default, so Ollama itself is never exposed directly.
 
+## Windows quick start
+
+Use `AMMCO-Ollama-Bridge.ps1`. It requires only Ollama and cloudflared, can offer to install them with winget, generates the bridge token automatically, checks the lightweight default model `qwen2.5-coder:1.5b`, starts the HTTPS tunnel, and prints the Vercel variables.
+
+No Node.js or Git is required for the standalone Windows bridge.
+
 ## Requirements
 
-- Node.js 20+
-- Ollama installed and running
-- A coding model already pulled in Ollama
-- One HTTPS tunnel such as Cloudflare Tunnel or Tailscale Funnel
+- Windows: PowerShell + Ollama + cloudflared
+- macOS/Linux fallback: Node.js 20+ bridge is still available
+- A coding model in Ollama
+- An HTTPS tunnel such as Cloudflare Tunnel or Tailscale Funnel
 
 ## 1. Configure
 
@@ -43,12 +49,13 @@ curl http://127.0.0.1:11434/api/tags
 
 ## 3. Start the bridge
 
-Windows PowerShell:
+Windows PowerShell (recommended):
 
 ```powershell
-cd tools/ollama-bridge
-.\start.ps1
+powershell -ExecutionPolicy Bypass -File .\AMMCO-Ollama-Bridge.ps1
 ```
+
+The Windows script prints the tunnel URL and all Vercel values automatically.
 
 macOS/Linux:
 
