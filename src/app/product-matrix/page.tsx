@@ -45,11 +45,22 @@ export default async function ProductMatrix({searchParams}:{searchParams:Promise
   pr.cells.set(x.branch_id,cell);matrix.set(key,pr)
  }
  const warehouse=(warehouseData??[]) as {branch_id:string;business_date:string;sales_qty:number;sales_value:number;closing_qty:number;closing_value:number}[]
+ const branchLatestClosing = new Map<string, { date: string; qty: number; value: number }>()
+ for (const r of warehouse) {
+  const cur = branchLatestClosing.get(r.branch_id)
+  if (!cur || r.business_date >= cur.date) {
+   branchLatestClosing.set(r.branch_id, {
+    date: r.business_date,
+    qty: n(r.closing_qty),
+    value: n(r.closing_value),
+   })
+  }
+ }
  const aggregate={
   salesQty:warehouse.reduce((s,r)=>s+n(r.sales_qty),0),
   salesValue:warehouse.reduce((s,r)=>s+n(r.sales_value),0),
-  closingQty:warehouse.reduce((s,r)=>s+n(r.closing_qty),0),
-  closingValue:warehouse.reduce((s,r)=>s+n(r.closing_value),0)
+  closingQty:[...branchLatestClosing.values()].reduce((s, x) => s + x.qty, 0),
+  closingValue:[...branchLatestClosing.values()].reduce((s, x) => s + x.value, 0)
  }
  const products=[...matrix.entries()].sort((a,b)=>a[1].name.localeCompare(b[1].name,'ar'))
  return <AppShell title="مصفوفة مبيعات ومخزون الأصناف" subtitle="تقرير إدارة كثيف على نمط شيت الإدارة: الصنف × الفروع مع كمية البيع والقيمة والرصيد" breadcrumbs={[{label:'لوحة الإدارة',href:'/'},{label:'مصفوفة الأصناف'}]}>
