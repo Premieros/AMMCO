@@ -267,3 +267,50 @@ export async function openDraftPullRequest(branchInput: string, title: string, b
 
   return { url: created.html_url || null, number: created.number || null, draft: true, existing: false }
 }
+
+export async function getAgentBranchCiStatus(branchInput: string) {
+  const { owner, repo } = config()
+  const branch = safeBranch(branchInput)
+  const ref = await request<RefResponse>(
+    '/repos/' + encodeURIComponent(owner) + '/' + encodeURIComponent(repo) + '/git/ref/heads/' + encodeURIComponent(branch),
+  )
+  const sha = ref.object?.sha
+  if (!sha) throw new Error('AGENT_BRANCH_SHA_MISSING')
+
+  const combined = await request<{
+    state?: string
+    statuses?: Array<{ context?: string; state?: string; description?: string; target_url?: string }>
+  }>(
+    '/repos/' + encodeURIComponent(owner) + '/' + encodeURIComponent(repo) + '/commits/' + encodeURIComponent(sha) + '/status',
+  )
+
+  let checks: Array<{ name: string; status: string | null; conclusion: string | null; url: string | null }> = []
+  try {
+    const checkRuns = await request<{
+      check_runs?: Array<{ name?: string; status?: string; conclusion?: string | null; html_url?: string }>
+    }>(
+      '/repos/' + encodeURIComponent(owner) + '/' + encodeURIComponent(repo) + '/commits/' + encodeURIComponent(sha) + '/check-runs',
+    )
+    checks = (checkRuns.check_runs || []).slice(0, 30).map((check) => ({
+      name: check.name || 'check',
+      status: check.status || null,
+      conclusion: check.conclusion || null,
+      url: check.html_url || null,
+    }))
+  } catch {
+    // Some tokens may not have Checks read permission; commit statuses still work.
+  }
+
+  return {
+    branch,
+    sha,
+    state: combined.state || 'pending',
+    statuses: (combined.statuses || []).slice(0, 30).map((status) => ({
+      context: status.context || 'status',
+      state: status.state || 'pending',
+      description: status.description || null,
+      url: status.target_url || null,
+    })),
+    checks,
+  }
+}
