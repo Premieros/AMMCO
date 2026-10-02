@@ -9,6 +9,7 @@ import {
 import {
   compareAgentBranch,
   createAgentBranch,
+  getAgentBranchCiStatus,
   openDraftPullRequest,
   validateAgentBranch,
   writeRepositoryFile,
@@ -55,6 +56,11 @@ type AgentCommand =
       args: { title: string; body?: string }
     }
   | {
+      type: 'tool'
+      tool: 'check_ci'
+      args?: Record<string, never>
+    }
+  | {
       type: 'final'
       content: string
     }
@@ -65,6 +71,7 @@ const TOOL_NAMES = new Set([
   'write_file',
   'compare_changes',
   'open_pr',
+  'check_ci',
 ])
 
 function parseAgentCommand(raw: string): AgentCommand | null {
@@ -134,6 +141,7 @@ function systemPrompt(mode: AgentMode, activeBranch: string | null) {
     'استخدم open_pr فقط إذا طلب المستخدم صراحة فتح Pull Request أو تجهيز التعديل للمراجعة.',
     'صيغة PR: {"type":"tool","tool":"open_pr","args":{"title":"عنوان","body":"ملخص"}}',
     'open_pr ينشئ Draft PR فقط ولا يدمج شيئًا.',
+    'بعد فتح PR أو عند طلب حالة البناء استخدم check_ci مرة واحدة لقراءة Vercel/GitHub checks، ولا تكرر الاستعلام في حلقة.',
     'ممنوع تعديل main مباشرة، وممنوع تعديل .env أو .github أو supabase أو أي مفاتيح أو أسرار.',
     'ممنوع إجراء أي تعديل على Schema أو بيانات Supabase من هذه الأدوات.',
     activeBranch ? 'فرع العمل الحالي: ' + activeBranch + '.' : 'سيُنشأ فرع ai/ تلقائيًا عند أول write_file.',
@@ -145,7 +153,8 @@ function toolLabel(command: Extract<AgentCommand, { type: 'tool' }>) {
   if (command.tool === 'read_file') return 'قراءة ' + (command.args?.path || 'ملف')
   if (command.tool === 'write_file') return 'تعديل ' + (command.args?.path || 'ملف')
   if (command.tool === 'compare_changes') return 'مراجعة التغييرات'
-  return 'فتح Draft Pull Request'
+  if (command.tool === 'open_pr') return 'فتح Draft Pull Request'
+  return 'فحص CI / Build'
 }
 
 export async function POST(request: Request) {
@@ -250,13 +259,16 @@ export async function POST(request: Request) {
         } else if (command.tool === 'compare_changes') {
           if (mode !== 'edit' || !activeBranch) throw new Error('NO_ACTIVE_EDIT_BRANCH')
           result = await compareAgentBranch(activeBranch)
-        } else {
+        } else if (command.tool === 'open_pr') {
           if (mode !== 'edit' || !activeBranch) throw new Error('NO_ACTIVE_EDIT_BRANCH')
           const title = command.args?.title
           if (!title) throw new Error('MISSING_PR_TITLE')
           const pr = await openDraftPullRequest(activeBranch, title, command.args?.body || '')
           prUrl = pr.url
           result = pr
+        } else {
+          if (!activeBranch) throw new Error('NO_ACTIVE_EDIT_BRANCH')
+          result = await getAgentBranchCiStatus(activeBranch)
         }
 
         messages.push({ role: 'assistant', content: raw })
