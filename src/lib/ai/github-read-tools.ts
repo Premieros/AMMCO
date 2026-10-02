@@ -83,8 +83,9 @@ function encodeRepoPath(path: string) {
   return path.split('/').map((segment) => encodeURIComponent(segment)).join('/')
 }
 
-export async function listRepositoryFiles(prefix = '') {
+export async function listRepositoryFiles(prefix = '', ref?: string) {
   const { owner, repo, branch } = repoConfig()
+  const targetRef = ref || branch
   const normalizedPrefix = prefix.trim().replace(/^\/+/, '')
 
   if (normalizedPrefix.includes('..') || normalizedPrefix.includes('\\')) {
@@ -97,7 +98,7 @@ export async function listRepositoryFiles(prefix = '') {
       '/' +
       encodeURIComponent(repo) +
       '/git/trees/' +
-      encodeURIComponent(branch) +
+      encodeURIComponent(targetRef) +
       '?recursive=1',
   )
 
@@ -118,9 +119,10 @@ export async function listRepositoryFiles(prefix = '') {
     .slice(0, MAX_LIST_ITEMS)
 }
 
-export async function readRepositoryFile(path: string) {
+export async function readRepositoryFile(path: string, ref?: string) {
   const safePath = safeRepoPath(path)
   const { owner, repo, branch } = repoConfig()
+  const targetRef = ref || branch
 
   const result = await githubFetch<GitHubContentResponse>(
     '/repos/' +
@@ -130,7 +132,7 @@ export async function readRepositoryFile(path: string) {
       '/contents/' +
       encodeRepoPath(safePath) +
       '?ref=' +
-      encodeURIComponent(branch),
+      encodeURIComponent(targetRef),
   )
 
   if (result.type !== 'file' || result.encoding !== 'base64' || !result.content) {
