@@ -16,7 +16,7 @@ type Daily={branch_id:string|null;net_sales:number|null}
 type Expense={branch_id:string;amount:number;canonical_category:string|null}
 
 export default async function AccruedExpenses({searchParams}:{searchParams:Promise<{branch?:string;month?:string;success?:string;error?:string}>}){
- const f=await searchParams;const today=new Date().toISOString().slice(0,10);const month=f.month??today.slice(0,7);const from=`${month}-01`;const end=monthEnd(month);const asOf=today<from?from:(today<end?today:end)
+ const f=await searchParams;const today=new Date().toISOString().slice(0,10);const month=f.month??'2026-09';const from=`${month}-01`;const end=monthEnd(month);const asOf=today<from?from:(today<end?today:end)
  const supabase=await createClient();const {data:auth}=await supabase.auth.getClaims();const userId=auth?.claims?.sub;if(!userId)redirect('/login')
  const [{data:profile},{data:branches}]=await Promise.all([supabase.from('profiles').select('role').eq('user_id',userId).maybeSingle(),supabase.from('branches').select('id,name').eq('is_active',true).order('name')])
  const selectedBranch=f.branch??branches?.[0]?.id??''
