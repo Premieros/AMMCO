@@ -204,12 +204,12 @@ export function formatStandardQty(val: number): string {
 }
 
 // Calculate standard date range defaults
-export function resolveDateRange(from?: string, to?: string) {
+export function resolveDateRange(from?: string, to?: string, defaultFrom?: string, defaultTo?: string) {
   const today = new Date().toISOString().slice(0, 10)
   const currentMonthStart = `${today.slice(0, 7)}-01`
   
-  const resolvedFrom = from || currentMonthStart
-  const resolvedTo = to || today
+  const resolvedFrom = from || defaultFrom || currentMonthStart
+  const resolvedTo = to || defaultTo || today
 
   // Calculate equivalent previous period
   const start = new Date(`${resolvedFrom}T00:00:00Z`)
@@ -232,8 +232,6 @@ export async function getUnifiedIntelligenceData(
   supabase: SupabaseClient<Database>,
   filters: FilterParams
 ) {
-  const { from, to, prevFrom, prevTo } = resolveDateRange(filters.from, filters.to)
-
   // 1. Fetch active branches
   const { data: branchesData } = await supabase
     .from('branches')
@@ -254,6 +252,12 @@ export async function getUnifiedIntelligenceData(
   const approvedIds = (approvedBatches ?? []).map((b) => b.id)
   const approvedFilter = approvedIds.length > 0 ? approvedIds : ['00000000-0000-0000-0000-000000000000']
   const lastUpdatedBatchDate = approvedBatches?.[0]?.uploaded_at ?? null
+
+  // Fallback date range to latest approved batch if no custom dates specified
+  const latestBatch = approvedBatches?.[0]
+  const defaultFrom = latestBatch?.period_start
+  const defaultTo = latestBatch?.period_end
+  const { from, to, prevFrom, prevTo } = resolveDateRange(filters.from, filters.to, defaultFrom, defaultTo)
 
   // Target branch list
   let targetBranchIds: string[] = []
