@@ -1,5 +1,7 @@
 'use client'
 
+import { useEffect } from 'react'
+
 export default function GlobalError({
   error,
   reset,
@@ -7,20 +9,33 @@ export default function GlobalError({
   error: Error & { digest?: string }
   reset: () => void
 }) {
+  useEffect(() => {
+    console.error('ammco-global-error', error)
+  }, [error])
+
   return (
     <html lang="ar" dir="rtl">
-      <body>
-        <div className="min-h-screen flex flex-col items-center justify-center p-6 text-center bg-slate-950 text-white">
-          <h2 className="text-xl font-bold mb-4">حدث خطأ غير متوقع في النظام</h2>
-          <p className="text-slate-400 mb-6 text-sm">يرجى المحاولة مرة أخرى أو مراجعة مسؤول النظام</p>
-          <button
-            type="button"
-            onClick={() => reset()}
-            className="px-5 py-2.5 bg-emerald-600 text-white font-medium rounded-lg hover:bg-emerald-700 transition"
-          >
+      <body style={{ margin: 0, minHeight: '100vh', background: '#f3f6fb' }}>
+        <main
+          style={{
+            maxWidth: 760,
+            margin: '48px auto',
+            padding: 24,
+            textAlign: 'right',
+            fontFamily: 'Arial, sans-serif',
+          }}
+        >
+          <h2>حدث خطأ غير متوقع في النظام</h2>
+          <p>يرجى إعادة المحاولة. إذا استمرت المشكلة، تواصل مع مسؤول النظام.</p>
+          {error?.digest && (
+            <p style={{ fontSize: 12, color: '#64748b' }}>
+              Reference: {error.digest}
+            </p>
+          )}
+          <button type="button" onClick={() => reset()}>
             إعادة المحاولة
           </button>
-        </div>
+        </main>
       </body>
     </html>
   )

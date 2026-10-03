@@ -418,10 +418,7 @@ export function BranchSheetEditor({
       if (!res.ok) throw new Error(data.error || 'فشل حذف الشيت')
 
       setShowDeleteModal(false)
-      startTransition(() => {
-        router.push(`/branch-sheets?branch=${selectedBranchId}`)
-        router.refresh()
-      })
+      window.location.assign(`/branch-sheets?branch=${encodeURIComponent(selectedBranchId)}`)
     } catch (err) {
       alert(err instanceof Error ? err.message : 'فشل حذف الشيت')
     } finally {

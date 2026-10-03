@@ -1,5 +1,6 @@
 import { SupabaseClient } from '@supabase/supabase-js'
 import type { Database } from '@/types/database'
+import { fetchAllPages, throwIfSupabaseError } from '@/lib/supabase/pagination'
 
 export interface FilterParams {
   from?: string
@@ -233,21 +234,24 @@ export async function getUnifiedIntelligenceData(
   filters: FilterParams
 ) {
   // 1. Fetch active branches
-  const { data: branchesData } = await supabase
+  const { data: branchesData, error: branchesError } = await supabase
     .from('branches')
     .select('id, name, code, is_active')
     .eq('is_active', true)
     .order('name')
 
+  throwIfSupabaseError(branchesError, 'تحميل الفروع')
   const branches = branchesData ?? []
   const branchMap = new Map(branches.map((b) => [b.id, b.name]))
 
   // 2. Fetch approved batch IDs
-  const { data: approvedBatches } = await supabase
+  const { data: approvedBatches, error: approvedBatchesError } = await supabase
     .from('import_batches')
     .select('id, uploaded_at, period_start, period_end')
     .eq('status', 'approved')
     .order('uploaded_at', { ascending: false })
+
+  throwIfSupabaseError(approvedBatchesError, 'تحميل دفعات الاستيراد المعتمدة')
 
   const approvedIds = (approvedBatches ?? []).map((b) => b.id)
   const approvedFilter = approvedIds.length > 0 ? approvedIds : ['00000000-0000-0000-0000-000000000000']
@@ -291,15 +295,6 @@ export async function getUnifiedIntelligenceData(
     .lte('business_date', to)
     .order('business_date', { ascending: true })
 
-  // 6. Current period inventory daily (per product, with true closing_qty from workbook)
-  let inventoryQuery = supabase
-    .from('inventory_daily')
-    .select('*')
-    .in('batch_id', approvedFilter)
-    .gte('business_date', from)
-    .lte('business_date', to)
-    .order('business_date', { ascending: true })
-
   // 7. Expenses analysis query
   let expensesQuery = supabase
     .from('v_expense_analysis')
@@ -313,36 +308,59 @@ export async function getUnifiedIntelligenceData(
     dailyQuery = dailyQuery.eq('branch_id', targetBranchIds[0])
     prevDailyQuery = prevDailyQuery.eq('branch_id', targetBranchIds[0])
     warehouseQuery = warehouseQuery.eq('branch_id', targetBranchIds[0])
-    inventoryQuery = inventoryQuery.eq('branch_id', targetBranchIds[0])
     expensesQuery = expensesQuery.eq('branch_id', targetBranchIds[0])
   } else if (targetBranchIds.length > 1) {
     dailyQuery = dailyQuery.in('branch_id', targetBranchIds)
     prevDailyQuery = prevDailyQuery.in('branch_id', targetBranchIds)
     warehouseQuery = warehouseQuery.in('branch_id', targetBranchIds)
-    inventoryQuery = inventoryQuery.in('branch_id', targetBranchIds)
     expensesQuery = expensesQuery.in('branch_id', targetBranchIds)
   }
 
+  const inventory = await fetchAllPages(
+    (rangeFrom, rangeTo) => {
+      let query = supabase
+        .from('inventory_daily')
+        .select('*')
+        .in('batch_id', approvedFilter)
+        .gte('business_date', from)
+        .lte('business_date', to)
+        .order('business_date', { ascending: true })
+        .order('id', { ascending: true })
+
+      if (targetBranchIds.length === 1) {
+        query = query.eq('branch_id', targetBranchIds[0])
+      } else if (targetBranchIds.length > 1) {
+        query = query.in('branch_id', targetBranchIds)
+      }
+
+      return query.range(rangeFrom, rangeTo)
+    },
+    'تحميل حركة المخزون',
+  )
+
   const [
-    { data: dailyData },
-    { data: prevDailyData },
-    { data: warehouseData },
-    { data: inventoryData },
-    { data: expenseData },
-    { data: productsData },
+    { data: dailyData, error: dailyError },
+    { data: prevDailyData, error: prevDailyError },
+    { data: warehouseData, error: warehouseError },
+    { data: expenseData, error: expenseError },
+    { data: productsData, error: productsError },
   ] = await Promise.all([
     dailyQuery,
     prevDailyQuery,
     warehouseQuery,
-    inventoryQuery,
     expensesQuery,
     supabase.from('products').select('*'),
   ])
 
+  throwIfSupabaseError(dailyError, 'تحميل مؤشرات الفترة الحالية')
+  throwIfSupabaseError(prevDailyError, 'تحميل مؤشرات الفترة السابقة')
+  throwIfSupabaseError(warehouseError, 'تحميل ملخص المخزون')
+  throwIfSupabaseError(expenseError, 'تحميل تحليل المصروفات')
+  throwIfSupabaseError(productsError, 'تحميل الأصناف')
+
   const daily = dailyData ?? []
   const prevDaily = prevDailyData ?? []
   const warehouse = warehouseData ?? []
-  const inventory = inventoryData ?? []
   const expensesList = expenseData ?? []
   const rawProducts = productsData ?? []
 

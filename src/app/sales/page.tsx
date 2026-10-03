@@ -6,6 +6,7 @@ import { KPICard } from '@/components/kpi-card'
 import { SmartDataTable } from '@/components/smart-data-table'
 import { createClient } from '@/lib/supabase/server'
 import { getUnifiedIntelligenceData, isDoubleProduct } from '@/lib/data-source'
+import { fetchAllPages, throwIfSupabaseError } from '@/lib/supabase/pagination'
 import { TrendingUp, Package, Building, Tag, ArrowUpDown } from 'lucide-react'
 
 export const dynamic = 'force-dynamic'
@@ -44,28 +45,33 @@ export default async function SalesPage({
   const showCompare = filters.compare === '1'
 
   // Fetch detailed inventory_daily rows for the Excel table
-  const { data: approvedBatches } = await supabase
+  const { data: approvedBatches, error: approvedBatchesError } = await supabase
     .from('import_batches')
     .select('id')
     .eq('status', 'approved')
 
+  throwIfSupabaseError(approvedBatchesError, 'تحميل دفعات المبيعات المعتمدة')
+
   const approvedIds = (approvedBatches ?? []).map((b) => b.id)
   const approvedFilter = approvedIds.length > 0 ? approvedIds : ['00000000-0000-0000-0000-000000000000']
 
-  let tableQuery = supabase
-    .from('inventory_daily')
-    .select('id, branch_id, business_date, product_id, product_name, sales_qty, unit_value, closing_qty, closing_value, branches(name)')
-    .in('batch_id', approvedFilter)
-    .gte('business_date', data.from)
-    .lte('business_date', data.to)
-    .gt('sales_qty', 0)
-    .order('business_date', { ascending: false })
+  const rawSalesRows = await fetchAllPages(
+    (rangeFrom, rangeTo) => {
+      let query = supabase
+        .from('inventory_daily')
+        .select('id, branch_id, business_date, product_id, product_name, sales_qty, unit_value, closing_qty, closing_value, branches(name)')
+        .in('batch_id', approvedFilter)
+        .gte('business_date', data.from)
+        .lte('business_date', data.to)
+        .gt('sales_qty', 0)
+        .order('business_date', { ascending: false })
+        .order('id', { ascending: false })
 
-  if (filters.branch) {
-    tableQuery = tableQuery.eq('branch_id', filters.branch)
-  }
-
-  const { data: rawSalesRows } = await tableQuery
+      if (filters.branch) query = query.eq('branch_id', filters.branch)
+      return query.range(rangeFrom, rangeTo)
+    },
+    'تحميل تفاصيل المبيعات',
+  )
 
   // Build product lookup map from unified intelligence data
   const productMasterMap = new Map(data.products.map((p) => [p.productId, p]))

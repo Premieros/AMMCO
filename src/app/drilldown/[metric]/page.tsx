@@ -2,6 +2,7 @@ import Link from 'next/link'
 import { notFound, redirect } from 'next/navigation'
 import { AppShell } from '@/components/app-shell'
 import { createClient } from '@/lib/supabase/server'
+import { fetchAllPages, throwIfSupabaseError } from '@/lib/supabase/pagination'
 
 export const dynamic = 'force-dynamic'
 
@@ -64,39 +65,48 @@ export default async function DrilldownPage({
     .lte('business_date', to)
     .order('business_date', { ascending: false })
 
-  let repsQuery = supabase
-    .from('sales_rep_daily')
-    .select('*')
-    .gte('business_date', from)
-    .lte('business_date', to)
-    .order('net_after_discount', { ascending: false })
-
   if (filters.branch) {
     dailyQuery = dailyQuery.eq('branch_id', filters.branch)
     warehouseQuery = warehouseQuery.eq('branch_id', filters.branch)
-    repsQuery = repsQuery.eq('branch_id', filters.branch)
   }
   if (filters.date) {
     dailyQuery = dailyQuery.eq('business_date', filters.date)
     warehouseQuery = warehouseQuery.eq('business_date', filters.date)
   }
-  if (filters.rep) repsQuery = repsQuery.eq('rep_name', filters.rep)
+
+  const reps = await fetchAllPages(
+    (rangeFrom, rangeTo) => {
+      let query = supabase
+        .from('sales_rep_daily')
+        .select('*')
+        .gte('business_date', from)
+        .lte('business_date', to)
+        .order('net_after_discount', { ascending: false })
+        .order('id', { ascending: false })
+
+      if (filters.branch) query = query.eq('branch_id', filters.branch)
+      if (filters.rep) query = query.eq('rep_name', filters.rep)
+      return query.range(rangeFrom, rangeTo)
+    },
+    'تحميل تفاصيل المناديب',
+  )
 
   const [
-    { data: branches },
-    { data: dailyData },
-    { data: warehouseData },
-    { data: repsData },
+    { data: branches, error: branchesError },
+    { data: dailyData, error: dailyError },
+    { data: warehouseData, error: warehouseError },
   ] = await Promise.all([
     supabase.from('branches').select('id,name').eq('is_active', true).order('name'),
     dailyQuery,
     warehouseQuery,
-    repsQuery,
   ])
+
+  throwIfSupabaseError(branchesError, 'تحميل الفروع')
+  throwIfSupabaseError(dailyError, 'تحميل المؤشرات اليومية')
+  throwIfSupabaseError(warehouseError, 'تحميل ملخص المخزون')
 
   const daily = dailyData ?? []
   const warehouse = warehouseData ?? []
-  const reps = repsData ?? []
 
   const whByKey = new Map(
     warehouse.map((row) => [`${row.branch_id}:${row.business_date}`, row]),
