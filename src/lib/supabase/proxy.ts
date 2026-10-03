@@ -29,6 +29,15 @@ export async function updateSession(request: NextRequest) {
     },
   )
 
+  const portalPath = request.nextUrl.pathname
+  if (
+    portalPath === '/' ||
+    portalPath.startsWith('/unified/') ||
+    portalPath === '/api/auth/sync'
+  ) {
+    return response
+  }
+
   const { data } = await supabase.auth.getClaims()
   const user = data?.claims
 

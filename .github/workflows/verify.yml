@@ -40,6 +40,8 @@ jobs:
         run: |
           node --check pages-static/app.js
           node --check pages-static/workbook-parser.js
+          node --check public/unified/app.js
+          node --check public/unified/workbook-parser.js
 
       - name: Build
         run: npm run build
