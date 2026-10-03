@@ -28,7 +28,7 @@ let currentRenderedKey=null
 let bootPromise=null
 
 const pageCacheKey=()=>location.hash||'#/dashboard'
-const cacheableRoutes=new Set(['dashboard','reports','sales','expenses','expense-matrix','receivables','reps','inventory','products','monthly','banks','analytics','executive'])
+const cacheableRoutes=new Set(['dashboard','reports'])
 const isCacheableRoute=()=>cacheableRoutes.has(route().split('?')[0])
 function clearPageCache(){
  pageViewCache.clear()
@@ -145,20 +145,9 @@ window.changeUnifiedReport=select=>{
 
 
 const EXEC_NAV_SECTIONS=[
- {id:'dashboard',label:'لوحة الإدارة',icon:'<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="3" y="3" width="7" height="9"></rect><rect x="14" y="3" width="7" height="5"></rect><rect x="14" y="12" width="7" height="9"></rect><rect x="3" y="16" width="7" height="5"></rect></svg>'},
+ {id:'dashboard',label:'لوحة التحكم',icon:'<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="3" y="3" width="7" height="9"></rect><rect x="14" y="3" width="7" height="5"></rect><rect x="14" y="12" width="7" height="9"></rect><rect x="3" y="16" width="7" height="5"></rect></svg>'},
  {id:'reports',label:'التقارير',href:'#/reports?report=executive',icon:'<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"></path><polyline points="14 2 14 8 20 8"></polyline><line x1="8" y1="13" x2="16" y2="13"></line><line x1="8" y1="17" x2="16" y2="17"></line></svg>'},
- {id:'sales',label:'المبيعات',icon:'<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polyline points="23 6 13.5 15.5 8.5 10.5 1 18"></polyline><polyline points="17 6 23 6 23 12"></polyline></svg>'},
- {id:'expenses',label:'المصروفات',href:'#/reports?report=expenses',icon:'<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="2" y="4" width="20" height="16" rx="2"></rect><line x1="2" y1="10" x2="22" y2="10"></line></svg>'},
- {id:'products',label:'الأصناف والمخزون',icon:'<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M21 16V8a2 2 0 0 0-1-1.73l-7-4a2 2 0 0 0-2 0l-7 4A2 2 0 0 0 3 8v8a2 2 0 0 0 1 1.73l7 4a2 2 0 0 0 2 0l7-4A2 2 0 0 0 21 16z"></path><polyline points="3.27 6.96 12 12.01 20.73 6.96"></polyline></svg>'},
- {id:'treasury',label:'الخزينة والبنوك',icon:'<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="2" y="6" width="20" height="12" rx="2"></rect><circle cx="12" cy="12" r="2"></circle></svg>'},
- {id:'analytics',label:'التحليلات',icon:'<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><line x1="18" y1="20" x2="18" y2="10"></line><line x1="12" y1="20" x2="12" y2="4"></line><line x1="6" y1="20" x2="6" y2="14"></line></svg>'},
- {id:'branches',label:'الفروع',icon:'<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M3 9l9-7 9 7v11a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2z"></path></svg>'},
- {id:'imports',label:'مراجعة البيانات',icon:'<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"></path><polyline points="7 10 12 15 17 10"></polyline></svg>'},
- {id:'uploads',label:'رفع شيتات الفروع',icon:'<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"></path><polyline points="17 8 12 3 7 8"></polyline><line x1="12" y1="3" x2="12" y2="15"></line></svg>'},
- {id:'branch-sheets',label:'شيتات الفروع',icon:'<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="3" y="3" width="18" height="18" rx="2"></rect><line x1="3" y1="9" x2="21" y2="9"></line><line x1="9" y1="3" x2="9" y2="21"></line></svg>'},
- {id:'management-center',label:'مركز الإدارة',icon:'<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M12 2l3 6 6 .9-4.5 4.4 1.1 6.2L12 16.8 6.4 19.5l1.1-6.2L3 8.9 9 8z"></path></svg>'},
- {id:'accrued-expenses',label:'المصروفات المستحقة',icon:'<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="3" y="4" width="18" height="16" rx="2"></rect><line x1="7" y1="8" x2="17" y2="8"></line><line x1="7" y1="12" x2="17" y2="12"></line><line x1="7" y1="16" x2="13" y2="16"></line></svg>'},
- {id:'settings',label:'الإعدادات',icon:'<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="3"></circle><path d="M19.4 15a1.65 1.65 0 0 0 .33 1.82"></path></svg>'}
+ {id:'treasury',label:'الخزينة',icon:'<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="2" y="6" width="20" height="12" rx="2"></rect><circle cx="12" cy="12" r="2"></circle></svg>'}
 ]
 
 function shell(title,subtitle,body){
@@ -167,7 +156,7 @@ function shell(title,subtitle,body){
   const href=x.href||('#/'+x.id),active=r===x.id
   return '<a href="'+href+'" class="sidebar-nav-item '+(active?'active':'')+'">'+x.icon+'<span>'+x.label+'</span></a>'
  }).join('')
- const userNav=profile?.role==='admin'?'<a href="#/users" class="sidebar-nav-item '+(r==='users'?'active':'')+'"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="7" r="4"></circle><path d="M5.5 21a6.5 6.5 0 0 1 13 0"></path></svg><span>المستخدمون والصلاحيات</span></a>':''
+ const userNav=''
  const sourceBanner=canonicalPeriod
   ? '<div class="canonical-source-banner"><strong>مصدر البيانات: معتمد فقط</strong><span>الفترة الأساسية: '+escapeHtml(canonicalPeriod.period_start)+' → '+escapeHtml(canonicalPeriod.period_end)+'</span><span>التغطية: '+canonicalCoverage.approvedBranches+' / '+branches.length+' فروع نشطة</span></div>'
   : '<div class="canonical-source-banner warning"><strong>لا توجد فترة معتمدة</strong><span>لن تُعرض أرقام تشغيلية غير معتمدة.</span></div>'
