@@ -1,3 +1,4 @@
+import { Suspense } from 'react'
 import { redirect } from 'next/navigation'
 import Link from 'next/link'
 import { AppShell } from '@/components/app-shell'
@@ -129,13 +130,15 @@ export default async function DashboardPage({
       }
     >
       {/* 1. Unified Global Filter Bar */}
-      <UnifiedFilterBar
-        branches={data.branches}
-        defaultFrom={data.from}
-        defaultTo={data.to}
-        defaultBranch={filters.branch}
-        exportType="sales"
-      />
+      <Suspense fallback={<div className="notice">جاري تجهيز الفلاتر...</div>}>
+        <UnifiedFilterBar
+          branches={data.branches}
+          defaultFrom={data.from}
+          defaultTo={data.to}
+          defaultBranch={filters.branch}
+          exportType="sales"
+        />
+      </Suspense>
 
       {/* 2. Primary Executive KPIs (Requirement 3) */}
       <section className="dashboard-kpis-grid">
@@ -241,15 +244,19 @@ export default async function DashboardPage({
 
       {/* 3. Main Chart & Visual Intelligence (Requirement 4) */}
       <section className="dashboard-main-chart-section">
-        <InteractiveTimeChart data={data.timeline} />
+        <Suspense fallback={<div className="notice">جاري تجهيز الرسم البياني...</div>}>
+          <InteractiveTimeChart data={data.timeline} />
+        </Suspense>
       </section>
 
       {/* 4. Branch Performance Comparison & Drill-down (Requirement 5) */}
       <section className="dashboard-branch-performance-section">
-        <BranchBarChart
-          branches={data.branchPerformance}
-          selectedBranchId={filters.branch}
-        />
+        <Suspense fallback={<div className="notice">جاري تجهيز مقارنة الفروع...</div>}>
+          <BranchBarChart
+            branches={data.branchPerformance}
+            selectedBranchId={filters.branch}
+          />
+        </Suspense>
       </section>
 
       {/* 5. Smart Insights / Anomalies Detector (Requirement 9) */}
