@@ -9,15 +9,17 @@ export default async function LoginPage({
     error?: string
     signup_error?: string
     signup_success?: string
+    returnTo?: string
   }>
 }) {
-  const { error, signup_error, signup_success } = await searchParams
+  const { error, signup_error, signup_success, returnTo } = await searchParams
 
   return (
     <LoginView
       error={error}
       signupError={signup_error}
       signupSuccess={signup_success}
+      returnTo={returnTo}
     />
   )
 }
