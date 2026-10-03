@@ -189,38 +189,10 @@ export default async function TreasuryPage({
             { key: 'branchName', label: 'الفرع', sortable: true },
             { key: 'treasuryName', label: 'الخزنة / البنك', hideByDefault: true },
             { key: 'originalDesc', label: 'البيان الأصلي للموظف', sortable: true },
-            {
-              key: 'inAmount',
-              label: 'داخل (وارد)',
-              numeric: true,
-              sortable: true,
-              render: (r) => (
-                <span className={r.direction === 'وارد' ? 'text-emerald-700 font-bold' : ''}>
-                  {r.inAmount}
-                </span>
-              ),
-            },
-            {
-              key: 'outAmount',
-              label: 'خارج (صادر)',
-              numeric: true,
-              sortable: true,
-              render: (r) => (
-                <span className={r.direction === 'صادر' ? 'text-rose-700 font-bold' : ''}>
-                  {r.outAmount}
-                </span>
-              ),
-            },
+            { key: 'inAmount', label: 'داخل (وارد)', numeric: true, sortable: true, format: 'treasury-in' },
+            { key: 'outAmount', label: 'خارج (صادر)', numeric: true, sortable: true, format: 'treasury-out' },
             { key: 'runningBalance', label: 'الرصيد', numeric: true, sortable: true },
-            {
-              key: 'hasCorrection',
-              label: 'حالة التعديل',
-              render: (r) => (
-                <span className={`pill-badge ${r.hasCorrection ? 'pill-amber' : 'pill-gray'}`}>
-                  {r.hasCorrection ? 'معدل إدارياً' : 'أصلي'}
-                </span>
-              ),
-            },
+            { key: 'hasCorrection', label: 'حالة التعديل', format: 'correction-status' },
             { key: 'lastModified', label: 'آخر تحديث', hideByDefault: true },
           ]}
         />

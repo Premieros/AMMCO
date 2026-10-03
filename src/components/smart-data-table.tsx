@@ -14,13 +14,27 @@ import {
   Layers,
 } from 'lucide-react'
 
+export type TableCellFormat =
+  | 'text'
+  | 'number'
+  | 'money-egp'
+  | 'cartons'
+  | 'standard-cartons'
+  | 'double-string'
+  | 'double-boolean'
+  | 'blue-pill'
+  | 'correction-status'
+  | 'treasury-in'
+  | 'treasury-out'
+
 export interface TableColumn<T> {
   key: keyof T | string
   label: string
   numeric?: boolean
-  render?: (row: T) => React.ReactNode
   sortable?: boolean
   hideByDefault?: boolean
+  format?: TableCellFormat
+  strong?: boolean
 }
 
 interface SmartDataTableProps<T> {
@@ -143,6 +157,81 @@ export function SmartDataTable<T extends Record<string, any>>({
   }
 
   const activeCols = columns.filter((c) => visibleColumns.has(String(c.key)))
+
+  const formatNumber = (value: unknown) =>
+    new Intl.NumberFormat('en-US', { maximumFractionDigits: 0 }).format(Number(value ?? 0))
+
+  const formatMoney = (value: unknown) =>
+    new Intl.NumberFormat('en-US', { maximumFractionDigits: 2 }).format(Number(value ?? 0))
+
+  const renderCell = (row: T, col: TableColumn<T>): React.ReactNode => {
+    const value = row[col.key as keyof T]
+
+    let content: React.ReactNode
+    switch (col.format) {
+      case 'number':
+        content = formatNumber(value)
+        break
+      case 'money-egp':
+        content = `${formatMoney(value)} EGP`
+        break
+      case 'cartons':
+        content = `${formatNumber(value)} كرتونة`
+        break
+      case 'standard-cartons':
+        content = `${formatNumber(value)} كرتونة موحدة`
+        break
+      case 'double-string': {
+        const textValue = String(value ?? '')
+        const isDouble = textValue.includes('نعم')
+        content = (
+          <span className={`pill-badge ${isDouble ? 'pill-blue' : 'pill-gray'}`}>
+            {textValue || 'عادي'}
+          </span>
+        )
+        break
+      }
+      case 'double-boolean': {
+        const isDouble = Boolean(value)
+        content = (
+          <span className={`pill-badge ${isDouble ? 'pill-blue' : 'pill-gray'}`}>
+            {isDouble ? 'نعم (×2)' : 'عادي'}
+          </span>
+        )
+        break
+      }
+      case 'blue-pill':
+        content = <span className="pill-badge pill-blue">{String(value ?? '')}</span>
+        break
+      case 'correction-status': {
+        const corrected = Boolean(value)
+        content = (
+          <span className={`pill-badge ${corrected ? 'pill-amber' : 'pill-gray'}`}>
+            {corrected ? 'معدل إدارياً' : 'أصلي'}
+          </span>
+        )
+        break
+      }
+      case 'treasury-in':
+        content = (
+          <span className={row['direction'] === 'وارد' ? 'text-emerald-700 font-bold' : ''}>
+            {String(value ?? '')}
+          </span>
+        )
+        break
+      case 'treasury-out':
+        content = (
+          <span className={row['direction'] === 'صادر' ? 'text-rose-700 font-bold' : ''}>
+            {String(value ?? '')}
+          </span>
+        )
+        break
+      default:
+        content = value === null || value === undefined ? '' : String(value)
+    }
+
+    return col.strong ? <strong>{content}</strong> : content
+  }
 
   return (
     <div className="smart-excel-table-container">
@@ -326,7 +415,7 @@ export function SmartDataTable<T extends Record<string, any>>({
                       <tr key={rIdx} className={href ? 'clickable-row' : ''}>
                         {activeCols.map((col, cIdx) => {
                           const isFirstCol = cIdx === 0
-                          const cellVal = col.render ? col.render(row) : row[col.key]
+                          const cellVal = renderCell(row, col)
 
                           return (
                             <td
@@ -364,7 +453,7 @@ export function SmartDataTable<T extends Record<string, any>>({
                   <tr key={rIdx} className={href ? 'clickable-row' : ''}>
                     {activeCols.map((col, cIdx) => {
                       const isFirstCol = cIdx === 0
-                      const cellVal = col.render ? col.render(row) : row[col.key]
+                      const cellVal = renderCell(row, col)
 
                       return (
                         <td
