@@ -2154,3 +2154,22 @@ small{
   border:0;
   background:#fff;
 }
+
+
+.canonical-source-banner{
+  display:flex;
+  align-items:center;
+  gap:12px;
+  flex-wrap:wrap;
+  margin:0 0 12px;
+  padding:9px 12px;
+  border:1px solid #c7dce8;
+  border-radius:9px;
+  background:#f4fbff;
+  color:#17324d;
+  font-size:12.5px;
+}
+.canonical-source-banner strong{font-weight:800;color:#0f5132}
+.canonical-source-banner span{color:#52677a}
+.canonical-source-banner.warning{border-color:#f6d88a;background:#fff9e8}
+.canonical-source-banner.warning strong{color:#92400e}
