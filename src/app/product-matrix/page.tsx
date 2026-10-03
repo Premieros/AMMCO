@@ -2,6 +2,7 @@ import Link from 'next/link'
 import { redirect } from 'next/navigation'
 import { AppShell } from '@/components/app-shell'
 import { createClient } from '@/lib/supabase/server'
+import { fetchAllPages, throwIfSupabaseError } from '@/lib/supabase/pagination'
 
 export const dynamic='force-dynamic'
 type Row={branch_id:string;business_date:string;product_id:string|null;product_name:string;sales_qty:number;unit_value:number|null;closing_qty:number;closing_value:number|null}
@@ -15,20 +16,28 @@ export default async function ProductMatrix({searchParams}:{searchParams:Promise
  const {data:auth}=await supabase.auth.getClaims()
  if(!auth?.claims?.sub)redirect('/login')
 
- const {data:approvedBatches}=await supabase.from('import_batches').select('id').eq('status','approved')
+ const {data:approvedBatches,error:approvedBatchesError}=await supabase.from('import_batches').select('id').eq('status','approved')
+ throwIfSupabaseError(approvedBatchesError,'تحميل دفعات مصفوفة الأصناف')
  const approvedIds=(approvedBatches??[]).map(b=>b.id)
  const approvedFilter=approvedIds.length?approvedIds:['00000000-0000-0000-0000-000000000000']
 
- let inventoryQuery=supabase.from('inventory_daily').select('branch_id,business_date,product_id,product_name,sales_qty,unit_value,closing_qty,closing_value').in('batch_id',approvedFilter).gte('business_date',from).lte('business_date',to).order('business_date')
+ const rows=(await fetchAllPages(
+  (rangeFrom,rangeTo)=>{
+   let q=supabase.from('inventory_daily').select('branch_id,business_date,product_id,product_name,sales_qty,unit_value,closing_qty,closing_value').in('batch_id',approvedFilter).gte('business_date',from).lte('business_date',to).order('business_date').order('id')
+   if(f.branch) q=q.eq('branch_id',f.branch)
+   return q.range(rangeFrom,rangeTo)
+  },
+  'تحميل بيانات مصفوفة الأصناف'
+ )) as Row[]
  let warehouseQuery=supabase.from('warehouse_daily_summary').select('branch_id,business_date,sales_qty,sales_value,closing_qty,closing_value').in('batch_id',approvedFilter).gte('business_date',from).lte('business_date',to).order('business_date')
- if(f.branch){inventoryQuery=inventoryQuery.eq('branch_id',f.branch);warehouseQuery=warehouseQuery.eq('branch_id',f.branch)}
+ if(f.branch) warehouseQuery=warehouseQuery.eq('branch_id',f.branch)
 
- const [{data},{data:branchesData},{data:warehouseData}]=await Promise.all([
-  inventoryQuery,
+ const [{data:branchesData,error:branchesError},{data:warehouseData,error:warehouseError}]=await Promise.all([
   supabase.from('branches').select('id,name').eq('is_active',true).order('name'),
   warehouseQuery
  ])
- const rows=(data??[]) as Row[]
+ throwIfSupabaseError(branchesError,'تحميل الفروع')
+ throwIfSupabaseError(warehouseError,'تحميل ملخص المخزون')
  const allBranches=(branchesData??[]) as {id:string;name:string}[]
  const branches=f.branch?allBranches.filter(b=>b.id===f.branch):allBranches
 
