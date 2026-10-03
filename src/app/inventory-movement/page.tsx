@@ -2,6 +2,7 @@ import { redirect } from 'next/navigation'
 import { AppShell } from '@/components/app-shell'
 import { SmartTable } from '@/components/smart-table'
 import { createClient } from '@/lib/supabase/server'
+import { fetchAllPages, throwIfSupabaseError } from '@/lib/supabase/pagination'
 
 export const dynamic='force-dynamic'
 type Row={branch_id:string;business_date:string;product_id:string|null;product_name:string;opening_qty:number;incoming_factory_qty:number;incoming_branches_qty:number;sales_qty:number;bonus_qty:number;gifts_qty:number;damages_qty:number;return_factory_qty:number;outgoing_branches_qty:number;adjustments_qty:number;closing_qty:number;unit_value:number|null;closing_value:number|null}
@@ -15,20 +16,24 @@ export default async function InventoryMovement({searchParams}:{searchParams:Pro
  const {data:auth}=await supabase.auth.getClaims()
  if(!auth?.claims?.sub) redirect('/login')
 
- const {data:approvedBatches}=await supabase.from('import_batches').select('id').eq('status','approved')
+ const {data:approvedBatches,error:approvedBatchesError}=await supabase.from('import_batches').select('id').eq('status','approved')
+ throwIfSupabaseError(approvedBatchesError,'تحميل دفعات المخزون المعتمدة')
  const approvedIds=(approvedBatches??[]).map(b=>b.id)
- let q=supabase.from('inventory_daily')
-  .select('branch_id,business_date,product_id,product_name,opening_qty,incoming_factory_qty,incoming_branches_qty,sales_qty,bonus_qty,gifts_qty,damages_qty,return_factory_qty,outgoing_branches_qty,adjustments_qty,closing_qty,unit_value,closing_value')
-  .in('batch_id',approvedIds.length?approvedIds:['00000000-0000-0000-0000-000000000000'])
-  .gte('business_date',from).lte('business_date',to).order('business_date')
- if(f.branch) q=q.eq('branch_id',f.branch)
-
- const [{data},{data:branchesData}]=await Promise.all([
-  q,
-  supabase.from('branches').select('id,name').eq('is_active',true).order('name')
- ])
+ const rows=(await fetchAllPages(
+  (rangeFrom,rangeTo)=>{
+   let q=supabase.from('inventory_daily')
+    .select('branch_id,business_date,product_id,product_name,opening_qty,incoming_factory_qty,incoming_branches_qty,sales_qty,bonus_qty,gifts_qty,damages_qty,return_factory_qty,outgoing_branches_qty,adjustments_qty,closing_qty,unit_value,closing_value')
+    .in('batch_id',approvedIds.length?approvedIds:['00000000-0000-0000-0000-000000000000'])
+    .gte('business_date',from).lte('business_date',to)
+    .order('business_date').order('id')
+   if(f.branch) q=q.eq('branch_id',f.branch)
+   return q.range(rangeFrom,rangeTo)
+  },
+  'تحميل حركة المخزون'
+ )) as Row[]
+ const {data:branchesData,error:branchesError}=await supabase.from('branches').select('id,name').eq('is_active',true).order('name')
+ throwIfSupabaseError(branchesError,'تحميل الفروع')
  const branchNames=new Map((branchesData??[]).map(b=>[b.id,b.name] as const))
- const rows=(data??[]) as Row[]
 
  type A={branchId:string;product:string;opening:number;factory:number;branchIn:number;sales:number;bonus:number;gifts:number;damages:number;returns:number;branchOut:number;adjust:number;closing:number;closingValue:number;first:string;last:string}
  const m=new Map<string,A>()
