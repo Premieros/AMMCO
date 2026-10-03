@@ -287,57 +287,13 @@ export default async function ProductsPage({
           }}
           columns={[
             { key: 'productName', label: 'اسم الصنف', sortable: true },
-            {
-              key: 'isDouble',
-              label: 'Double (12 عبوة / 570 EGP)',
-              render: (r) => (
-                <span className={`pill-badge ${r.isDouble ? 'pill-blue' : 'pill-gray'}`}>
-                  {r.isDouble ? 'نعم (×2)' : 'عادي'}
-                </span>
-              ),
-            },
-            {
-              key: 'rawQty',
-              label: 'الكمية الفعلية (Cartons)',
-              numeric: true,
-              sortable: true,
-              render: (r) => `${num(r.rawQty)} كرتونة`,
-            },
-            {
-              key: 'standardizedQty',
-              label: 'الكمية الموحدة (Standard Qty)',
-              numeric: true,
-              sortable: true,
-              render: (r) => <strong>{num(r.standardizedQty)} كرتونة موحدة</strong>,
-            },
-            {
-              key: 'salesValue',
-              label: 'قيمة المبيعات (EGP)',
-              numeric: true,
-              sortable: true,
-              render: (r) => <strong>{money(r.salesValue)} EGP</strong>,
-            },
-            {
-              key: 'avgPrice',
-              label: 'متوسط سعر الكرتونة (EGP)',
-              numeric: true,
-              sortable: true,
-              render: (r) => `${money(r.avgPrice)} EGP`,
-            },
-            {
-              key: 'closingStockQty',
-              label: 'رصيد آخر المخزون (كرتونة - عمود BI)',
-              numeric: true,
-              sortable: true,
-              render: (r) => <strong>{num(r.closingStockQty)} كرتونة</strong>,
-            },
-            {
-              key: 'closingStockValue',
-              label: 'قيمة رصيد آخر (EGP)',
-              numeric: true,
-              sortable: true,
-              render: (r) => `${money(r.closingStockValue)} EGP`,
-            },
+            { key: 'isDouble', label: 'Double (12 عبوة / 570 EGP)', format: 'double-boolean' },
+            { key: 'rawQty', label: 'الكمية الفعلية (Cartons)', numeric: true, sortable: true, format: 'cartons' },
+            { key: 'standardizedQty', label: 'الكمية الموحدة (Standard Qty)', numeric: true, sortable: true, format: 'standard-cartons', strong: true },
+            { key: 'salesValue', label: 'قيمة المبيعات (EGP)', numeric: true, sortable: true, format: 'money-egp', strong: true },
+            { key: 'avgPrice', label: 'متوسط سعر الكرتونة (EGP)', numeric: true, sortable: true, format: 'money-egp' },
+            { key: 'closingStockQty', label: 'رصيد آخر المخزون (كرتونة - عمود BI)', numeric: true, sortable: true, format: 'cartons', strong: true },
+            { key: 'closingStockValue', label: 'قيمة رصيد آخر (EGP)', numeric: true, sortable: true, format: 'money-egp' },
           ]}
         />
       </section>
