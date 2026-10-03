@@ -14,8 +14,9 @@ const pct=v=>`${new Intl.NumberFormat('en-US',{maximumFractionDigits:1}).format(
 const route=()=>location.hash.replace(/^#\/?/,'')||'dashboard'
 const qs=()=>new URLSearchParams(location.hash.includes('?')?location.hash.split('?')[1]:'')
 const today=new Date()
-const defaultTo=`${today.getFullYear()}-${String(today.getMonth()+1).padStart(2,'0')}-30`
-const defaultFrom=`${today.getFullYear()}-${String(today.getMonth()+1).padStart(2,'0')}-01`
+let defaultTo=`${today.getFullYear()}-${String(today.getMonth()+1).padStart(2,'0')}-${String(new Date(today.getFullYear(),today.getMonth()+1,0).getDate()).padStart(2,'0')}`
+let defaultFrom=`${today.getFullYear()}-${String(today.getMonth()+1).padStart(2,'0')}-01`
+let canonicalPeriod=null
 
 let branches=[]
 let session=null
@@ -32,10 +33,46 @@ function clearPageCache(){
  pageViewCache.clear()
  currentRenderedKey=null
 }
+
+async function loadCanonicalPeriod(force=false){
+ if(canonicalPeriod&&!force)return canonicalPeriod
+ const {data,error}=await supabase
+  .from('import_batches')
+  .select('id,period_start,period_end,uploaded_at')
+  .eq('status','approved')
+  .order('period_end',{ascending:false})
+  .order('uploaded_at',{ascending:false})
+  .limit(1)
+  .maybeSingle()
+ if(error)throw error
+ canonicalPeriod=data||null
+ if(canonicalPeriod?.period_start&&canonicalPeriod?.period_end){
+  defaultFrom=canonicalPeriod.period_start
+  defaultTo=canonicalPeriod.period_end
+ }
+ return canonicalPeriod
+}
+
+async function fetchAllRows(table,columns,applyQuery,context='تحميل البيانات'){
+ const rows=[]
+ const pageSize=1000
+ for(let offset=0;;offset+=pageSize){
+  let query=supabase.from(table).select(columns)
+  if(applyQuery)query=applyQuery(query)
+  const {data,error}=await query.range(offset,offset+pageSize-1)
+  if(error)throw new Error(context+': '+error.message)
+  const page=data||[]
+  rows.push(...page)
+  if(page.length<pageSize)break
+ }
+ return rows
+}
+
 async function boot(forceMeta=false){
  if(bootPromise)return bootPromise
  bootPromise=(async()=>{
   if(!session){const {data}=await supabase.auth.getSession();session=data.session}
+  if(session)await loadCanonicalPeriod(forceMeta)
   if(session&&(forceMeta||bootstrappedUserId!==session.user.id||!profile)){
    const [{data:p},{data:b}]=await Promise.all([
     supabase.from('profiles').select('full_name,role,is_active,organization_id').eq('user_id',session.user.id).maybeSingle(),
