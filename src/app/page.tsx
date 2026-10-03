@@ -39,20 +39,65 @@ export default async function DashboardPage({
     )
   }
 
-  // Fetch unified data matching exact "One Number = One Source" principle
-  const data = await getUnifiedIntelligenceData(supabase, {
-    from: filters.from,
-    to: filters.to,
-    branch: filters.branch,
-  })
+  const preview = process.env.VERCEL_ENV === 'preview'
+
+  // Fetch unified data matching exact "One Number = One Source" principle.
+  // In preview, surface the exact server-side stage instead of React's opaque #441.
+  let data
+  try {
+    data = await getUnifiedIntelligenceData(supabase, {
+      from: filters.from,
+      to: filters.to,
+      branch: filters.branch,
+    })
+  } catch (error) {
+    const message = error instanceof Error ? error.message : String(error)
+    const stack = error instanceof Error ? error.stack : undefined
+    console.error('dashboard-unified-data-failed', error)
+
+    return (
+      <AppShell title="AMMCO" subtitle="تعذر تجهيز بيانات لوحة الإدارة">
+        <div className="notice">
+          <strong>فشل تجهيز البيانات الموحدة.</strong>
+          {preview && (
+            <pre style={{ marginTop: 12, whiteSpace: 'pre-wrap', direction: 'ltr', textAlign: 'left' }}>
+              {message}
+              {stack ? `\n\n${stack}` : ''}
+            </pre>
+          )}
+        </div>
+      </AppShell>
+    )
+  }
 
   // Detect operational anomalies & deviations
-  const anomalies = await detectAnomalies(
-    supabase,
-    data.from,
-    data.to,
-    filters.branch
-  )
+  let anomalies
+  try {
+    anomalies = await detectAnomalies(
+      supabase,
+      data.from,
+      data.to,
+      filters.branch
+    )
+  } catch (error) {
+    const message = error instanceof Error ? error.message : String(error)
+    const stack = error instanceof Error ? error.stack : undefined
+    console.error('dashboard-anomalies-failed', error)
+
+    return (
+      <AppShell title="AMMCO" subtitle="تعذر تجهيز تنبيهات لوحة الإدارة">
+        <div className="notice">
+          <strong>فشل تحليل الانحرافات.</strong>
+          {preview && (
+            <pre style={{ marginTop: 12, whiteSpace: 'pre-wrap', direction: 'ltr', textAlign: 'left' }}>
+              {message}
+              {stack ? `\n\n${stack}` : ''}
+            </pre>
+          )}
+        </div>
+      </AppShell>
+    )
+  }
 
   const cur = data.currentSummary
   const prev = data.prevSummary
