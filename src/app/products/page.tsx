@@ -6,6 +6,7 @@ import { KPICard } from '@/components/kpi-card'
 import { SmartDataTable } from '@/components/smart-data-table'
 import { createClient } from '@/lib/supabase/server'
 import { getUnifiedIntelligenceData, isDoubleProduct } from '@/lib/data-source'
+import { fetchAllPages, throwIfSupabaseError } from '@/lib/supabase/pagination'
 import { Package, Layers, Store, ArrowLeft } from 'lucide-react'
 
 export const dynamic = 'force-dynamic'
@@ -35,28 +36,33 @@ export default async function ProductsPage({
     branch: filters.branch,
   })
 
-  const { data: approvedBatches } = await supabase
+  const { data: approvedBatches, error: approvedBatchesError } = await supabase
     .from('import_batches')
     .select('id')
     .eq('status', 'approved')
+
+  throwIfSupabaseError(approvedBatchesError, 'تحميل دفعات الأصناف المعتمدة')
 
   const approvedIds = (approvedBatches ?? []).map((b) => b.id)
   const approvedFilter = approvedIds.length > 0 ? approvedIds : ['00000000-0000-0000-0000-000000000000']
 
   // Fetch per-branch, per-product inventory records
-  let invQuery = supabase
-    .from('inventory_daily')
-    .select('id, branch_id, business_date, product_id, product_name, opening_qty, incoming_factory_qty, incoming_branches_qty, sales_qty, closing_qty, unit_value, closing_value, branches(name)')
-    .in('batch_id', approvedFilter)
-    .gte('business_date', data.from)
-    .lte('business_date', data.to)
-    .order('business_date', { ascending: true })
+  const inventoryRecords = await fetchAllPages(
+    (rangeFrom, rangeTo) => {
+      let query = supabase
+        .from('inventory_daily')
+        .select('id, branch_id, business_date, product_id, product_name, opening_qty, incoming_factory_qty, incoming_branches_qty, sales_qty, closing_qty, unit_value, closing_value, branches(name)')
+        .in('batch_id', approvedFilter)
+        .gte('business_date', data.from)
+        .lte('business_date', data.to)
+        .order('business_date', { ascending: true })
+        .order('id', { ascending: true })
 
-  if (filters.branch) {
-    invQuery = invQuery.eq('branch_id', filters.branch)
-  }
-
-  const { data: inventoryRecords } = await invQuery
+      if (filters.branch) query = query.eq('branch_id', filters.branch)
+      return query.range(rangeFrom, rangeTo)
+    },
+    'تحميل حركة الأصناف',
+  )
 
   // Group by Product & Branch for the Branch Breakdown Table (Requirement 10)
   type BranchProductItem = {
