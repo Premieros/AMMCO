@@ -1,8 +1,8 @@
 'use client'
 
-import { useState } from 'react'
+import { FormEvent, useState } from 'react'
 import { AlertCircle, Eye, EyeOff, ShieldCheck } from 'lucide-react'
-import { login } from '@/app/login/actions'
+import { createClient } from '@/lib/supabase/client'
 
 interface Props {
   error?: string
@@ -16,6 +16,38 @@ export function LoginView({ error, signupError, signupSuccess, returnTo }: Props
   const [password, setPassword] = useState('')
   const [showPassword, setShowPassword] = useState(false)
   const [isLoggingIn, setIsLoggingIn] = useState(false)
+  const [clientError, setClientError] = useState<string | null>(null)
+
+  const handleSubmit = async (event: FormEvent<HTMLFormElement>) => {
+    event.preventDefault()
+    setClientError(null)
+    setIsLoggingIn(true)
+
+    try {
+      const supabase = createClient()
+      const { error: signInError } = await supabase.auth.signInWithPassword({
+        email: email.trim(),
+        password,
+      })
+
+      if (signInError) {
+        setClientError('بيانات الدخول غير صحيحة')
+        setIsLoggingIn(false)
+        return
+      }
+
+      const target =
+        returnTo && returnTo.startsWith('/') && !returnTo.startsWith('//')
+          ? returnTo
+          : '/'
+
+      window.location.assign(target)
+    } catch (loginError) {
+      console.error('browser-login-failed', loginError)
+      setClientError('تعذر تسجيل الدخول الآن. حاول مرة أخرى.')
+      setIsLoggingIn(false)
+    }
+  }
 
   return (
     <main className="auth-page" dir="rtl">
@@ -32,22 +64,16 @@ export function LoginView({ error, signupError, signupSuccess, returnTo }: Props
           </p>
         </div>
 
-        {(error || signupError) && (
+        {(clientError || error || signupError) && (
           <div className="error mb-3 text-xs flex items-start gap-2">
             <AlertCircle className="w-4 h-4 flex-shrink-0 mt-0.5 text-rose-600" />
-            <span>{error || signupError}</span>
+            <span>{clientError || error || signupError}</span>
           </div>
         )}
 
         {signupSuccess && <div className="success mb-3 text-xs">{signupSuccess}</div>}
 
-        <form
-          action={login}
-          onSubmit={() => setIsLoggingIn(true)}
-          className="form"
-          style={{ marginTop: 8 }}
-        >
-          <input type="hidden" name="returnTo" value={returnTo || '/'} />
+        <form onSubmit={handleSubmit} className="form" style={{ marginTop: 8 }}>
           <div className="field">
             <label htmlFor="email">البريد الإلكتروني</label>
             <input
