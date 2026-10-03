@@ -14,6 +14,7 @@ import {
   FileEdit,
   FileCheck,
   ShieldAlert,
+  Bot,
   Settings,
   Upload,
 } from 'lucide-react'
@@ -30,6 +31,7 @@ const navItems = [
   { href: '/reports', label: 'التقارير', icon: FileSpreadsheet },
   { href: '/imports', label: 'سجل الرفع والاعتماد', icon: FileCheck },
   { href: '/management-center', label: 'مراجعة البيانات', icon: ShieldAlert },
+  { href: '/ai', label: 'AI Developer', icon: Bot },
   { href: '/settings', label: 'الإعدادات', icon: Settings },
 ]
 
