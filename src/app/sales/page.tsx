@@ -275,19 +275,11 @@ export default async function SalesPage({
           columns={[
             { key: 'productName', label: 'الصنف', sortable: true },
             { key: 'branchName', label: 'الفرع', sortable: true },
-            { key: 'rawQty', label: 'الكمية الفعلية (Cartons)', numeric: true, sortable: true, render: (r) => `${num(r.rawQty)} كرتونة` },
-            { key: 'isDouble', label: 'Double (12 عبوة / 570 EGP)', render: (r) => (
-              <span className={`pill-badge ${r.isDouble.includes('نعم') ? 'pill-blue' : 'pill-gray'}`}>
-                {r.isDouble}
-              </span>
-            )},
-            { key: 'standardizedQty', label: 'الكمية الموحدة (Standard Qty)', numeric: true, sortable: true, render: (r) => (
-              <strong>{num(r.standardizedQty)} كرتونة موحدة</strong>
-            )},
-            { key: 'salesValue', label: 'قيمة المبيعات (EGP)', numeric: true, sortable: true, render: (r) => (
-              <strong>{money(r.salesValue)} EGP</strong>
-            )},
-            { key: 'unitPrice', label: 'متوسط سعر الكرتونة (EGP)', numeric: true, sortable: true, render: (r) => `${money(r.unitPrice)} EGP` },
+            { key: 'rawQty', label: 'الكمية الفعلية (Cartons)', numeric: true, sortable: true, format: 'cartons' },
+            { key: 'isDouble', label: 'Double (12 عبوة / 570 EGP)', format: 'double-string' },
+            { key: 'standardizedQty', label: 'الكمية الموحدة (Standard Qty)', numeric: true, sortable: true, format: 'standard-cartons', strong: true },
+            { key: 'salesValue', label: 'قيمة المبيعات (EGP)', numeric: true, sortable: true, format: 'money-egp', strong: true },
+            { key: 'unitPrice', label: 'متوسط سعر الكرتونة (EGP)', numeric: true, sortable: true, format: 'money-egp' },
           ]}
         />
       </section>
