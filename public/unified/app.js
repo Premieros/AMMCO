@@ -497,12 +497,27 @@ async function loadExecutiveIntelligence(f){
 }
 
 async function approvedIds(){
- const {data,error}=await supabase.from('import_batches').select('id').eq('status','approved');if(error)throw error;return (data||[]).map(x=>x.id)
+ const rows=await fetchAllRows(
+  'import_batches',
+  'id',
+  q=>q.eq('status','approved').order('id'),
+  'تحميل الدفعات المعتمدة'
+ )
+ return rows.map(x=>x.id)
 }
 function currentFilters(){const p=qs();return {branch:p.get('branch')||'',from:p.get('from')||defaultFrom,to:p.get('to')||defaultTo,compare:p.get('compare')==='1'}}
 
 async function loadDaily(branch,from,to){
- let q=supabase.from('v_branch_daily_kpis').select('*').gte('business_date',from).lte('business_date',to).order('business_date');if(branch)q=q.eq('branch_id',branch);const {data,error}=await q;if(error)throw error;return data||[]
+ return fetchAllRows(
+  'v_branch_daily_kpis',
+  '*',
+  q=>{
+   q=q.gte('business_date',from).lte('business_date',to).order('business_date').order('branch_id')
+   if(branch)q=q.eq('branch_id',branch)
+   return q
+  },
+  'تحميل مؤشرات الفروع المعتمدة'
+ )
 }
 function latestInventoryByProduct(rows){
  const latest=new Map()
