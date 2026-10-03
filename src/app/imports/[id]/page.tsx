@@ -2,7 +2,8 @@ import Link from 'next/link'
 import { notFound, redirect } from 'next/navigation'
 import { AppShell } from '@/components/app-shell'
 import { createClient } from '@/lib/supabase/server'
-import { approveImport } from '../actions'
+import { approveImport, deleteImportBatch } from '../actions'
+import { FileEdit, RefreshCw, Trash2, ArrowLeft } from 'lucide-react'
 
 export const dynamic = 'force-dynamic'
 
@@ -64,7 +65,27 @@ export default async function ImportDetailPage({
         { label: 'سجل الرفع', href: '/imports' },
         { label: `الإصدار ${batch.version}` },
       ]}
-      actions={<Link className="btn secondary" href="/imports">رجوع</Link>}
+      actions={
+        <div className="flex items-center gap-2">
+          <Link
+            className="btn btn-primary-action"
+            href={`/branch-sheets?branch=${batch.branch_id}&batch=${id}`}
+          >
+            <FileEdit className="w-4 h-4" />
+            <span>عرض وتعديل محتويات الشيت</span>
+          </Link>
+          <Link
+            className="btn btn-secondary-action"
+            href={`/uploads?branch=${batch.branch_id}&period_start=${batch.period_start}&period_end=${batch.period_end}&replace_batch_id=${id}&mode=replace`}
+          >
+            <RefreshCw className="w-4 h-4 text-sky-600" />
+            <span>استبدال هذا الشيت</span>
+          </Link>
+          <Link className="btn secondary" href="/imports">
+            رجوع
+          </Link>
+        </div>
+      }
     >
       {messages.error ? <div className="error">{messages.error}</div> : null}
       {messages.success ? <div className="success">{messages.success}</div> : null}
@@ -125,16 +146,67 @@ export default async function ImportDetailPage({
       ) : null}
 
       {canApprove ? (
-        <section className="card">
+        <section className="card" style={{ marginBottom: 16 }}>
           <div className="section-head">
-            <div><h2>اعتماد النسخة</h2><p className="muted">سيتم تثبيت الأيام الجديدة كمرجع رسمي واستبدال النسخة السابقة لنفس الفترة.</p></div>
+            <div>
+              <h2>اعتماد النسخة</h2>
+              <p className="muted">سيتم تثبيت الأيام الجديدة كمرجع رسمي واستبدال النسخة السابقة لنفس الفترة.</p>
+            </div>
           </div>
           <form action={approveImport}>
             <input type="hidden" name="batch_id" value={id} />
-            <button className="btn" type="submit">اعتماد النسخة</button>
+            <button className="btn btn-primary-action" type="submit">
+              اعتماد النسخة كمرجع رسمي
+            </button>
           </form>
         </section>
       ) : null}
+
+      {profile.role === 'admin' && (
+        <section className="card" style={{ marginTop: 16, borderColor: '#fecaca', background: '#fffafa' }}>
+          <div className="section-head">
+            <div>
+              <h2 className="text-rose-900">إدارة وحذف هذا الشيت</h2>
+              <p className="text-rose-700 text-sm">
+                يمكنك استبدال هذا الشيت بنسخة محدثة أو حذفه بالكامل وتطهير كافة البيانات المرتبطة به.
+              </p>
+            </div>
+          </div>
+          <div className="flex items-center gap-3 mt-4 flex-wrap">
+            <Link
+              href={`/branch-sheets?branch=${batch.branch_id}&batch=${id}`}
+              className="btn btn-secondary-action"
+            >
+              <FileEdit className="w-4 h-4" />
+              <span>محرر محتويات الشيت</span>
+            </Link>
+
+            <Link
+              href={`/uploads?branch=${batch.branch_id}&period_start=${batch.period_start}&period_end=${batch.period_end}&replace_batch_id=${id}&mode=replace`}
+              className="btn btn-secondary-action"
+            >
+              <RefreshCw className="w-4 h-4 text-sky-600" />
+              <span>استبدال الشيت بملف جديد</span>
+            </Link>
+
+            <form action={deleteImportBatch}>
+              <input type="hidden" name="batch_id" value={id} />
+              <button
+                type="submit"
+                className="btn btn-danger-action"
+                onClick={(e) => {
+                  if (!confirm(`هل أنت متأكد من رغبتك في حذف شيت ${branch?.name ?? ''} بالكامل؟ سيتم مسح كافة سجلات المبيعات والمخزن والخزينة التابعة له نهائياً.`)) {
+                    e.preventDefault()
+                  }
+                }}
+              >
+                <Trash2 className="w-4 h-4" />
+                <span>حذف الشيت والبيانات المرتبطة</span>
+              </button>
+            </form>
+          </div>
+        </section>
+      )}
     </AppShell>
   )
 }

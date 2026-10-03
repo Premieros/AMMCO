@@ -1,7 +1,7 @@
 'use client'
 
 import Link from 'next/link'
-import { useMemo, useState } from 'react'
+import { useMemo, useState, isValidElement, type ReactNode } from 'react'
 
 export type SmartColumn = {
   key: string
@@ -10,10 +10,11 @@ export type SmartColumn = {
   hiddenByDefault?: boolean
 }
 
-type Row = Record<string, string | number | null>
+type Row = Record<string, string | number | boolean | ReactNode | null | undefined>
 
 function text(value: unknown) {
   if (value === null || value === undefined) return ''
+  if (typeof value === 'object') return ''
   return String(value)
 }
 
@@ -75,8 +76,9 @@ export function SmartTable({
   }, [rows, columns, search, selectedBranches, branchKey, columnFilters, sort])
 
   const exportCsv = () => {
-    const header = visibleColumns.map((column) => column.label)
-    const body = filteredRows.map((row) => visibleColumns.map((column) => {
+    const exportableCols = visibleColumns.filter((c) => c.key !== 'actions')
+    const header = exportableCols.map((column) => column.label)
+    const body = filteredRows.map((row) => exportableCols.map((column) => {
       const value = text(row[column.key]).replace(/"/g, '""')
       return `"${value}"`
     }))
@@ -207,15 +209,24 @@ export function SmartTable({
           <tbody>
             {filteredRows.map((row, index) => {
               const href = rowHrefKey ? text(row[rowHrefKey]) : ''
-              const cells = visibleColumns.map((column) => (
-                <td key={column.key} className={column.numeric ? 'num-cell' : undefined}>
-                  {column.key === branchKey
-                    ? <span className="branch-badge">{text(row[column.key]) || '-'}</span>
-                    : href
-                      ? <Link href={href}>{text(row[column.key]) || '-'}</Link>
-                      : (text(row[column.key]) || '-')}
-                </td>
-              ))
+              const cells = visibleColumns.map((column) => {
+                const rawVal = row[column.key]
+                const isReactEl = isValidElement(rawVal)
+
+                return (
+                  <td key={column.key} className={column.numeric ? 'num-cell' : undefined}>
+                    {isReactEl ? (
+                      <div onClick={(e) => e.stopPropagation()}>{rawVal}</div>
+                    ) : column.key === branchKey ? (
+                      <span className="branch-badge">{text(rawVal) || '-'}</span>
+                    ) : href && column.key !== 'actions' ? (
+                      <Link href={href}>{text(rawVal) || '-'}</Link>
+                    ) : (
+                      text(rawVal) || '-'
+                    )}
+                  </td>
+                )
+              })
 
               return href
                 ? <tr className="click-row" key={href || index}>{cells}</tr>

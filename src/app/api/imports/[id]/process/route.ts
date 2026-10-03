@@ -119,7 +119,7 @@ function buildDaySnapshots(parsed: ParsedWorkbook) {
 }
 
 export async function POST(
-  _request: Request,
+  request: Request,
   context: { params: Promise<{ id: string }> },
 ) {
   const { id: batchId } = await context.params
@@ -165,6 +165,11 @@ export async function POST(
       return NextResponse.json({ error: 'لا توجد صلاحية لهذا الفرع' }, { status: 403 })
     }
   }
+
+  const payload = await request.json().catch(() => ({}))
+  const historyMode = (payload?.historyMode as string) ||
+    ((batch?.metadata as Record<string, unknown> | null)?.history_mode as string) ||
+    'review'
 
   const admin = createAdminClient()
 
@@ -698,7 +703,11 @@ export async function POST(
       if (error) throw error
     }
 
-    const hasErrors = parsed.issues.some((issue) => issue.severity === 'error')
+    const historicalCodes = new Set(['HISTORICAL_DAY_CHANGED', 'LEGACY_APPROVED_DAY_CHANGED'])
+    const hasErrors = parsed.issues.some((issue) =>
+      issue.severity === 'error' &&
+      !(historyMode === 'replace' && historicalCodes.has(issue.code))
+    )
     const status = hasErrors ? 'rejected' : 'validated'
 
     const { error: updateError } = await admin
@@ -710,6 +719,7 @@ export async function POST(
         metadata: {
           ...(batch.metadata && typeof batch.metadata === 'object' ? batch.metadata : {}),
           workbook_stats: parsed.stats,
+          history_mode: historyMode,
         },
       })
       .eq('id', batchId)

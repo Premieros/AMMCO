@@ -26,6 +26,9 @@ export async function POST(request: Request) {
   }
 
   const formData = await request.formData()
+  const replaceBatchId = formData.get('replace_batch_id') ? String(formData.get('replace_batch_id')) : null
+  const historyMode = formData.get('history_mode') ? String(formData.get('history_mode')) : (replaceBatchId ? 'replace' : 'review')
+
   const parsed = inputSchema.safeParse({
     branchId: formData.get('branch_id'),
     periodStart: formData.get('period_start'),
@@ -133,9 +136,10 @@ export async function POST(request: Request) {
       original_file_name: file.name,
       storage_path: storagePath,
       file_sha256: sha256,
+      replaces_batch_id: replaceBatchId,
       file_size_bytes: file.size,
       uploaded_by: userId,
-      metadata: { source: 'web_upload' },
+      metadata: { source: 'web_upload', history_mode: historyMode },
     })
     .select('id, version')
     .single()
@@ -145,5 +149,5 @@ export async function POST(request: Request) {
     return NextResponse.json({ error: 'فشل تسجيل عملية الرفع' }, { status: 500 })
   }
 
-  return NextResponse.json({ batchId: batch.id, version: batch.version })
+  return NextResponse.json({ batchId: batch.id, version: batch.version, historyMode })
 }
