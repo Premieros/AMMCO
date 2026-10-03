@@ -576,6 +576,20 @@ async function approvedIds(){
  )
  return rows.map(x=>x.id)
 }
+
+async function approvedIdsForPeriod(from,to,branch=''){
+ const rows=await fetchAllRows(
+  'import_batches',
+  'id,branch_id,period_start,period_end',
+  q=>{
+   q=q.eq('status','approved').lte('period_start',to).gte('period_end',from).order('period_start').order('id')
+   if(branch)q=q.eq('branch_id',branch)
+   return q
+  },
+  'تحميل دفعات الخزينة المعتمدة'
+ )
+ return rows.map(x=>x.id)
+}
 function currentFilters(){const p=qs();return {branch:p.get('branch')||'',from:p.get('from')||defaultFrom,to:p.get('to')||defaultTo,compare:p.get('compare')==='1'}}
 
 async function loadDaily(branch,from,to){
@@ -1290,93 +1304,135 @@ async function renderExecutive(){
  bindFilters('executive')
 }
 async function renderTreasury(){
- const cfg=currentFilters(),branch=cfg.branch,from=cfg.from,to=cfg.to,ids=await approvedIds()
+ const cfg=currentFilters(),branch=cfg.branch,from=cfg.from,to=cfg.to
+ const ids=await approvedIdsForPeriod(from,to,branch)
  const approvedFilter=ids.length?ids:['00000000-0000-0000-0000-000000000000']
- let accountQ=supabase.from('treasury_accounts').select('id,branch_id,name,code,account_type,is_default,is_active').eq('is_active',true)
- let destQ=supabase.from('cash_destinations').select('id,name,destination_type,branch_id,is_active').eq('is_active',true).order('destination_type').order('name')
- if(branch)accountQ=accountQ.eq('branch_id',branch)
- const [accountRes,destRes,entries]=await Promise.all([
-  accountQ,
-  destQ,
-  fetchAllRows(
-   'cash_entries',
-   'id,branch_id,entry_date,direction,description,amount,running_balance,category,canonical_category,expense_group,entry_kind,is_expense,treasury_account_id,destination_id',
-   q=>{
-    q=q.in('batch_id',approvedFilter).gte('entry_date',from).lte('entry_date',to).order('entry_date',{ascending:false}).order('id',{ascending:false})
-    if(branch)q=q.eq('branch_id',branch)
-    return q
-   },
-   'تحميل حركات الخزينة المعتمدة'
-  )
- ])
- if(accountRes.error)throw accountRes.error
- if(destRes.error)throw destRes.error
- const accounts=accountRes.data||[],destinations=destRes.data||[]
- window.__treasuryEditData={accounts,entries,destinations}
- const branchMap=new Map(branches.map(function(b){return [b.id,b.name]}))
- const accountMap=new Map(accounts.map(function(a){return [a.id,a]}))
- const destinationMap=new Map(destinations.map(function(d){return [d.id,d]}))
- const typeLabel={bank:'بنك',branch:'فرع',factory:'مصنع',supplier:'مورد',expense:'مصروف',cash:'خزينة',other:'أخرى'}
- const destinationOptions=function(selected){
-  const groups=new Map()
-  destinations.forEach(function(d){
-   const key=d.destination_type||'other'
-   if(!groups.has(key))groups.set(key,[])
-   groups.get(key).push(d)
-  })
-  let html='<option value="">بدون توجيه</option>'
-  ;['bank','factory','branch','supplier','expense','cash','other'].forEach(function(type){
-   const list=groups.get(type)||[]
-   if(!list.length)return
-   html+='<optgroup label="'+(typeLabel[type]||type)+'">'+list.map(function(d){return '<option value="'+d.id+'" '+(d.id===selected?'selected':'')+'>'+escapeHtml(d.name)+'</option>'}).join('')+'</optgroup>'
-  })
-  html+='<option value="__add__">+ إضافة توجيه جديد</option>'
-  return html
+
+ const entries=await fetchAllRows(
+  'cash_entries',
+  'id,batch_id,branch_id,source_row,source_code,entry_date,description,category,direction,amount,running_balance',
+  q=>q.in('batch_id',approvedFilter).order('branch_id').order('batch_id').order('source_row').order('id'),
+  'تحميل صفوف الخزينة المعتمدة'
+ )
+
+ window.__treasuryExcelEntries=entries
+ const branchMap=new Map(branches.map(b=>[b.id,b.name]))
+ const groups=new Map()
+ entries.forEach(e=>{
+  if(!groups.has(e.branch_id))groups.set(e.branch_id,[])
+  groups.get(e.branch_id).push(e)
+ })
+
+ const validDate=e=>e.entry_date&&String(e.entry_date)>='2000-01-01'
+ const rowView=e=>({
+  source_code:escapeHtml(e.source_code??''),
+  entry_date:validDate(e)
+   ? escapeHtml(e.entry_date)
+   : '<span class="treasury-invalid-date">'+escapeHtml(e.entry_date||'غير محدد')+'</span>',
+  description:escapeHtml(e.description||''),
+  category:escapeHtml(e.category||''),
+  inbound:e.direction==='in'?money(e.amount):'',
+  outbound:e.direction==='out'?money(e.amount):'',
+  running_balance:e.running_balance===null||e.running_balance===undefined?'':money(e.running_balance),
+  action:profile?.role==='admin'
+   ? '<button class="inline-action" type="button" onclick="openTreasuryExcelEditor('+e.id+')">تعديل</button>'
+   : 'عرض فقط'
+ })
+
+ const cols=[
+  {key:'source_code',label:'الكود'},
+  {key:'entry_date',label:'التاريخ'},
+  {key:'description',label:'البيان'},
+  {key:'category',label:'التصنيف'},
+  {key:'inbound',label:'وارد',num:1},
+  {key:'outbound',label:'صادر',num:1},
+  {key:'running_balance',label:'الرصيد',num:1},
+  {key:'action',label:'تعديل',filter:false}
+ ]
+
+ let tables=''
+ const selectedBranches=branch
+  ? branches.filter(b=>b.id===branch)
+  : branches.filter(b=>groups.has(b.id))
+
+ selectedBranches.forEach(b=>{
+  const rows=(groups.get(b.id)||[]).map(rowView)
+  tables+=table('الخزينة - '+escapeHtml(b.name),cols,rows)
+  tables+='<div class="section-gap"></div>'
+ })
+
+ if(!tables){
+  tables='<div class="notice">لا توجد حركات خزينة في الدفعات المعتمدة للفترة المحددة.</div>'
  }
- window.__destinationOptionsHtml=destinationOptions
- const totals=new Map()
- accounts.forEach(function(a){totals.set(a.id,{incoming:0,outgoing:0})})
- entries.forEach(function(e){
-  if(!e.treasury_account_id)return
-  const x=totals.get(e.treasury_account_id)||{incoming:0,outgoing:0}
-  if(e.direction==='in')x.incoming+=Number(e.amount||0);else x.outgoing+=Number(e.amount||0)
-  totals.set(e.treasury_account_id,x)
- })
- const accountRows=accounts.map(function(a){
-  const x=totals.get(a.id)||{incoming:0,outgoing:0}
-  return {branch_name:branchMap.get(a.branch_id)||'—',name:escapeHtml(a.name),type:a.account_type==='bank'?'بنك':'خزينة',incoming:money(x.incoming),outgoing:money(x.outgoing),net:money(x.incoming-x.outgoing)}
- })
- const entryRows=entries.map(function(e){
-  const dest=destinationMap.get(e.destination_id)
-  const routing=e.direction==='out'
-   ? (profile?.role==='admin'
-      ? '<select class="destination-inline-select '+(!e.destination_id?'missing':'')+'" data-entry="'+e.id+'" onchange="quickRouteCashEntry('+e.id+',this)">'+destinationOptions(e.destination_id)+'</select>'
-      : escapeHtml(dest?.name||'بدون توجيه'))
-   : (dest?escapeHtml(dest.name):'—')
-  return {
-   entry_date:e.entry_date||'—',
-   branch_name:branchMap.get(e.branch_id)||'—',
-   account:escapeHtml((accountMap.get(e.treasury_account_id)||{}).name||'غير موجه'),
-   direction:e.direction==='in'?'داخل':'خارج',
-   description:escapeHtml(e.description||'—'),
-   source_category:escapeHtml(e.category||'—'),
-   category:escapeHtml(e.canonical_category||e.entry_kind||'—'),
-   destination:routing,
-   expense:e.is_expense?'مصروف':'غير مصروف',
-   amount:money(e.amount),
-   balance:money(e.running_balance),
-   action:profile?.role==='admin'?'<button class="inline-action" onclick="editTreasuryClassification('+e.id+')">تفاصيل / تعديل</button>':'—'
-  }
- })
- const body=filters(from,to,branch)+scope(from,to,branch)+
-  table('أرصدة وحركة الحسابات',[
-   {key:'branch_name',label:'الفرع'},{key:'name',label:'الحساب'},{key:'type',label:'النوع'},{key:'incoming',label:'داخل',num:1},{key:'outgoing',label:'خارج',num:1},{key:'net',label:'صافي الحركة',num:1}
-  ],accountRows)+'<div class="section-gap"></div>'+
-  table('تفاصيل حركة الخزينة',[
-   {key:'entry_date',label:'التاريخ'},{key:'branch_name',label:'الفرع'},{key:'account',label:'الخزينة / البنك'},{key:'direction',label:'الحركة'},{key:'description',label:'البيان'},{key:'source_category',label:'تصنيف المصدر'},{key:'category',label:'البند / التصنيف'},{key:'destination',label:'التوجيه',filter:false},{key:'expense',label:'نوع التقرير'},{key:'amount',label:'القيمة',num:1},{key:'balance',label:'الرصيد',num:1},{key:'action',label:'إجراء',filter:false}
-  ],entryRows)
- shell('الخزينة والبنوك','اختر وجهة أي حركة صادرة مباشرة من الجدول، أو أضف توجيهًا جديدًا',body)
+
+ const note='<div class="notice treasury-sheet-note"><strong>الأعمدة المعروضة هي A→G من ورقة الخزنة الأصلية، والعمود الثامن للتعديل.</strong><span> أي تاريخ قديم غير صالح يظهر باللون التحذيري حتى يتم تصحيحه.</span></div>'
+ shell('الخزينة','عرض مبسط مطابق لأعمدة Excel الأساسية وقابل للتعديل',filters(from,to,branch)+scope(from,to,branch)+note+tables)
  bindFilters('treasury')
+}
+
+window.openTreasuryExcelEditor=function(id){
+ document.getElementById('treasury-excel-editor')?.remove()
+ const e=(window.__treasuryExcelEntries||[]).find(x=>Number(x.id)===Number(id))
+ if(!e)return
+ const dateValue=e.entry_date&&String(e.entry_date)>='2000-01-01'?e.entry_date:''
+ const inbound=e.direction==='in'?Number(e.amount||0):0
+ const outbound=e.direction==='out'?Number(e.amount||0):0
+ const html='<div class="dialog-backdrop" id="treasury-excel-editor"><div class="dialog-card treasury-editor-card">'+
+  '<div class="dialog-head"><div><h3>تعديل صف الخزينة</h3><small>صف Excel رقم '+escapeHtml(e.source_row||'—')+'</small></div><button class="tool-btn" type="button" onclick="document.getElementById(\'treasury-excel-editor\').remove()">إغلاق</button></div>'+
+  '<form id="treasury-excel-edit-form" class="dialog-form treasury-editor-grid">'+
+   '<div class="field"><label>1. الكود</label><input name="source_code" value="'+escapeAttr(e.source_code||'')+'"></div>'+
+   '<div class="field"><label>2. التاريخ</label><input name="entry_date" type="date" required value="'+escapeAttr(dateValue)+'"></div>'+
+   '<div class="field treasury-wide"><label>3. البيان</label><input name="description" value="'+escapeAttr(e.description||'')+'"></div>'+
+   '<div class="field treasury-wide"><label>4. التصنيف</label><input name="category" value="'+escapeAttr(e.category||'')+'"></div>'+
+   '<div class="field"><label>5. وارد</label><input name="inbound" type="number" min="0" step="0.01" value="'+inbound+'"></div>'+
+   '<div class="field"><label>6. صادر</label><input name="outbound" type="number" min="0" step="0.01" value="'+outbound+'"></div>'+
+   '<div class="field"><label>7. الرصيد</label><input name="running_balance" type="number" step="0.01" value="'+escapeAttr(e.running_balance??'')+'"></div>'+
+   '<div class="field treasury-wide"><label>سبب التعديل</label><input name="reason" required placeholder="مثال: تصحيح مطابق لورقة الخزنة"></div>'+
+   '<div class="treasury-wide"><button class="btn" type="submit">حفظ التعديل</button><div id="treasury-edit-msg"></div></div>'+
+  '</form></div></div>'
+ document.body.insertAdjacentHTML('beforeend',html)
+ document.getElementById('treasury-excel-edit-form').addEventListener('submit',ev=>saveTreasuryExcelRow(ev,id))
+}
+
+window.saveTreasuryExcelRow=async function(ev,id){
+ ev.preventDefault()
+ const form=ev.currentTarget,msg=document.getElementById('treasury-edit-msg')
+ const fd=new FormData(form)
+ const submit=form.querySelector('button[type="submit"]')
+ submit.disabled=true
+ msg.innerHTML='<div class="notice">جاري الحفظ وإعادة حساب مؤشرات اليوم…</div>'
+ try{
+  const {data:{session:liveSession}}=await supabase.auth.getSession()
+  if(!liveSession)throw new Error('انتهت جلسة الدخول. سجل الدخول مرة أخرى.')
+  const payload={
+   id,
+   source_code:String(fd.get('source_code')||''),
+   entry_date:String(fd.get('entry_date')||''),
+   description:String(fd.get('description')||''),
+   category:String(fd.get('category')||''),
+   inbound:Number(fd.get('inbound')||0),
+   outbound:Number(fd.get('outbound')||0),
+   running_balance:String(fd.get('running_balance')||''),
+   reason:String(fd.get('reason')||'')
+  }
+  const res=await fetch('/api/treasury/excel-row',{
+   method:'POST',
+   headers:{
+    'Content-Type':'application/json',
+    Authorization:'Bearer '+liveSession.access_token
+   },
+   body:JSON.stringify(payload)
+  })
+  const out=await res.json().catch(()=>({}))
+  if(!res.ok)throw new Error(out.error||'تعذر حفظ تعديل الخزينة')
+  document.getElementById('treasury-excel-editor')?.remove()
+  clearPageCache()
+  await render({force:true})
+ }catch(err){
+  msg.innerHTML='<div class="error">'+escapeHtml(err.message||String(err))+'</div>'
+ }finally{
+  submit.disabled=false
+ }
 }
 
 window.quickRouteCashEntry=async function(id,select){
