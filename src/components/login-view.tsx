@@ -8,9 +8,10 @@ interface Props {
   error?: string
   signupError?: string
   signupSuccess?: string
+  returnTo?: string
 }
 
-export function LoginView({ error, signupError, signupSuccess }: Props) {
+export function LoginView({ error, signupError, signupSuccess, returnTo }: Props) {
   const [email, setEmail] = useState('')
   const [password, setPassword] = useState('')
   const [showPassword, setShowPassword] = useState(false)
@@ -46,6 +47,7 @@ export function LoginView({ error, signupError, signupSuccess }: Props) {
           className="form"
           style={{ marginTop: 8 }}
         >
+          <input type="hidden" name="returnTo" value={returnTo || '/'} />
           <div className="field">
             <label htmlFor="email">البريد الإلكتروني</label>
             <input
