@@ -2,6 +2,7 @@ import { redirect } from 'next/navigation'
 import { AppShell } from '@/components/app-shell'
 import { BranchSheetEditor } from '@/components/branch-sheet-editor'
 import { createClient } from '@/lib/supabase/server'
+import { fetchAllPages, throwIfSupabaseError } from '@/lib/supabase/pagination'
 import { FileEdit, Upload, Trash2, ArrowLeft } from 'lucide-react'
 import Link from 'next/link'
 
@@ -19,11 +20,13 @@ export default async function BranchSheetsPage({
   const userId = auth?.claims?.sub
   if (!userId) redirect('/login')
 
-  const { data: profile } = await supabase
+  const { data: profile, error: profileError } = await supabase
     .from('profiles')
     .select('role, is_active')
     .eq('user_id', userId)
     .maybeSingle()
+
+  throwIfSupabaseError(profileError, 'تحميل صلاحيات المستخدم')
 
   if (!profile?.is_active) {
     return (
@@ -34,11 +37,13 @@ export default async function BranchSheetsPage({
   }
 
   // 1. Fetch active branches
-  const { data: branchesData } = await supabase
+  const { data: branchesData, error: branchesError } = await supabase
     .from('branches')
     .select('id, name, code')
     .eq('is_active', true)
     .order('name')
+
+  throwIfSupabaseError(branchesError, 'تحميل الفروع')
 
   const branches = branchesData ?? []
   if (branches.length === 0) {
@@ -52,11 +57,13 @@ export default async function BranchSheetsPage({
   const selectedBranchId = params.branch || branches[0].id
 
   // 2. Fetch batches for the selected branch
-  const { data: batchesData } = await supabase
+  const { data: batchesData, error: batchesError } = await supabase
     .from('import_batches')
     .select('id, branch_id, version, status, period_start, period_end, original_file_name, uploaded_at')
     .eq('branch_id', selectedBranchId)
     .order('uploaded_at', { ascending: false })
+
+  throwIfSupabaseError(batchesError, 'تحميل شيتات الفرع')
 
   const batches = batchesData ?? []
 
@@ -73,40 +80,53 @@ export default async function BranchSheetsPage({
   let destinations: any[] = []
 
   if (selectedBatch) {
-    const [
-      { data: invData },
-      { data: repsData },
-      { data: cashData },
-      { data: whData },
-      { data: destsData },
-    ] = await Promise.all([
-      supabase
-        .from('inventory_daily')
-        .select('*')
-        .eq('batch_id', selectedBatch.id)
-        .order('business_date', { ascending: true })
-        .order('product_name', { ascending: true })
-        .limit(2000),
-      supabase
-        .from('sales_rep_daily')
-        .select('*')
-        .eq('batch_id', selectedBatch.id)
-        .order('business_date', { ascending: true })
-        .order('rep_name', { ascending: true })
-        .limit(2000),
-      supabase
-        .from('cash_entries')
-        .select('*')
-        .eq('batch_id', selectedBatch.id)
-        .order('entry_date', { ascending: false })
-        .order('id', { ascending: false })
-        .limit(2000),
-      supabase
-        .from('warehouse_daily_summary')
-        .select('*')
-        .eq('batch_id', selectedBatch.id)
-        .order('business_date', { ascending: true })
-        .limit(500),
+    const [invData, repsData, cashData, whData, destinationsResult] = await Promise.all([
+      fetchAllPages(
+        (rangeFrom, rangeTo) =>
+          supabase
+            .from('inventory_daily')
+            .select('*')
+            .eq('batch_id', selectedBatch.id)
+            .order('business_date', { ascending: true })
+            .order('product_name', { ascending: true })
+            .order('id', { ascending: true })
+            .range(rangeFrom, rangeTo),
+        'تحميل حركة مخزون الشيت',
+      ),
+      fetchAllPages(
+        (rangeFrom, rangeTo) =>
+          supabase
+            .from('sales_rep_daily')
+            .select('*')
+            .eq('batch_id', selectedBatch.id)
+            .order('business_date', { ascending: true })
+            .order('rep_name', { ascending: true })
+            .order('id', { ascending: true })
+            .range(rangeFrom, rangeTo),
+        'تحميل مناديب الشيت',
+      ),
+      fetchAllPages(
+        (rangeFrom, rangeTo) =>
+          supabase
+            .from('cash_entries')
+            .select('*')
+            .eq('batch_id', selectedBatch.id)
+            .order('entry_date', { ascending: false })
+            .order('id', { ascending: false })
+            .range(rangeFrom, rangeTo),
+        'تحميل خزينة الشيت',
+      ),
+      fetchAllPages(
+        (rangeFrom, rangeTo) =>
+          supabase
+            .from('warehouse_daily_summary')
+            .select('*')
+            .eq('batch_id', selectedBatch.id)
+            .order('business_date', { ascending: true })
+            .order('id', { ascending: true })
+            .range(rangeFrom, rangeTo),
+        'تحميل ملخص مخزون الشيت',
+      ),
       (supabase as any)
         .from('cash_destinations')
         .select('id, name, destination_type')
@@ -114,11 +134,13 @@ export default async function BranchSheetsPage({
         .order('name'),
     ])
 
-    inventoryRows = invData ?? []
-    repRows = repsData ?? []
-    cashRows = cashData ?? []
-    warehouseRows = whData ?? []
-    destinations = destsData ?? []
+    throwIfSupabaseError(destinationsResult.error, 'تحميل وجهات الخزينة')
+
+    inventoryRows = invData
+    repRows = repsData
+    cashRows = cashData
+    warehouseRows = whData
+    destinations = destinationsResult.data ?? []
   }
 
   const selectedBranchName = branches.find((b) => b.id === selectedBranchId)?.name ?? ''
