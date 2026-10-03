@@ -2,6 +2,7 @@ import { redirect } from 'next/navigation'
 import { AppShell } from '@/components/app-shell'
 import { SmartTable } from '@/components/smart-table'
 import { createClient } from '@/lib/supabase/server'
+import { fetchAllPages, throwIfSupabaseError } from '@/lib/supabase/pagination'
 
 export const dynamic='force-dynamic'
 type Account={id:string;branch_id:string;name:string;code:string;account_type:string}
@@ -18,19 +19,31 @@ export default async function BanksYtd({searchParams}:{searchParams:Promise<{bra
  const {data:auth}=await supabase.auth.getClaims()
  if(!auth?.claims?.sub)redirect('/login')
 
- const {data:approvedBatches}=await supabase.from('import_batches').select('id').eq('status','approved')
+ const {data:approvedBatches,error:approvedBatchesError}=await supabase.from('import_batches').select('id').eq('status','approved')
+ throwIfSupabaseError(approvedBatchesError,'تحميل دفعات البنوك المعتمدة')
  const approvedIds=(approvedBatches??[]).map(b=>b.id)
  const approvedFilter=approvedIds.length?approvedIds:['00000000-0000-0000-0000-000000000000']
 
  let accountQuery=supabase.from('treasury_accounts').select('id,branch_id,name,code,account_type').eq('is_active',true)
- let entryQuery=supabase.from('cash_entries').select('branch_id,treasury_account_id,entry_date,direction,amount,entry_kind,description').in('batch_id',approvedFilter).gte('entry_date',from).lte('entry_date',to)
  let dailyQuery=supabase.from('v_branch_daily_kpis').select('branch_id,branch_name,business_date,net_sales,collections,discounts,expenses,closing_receivables').gte('business_date',from).lte('business_date',to).order('business_date')
- if(f.branch){accountQuery=accountQuery.eq('branch_id',f.branch);entryQuery=entryQuery.eq('branch_id',f.branch);dailyQuery=dailyQuery.eq('branch_id',f.branch)}
+ if(f.branch){accountQuery=accountQuery.eq('branch_id',f.branch);dailyQuery=dailyQuery.eq('branch_id',f.branch)}
 
- const [{data:accountsData},{data:entriesData},{data:dailyData},{data:branchesData}]=await Promise.all([
-  accountQuery,entryQuery,dailyQuery,supabase.from('branches').select('id,name').eq('is_active',true).order('name')
+ const entries=(await fetchAllPages(
+  (rangeFrom,rangeTo)=>{
+   let q=supabase.from('cash_entries').select('branch_id,treasury_account_id,entry_date,direction,amount,entry_kind,description').in('batch_id',approvedFilter).gte('entry_date',from).lte('entry_date',to).order('entry_date').order('id')
+   if(f.branch) q=q.eq('branch_id',f.branch)
+   return q.range(rangeFrom,rangeTo)
+  },
+  'تحميل حركات البنوك'
+ )) as Entry[]
+
+ const [{data:accountsData,error:accountsError},{data:dailyData,error:dailyError},{data:branchesData,error:branchesError}]=await Promise.all([
+  accountQuery,dailyQuery,supabase.from('branches').select('id,name').eq('is_active',true).order('name')
  ])
- const accounts=(accountsData??[]) as Account[],entries=(entriesData??[]) as Entry[],daily=(dailyData??[]) as Daily[]
+ throwIfSupabaseError(accountsError,'تحميل حسابات الخزينة')
+ throwIfSupabaseError(dailyError,'تحميل مؤشرات YTD')
+ throwIfSupabaseError(branchesError,'تحميل الفروع')
+ const accounts=(accountsData??[]) as Account[],daily=(dailyData??[]) as Daily[]
  const bankAccounts=accounts.filter(a=>a.account_type==='bank')
  const branchNames=new Map((branchesData??[]).map(b=>[b.id,b.name] as const))
  const byId=new Map(accounts.map(a=>[a.id,a] as const))
