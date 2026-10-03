@@ -17,6 +17,7 @@ const today=new Date()
 let defaultTo=`${today.getFullYear()}-${String(today.getMonth()+1).padStart(2,'0')}-${String(new Date(today.getFullYear(),today.getMonth()+1,0).getDate()).padStart(2,'0')}`
 let defaultFrom=`${today.getFullYear()}-${String(today.getMonth()+1).padStart(2,'0')}-01`
 let canonicalPeriod=null
+let canonicalCoverage={approvedBranches:0}
 
 let branches=[]
 let session=null
@@ -46,9 +47,18 @@ async function loadCanonicalPeriod(force=false){
   .maybeSingle()
  if(error)throw error
  canonicalPeriod=data||null
+ canonicalCoverage={approvedBranches:0}
  if(canonicalPeriod?.period_start&&canonicalPeriod?.period_end){
   defaultFrom=canonicalPeriod.period_start
   defaultTo=canonicalPeriod.period_end
+  const {data:coverage,error:coverageError}=await supabase
+   .from('import_batches')
+   .select('branch_id')
+   .eq('status','approved')
+   .eq('period_start',canonicalPeriod.period_start)
+   .eq('period_end',canonicalPeriod.period_end)
+  if(coverageError)throw coverageError
+  canonicalCoverage.approvedBranches=new Set((coverage||[]).map(x=>x.branch_id)).size
  }
  return canonicalPeriod
 }
@@ -158,6 +168,9 @@ function shell(title,subtitle,body){
   return '<a href="'+href+'" class="sidebar-nav-item '+(active?'active':'')+'">'+x.icon+'<span>'+x.label+'</span></a>'
  }).join('')
  const userNav=profile?.role==='admin'?'<a href="#/users" class="sidebar-nav-item '+(r==='users'?'active':'')+'"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="7" r="4"></circle><path d="M5.5 21a6.5 6.5 0 0 1 13 0"></path></svg><span>المستخدمون والصلاحيات</span></a>':''
+ const sourceBanner=canonicalPeriod
+  ? '<div class="canonical-source-banner"><strong>مصدر البيانات: معتمد فقط</strong><span>الفترة الأساسية: '+escapeHtml(canonicalPeriod.period_start)+' → '+escapeHtml(canonicalPeriod.period_end)+'</span><span>التغطية: '+canonicalCoverage.approvedBranches+' / '+branches.length+' فروع نشطة</span></div>'
+  : '<div class="canonical-source-banner warning"><strong>لا توجد فترة معتمدة</strong><span>لن تُعرض أرقام تشغيلية غير معتمدة.</span></div>'
  app.innerHTML=`<div class="shell ${collapsed?'sidebar-collapsed':''}">
   <aside class="sidebar">
    <div class="brand"><div class="logo">A</div><div><b>AMMCO</b><small>Management Intelligence</small></div></div>
@@ -173,6 +186,7 @@ function shell(title,subtitle,body){
     <div class="actions"><span class="chip">${profile?.full_name||session?.user?.email||'مدير النظام'}</span><button class="btn secondary data-refresh-btn" type="button" onclick="refreshAllData(this)" title="جلب أحدث البيانات من قاعدة البيانات">↻ تحديث البيانات</button><button class="btn secondary" id="logout">خروج</button></div>
    </header>
    <section class="content executive-content">
+    ${sourceBanner}
     ${r==='reports'?reportsHubNav():''}
     ${body}
    </section>
@@ -490,6 +504,13 @@ async function loadExecutiveIntelligence(f){
  if(pr.error)throw pr.error
  if(br.error)throw br.error
  const products=pr.data||[],productMap=new Map(products.map(p=>[p.id,p]))
+ const invalidKpi=kpis.find(r=>Math.abs((Number(r.gross_sales||0)-Number(r.discounts||0))-Number(r.net_sales||0))>0.05)
+ if(invalidKpi)throw new Error('تم إيقاف التقرير: معادلة المبيعات غير متطابقة في '+invalidKpi.business_date)
+ const kpiExpenseTotal=kpis.reduce((sum,r)=>sum+Number(r.expenses||0),0)
+ const expenseViewTotal=exp.reduce((sum,r)=>sum+Number(r.amount||0),0)
+ if(Math.abs(kpiExpenseTotal-expenseViewTotal)>0.05){
+  throw new Error('تم إيقاف التقرير: إجمالي المصروفات غير متطابق بين المصدرين المعتمدين')
+ }
  const branchAgg=new Map()
  branches.forEach(b=>{if(!f.branch||b.id===f.branch)branchAgg.set(b.id,{id:b.id,name:b.name,code:b.code,sales:0,qty:0,equivQty:0,expenses:0,collections:0,discounts:0,hasData:false})})
  const timeline=new Map(),latestWh=new Map()
