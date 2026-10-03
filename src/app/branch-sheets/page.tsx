@@ -54,7 +54,14 @@ export default async function BranchSheetsPage({
     )
   }
 
-  const selectedBranchId = params.branch || branches[0].id
+  const requestedBranchId = params.branch
+  const selectedBranchId = requestedBranchId && branches.some((b) => b.id === requestedBranchId)
+    ? requestedBranchId
+    : branches[0].id
+
+  if (requestedBranchId && requestedBranchId !== selectedBranchId) {
+    redirect(`/branch-sheets?branch=${selectedBranchId}`)
+  }
 
   // 2. Fetch batches for the selected branch
   const { data: batchesData, error: batchesError } = await supabase
@@ -67,8 +74,15 @@ export default async function BranchSheetsPage({
 
   const batches = batchesData ?? []
 
-  // Resolve selected batch (default to approved or latest)
-  let selectedBatch = batches.find((b) => b.id === params.batch)
+  // Resolve selected batch (default to approved or latest).
+  // If a stale/deleted batch remains in the URL, clean it instead of rendering stale state.
+  const requestedBatchId = params.batch
+  let selectedBatch = batches.find((b) => b.id === requestedBatchId)
+
+  if (requestedBatchId && !selectedBatch) {
+    redirect(`/branch-sheets?branch=${selectedBranchId}`)
+  }
+
   if (!selectedBatch) {
     selectedBatch = batches.find((b) => b.status === 'approved') || batches[0] || null
   }
