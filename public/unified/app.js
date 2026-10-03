@@ -1121,13 +1121,42 @@ async function renderExecutive(){
  const cfg=currentFilters(),branch=cfg.branch,from=cfg.from,to=cfg.to
  const daily=await loadDaily(branch,from,to)
  const ids=await approvedIds()
- let whQ=supabase.from('warehouse_daily_summary').select('branch_id,business_date,opening_qty,opening_value,incoming_factory_qty,incoming_factory_value,incoming_branches_qty,incoming_branches_value,sales_qty,sales_value,bonus_qty,bonus_value,gifts_qty,gifts_value,damages_qty,damages_value,return_factory_qty,return_factory_value,outgoing_branches_qty,outgoing_branches_value,adjustment_qty,adjustment_value,closing_qty,closing_value,raw_payload').in('batch_id',ids.length?ids:['00000000-0000-0000-0000-000000000000']).gte('business_date',from).lte('business_date',to).order('business_date')
- let invQ=supabase.from('inventory_daily').select('id,branch_id,business_date,product_id,product_name,sales_qty,closing_qty,closing_value').in('batch_id',ids.length?ids:['00000000-0000-0000-0000-000000000000']).gte('business_date',from).lte('business_date',to)
- let prodQ=supabase.from('products').select('id,box_count').eq('is_active',true)
- let expQ=supabase.from('v_expense_analysis').select('branch_id,canonical_category,expense_group,amount').gte('entry_date',from).lte('entry_date',to)
- if(branch){whQ=whQ.eq('branch_id',branch);invQ=invQ.eq('branch_id',branch);expQ=expQ.eq('branch_id',branch)}
- const pair=await Promise.all([whQ,invQ,prodQ,expQ]),warehouse=pair[0].data||[],inventoryRows=pair[1].data||[],productRows=pair[2].data||[],expenseRows=pair[3].data||[]
- if(pair[0].error||pair[1].error||pair[2].error||pair[3].error)throw pair[0].error||pair[1].error||pair[2].error||pair[3].error
+ const approvedFilter=ids.length?ids:['00000000-0000-0000-0000-000000000000']
+ const [warehouse,inventoryRows,prodRes,expenseRows]=await Promise.all([
+  fetchAllRows(
+   'warehouse_daily_summary',
+   'id,branch_id,business_date,opening_qty,opening_value,incoming_factory_qty,incoming_factory_value,incoming_branches_qty,incoming_branches_value,sales_qty,sales_value,bonus_qty,bonus_value,gifts_qty,gifts_value,damages_qty,damages_value,return_factory_qty,return_factory_value,outgoing_branches_qty,outgoing_branches_value,adjustment_qty,adjustment_value,closing_qty,closing_value,raw_payload',
+   q=>{
+    q=q.in('batch_id',approvedFilter).gte('business_date',from).lte('business_date',to).order('business_date').order('id')
+    if(branch)q=q.eq('branch_id',branch)
+    return q
+   },
+   'تحميل مخزون التقرير التنفيذي'
+  ),
+  fetchAllRows(
+   'inventory_daily',
+   'id,branch_id,business_date,product_id,product_name,sales_qty,closing_qty,closing_value',
+   q=>{
+    q=q.in('batch_id',approvedFilter).gte('business_date',from).lte('business_date',to).order('business_date').order('id')
+    if(branch)q=q.eq('branch_id',branch)
+    return q
+   },
+   'تحميل تفاصيل أصناف التقرير التنفيذي'
+  ),
+  supabase.from('products').select('id,wholesale_carton_price').eq('is_active',true),
+  fetchAllRows(
+   'v_expense_analysis',
+   'id,branch_id,entry_date,canonical_category,expense_group,amount',
+   q=>{
+    q=q.gte('entry_date',from).lte('entry_date',to).order('entry_date').order('id')
+    if(branch)q=q.eq('branch_id',branch)
+    return q
+   },
+   'تحميل مصروفات التقرير التنفيذي'
+  )
+ ])
+ if(prodRes.error)throw prodRes.error
+ const productRows=prodRes.data||[]
 
  const by=new Map()
  daily.forEach(function(r){
@@ -1155,9 +1184,9 @@ async function renderExecutive(){
   const prev=whLatest.get(r.branch_id)
   if(!prev||String(r.business_date)>=String(prev.business_date))whLatest.set(r.branch_id,r)
  })
- const boxCountByProduct=new Map(productRows.map(p=>[p.id,Number(p.box_count||0)])),equivCartonsBy=new Map()
+ const productById=new Map(productRows.map(p=>[p.id,p])),equivCartonsBy=new Map()
  inventoryRows.forEach(r=>{
-  const factor=(boxCountByProduct.get(r.product_id)||0)===12?2:1
+  const factor=isDoubleProductVerified(productById.get(r.product_id))?2:1
   equivCartonsBy.set(r.branch_id,(equivCartonsBy.get(r.branch_id)||0)+(Number(r.sales_qty||0)*factor))
  })
  const carExp=new Map()
@@ -1702,12 +1731,33 @@ async function renderExpenses(){
 
 async function renderExpenseMatrix(){
  const cfg=currentFilters(),branch=cfg.branch,from=cfg.from,to=cfg.to
- let salesQ=supabase.from('v_branch_daily_kpis').select('branch_id,business_date,net_sales').gte('business_date',from).lte('business_date',to)
- let expQ=supabase.from('v_expense_analysis').select('branch_id,canonical_category,expense_group,amount').gte('entry_date',from).lte('entry_date',to)
  let setQ=supabase.from('branch_expense_accrual_settings').select('branch_id,month_start,wages,branch_manager,sector_manager,rent,carried_expenses,commission_rate,working_days_basis').lte('month_start',to).order('month_start',{ascending:false})
- if(branch){salesQ=salesQ.eq('branch_id',branch);expQ=expQ.eq('branch_id',branch);setQ=setQ.eq('branch_id',branch)}
- const all=await Promise.all([salesQ,expQ,setQ]),sales=all[0].data||[],expenses=all[1].data||[],settings=all[2].data||[]
- if(all[0].error||all[1].error||all[2].error)throw all[0].error||all[1].error||all[2].error
+ if(branch)setQ=setQ.eq('branch_id',branch)
+ const [sales,expenses,setRes]=await Promise.all([
+  fetchAllRows(
+   'v_branch_daily_kpis',
+   'branch_id,business_date,net_sales',
+   q=>{
+    q=q.gte('business_date',from).lte('business_date',to).order('business_date').order('branch_id')
+    if(branch)q=q.eq('branch_id',branch)
+    return q
+   },
+   'تحميل مبيعات تحليل المصروفات'
+  ),
+  fetchAllRows(
+   'v_expense_analysis',
+   'id,branch_id,entry_date,canonical_category,expense_group,amount',
+   q=>{
+    q=q.gte('entry_date',from).lte('entry_date',to).order('entry_date').order('id')
+    if(branch)q=q.eq('branch_id',branch)
+    return q
+   },
+   'تحميل مصروفات التحليل'
+  ),
+  setQ
+ ])
+ if(setRes.error)throw setRes.error
+ const settings=setRes.data||[]
  const bset=branch?branches.filter(b=>b.id===branch):branches
  const salesBy=new Map(),daysBy=new Map()
  sales.forEach(r=>{salesBy.set(r.branch_id,(salesBy.get(r.branch_id)||0)+Number(r.net_sales||0));const set=daysBy.get(r.branch_id)||new Set();set.add(r.business_date);daysBy.set(r.branch_id,set)})
@@ -1746,13 +1796,40 @@ async function renderReceivables(){
 }
 
 async function renderMonthly(){
- const p=qs(),year=p.get('year')||String(new Date().getFullYear()),branch=p.get('branch')||'',from=year+'-01-01',to=year+'-12-31',ids=await approvedIds()
- let dailyQ=supabase.from('v_branch_daily_kpis').select('branch_id,branch_name,business_date,gross_sales,net_sales,discounts,collections,closing_receivables').gte('business_date',from).lte('business_date',to).order('business_date')
- let whQ=supabase.from('warehouse_daily_summary').select('branch_id,business_date,closing_value').in('batch_id',ids.length?ids:['00000000-0000-0000-0000-000000000000']).gte('business_date',from).lte('business_date',to).order('business_date')
- let expQ=supabase.from('v_expense_analysis').select('branch_id,entry_date,amount').gte('entry_date',from).lte('entry_date',to)
- if(branch){dailyQ=dailyQ.eq('branch_id',branch);whQ=whQ.eq('branch_id',branch);expQ=expQ.eq('branch_id',branch)}
- const all=await Promise.all([dailyQ,whQ,expQ]),daily=all[0].data||[],warehouse=all[1].data||[],expenses=all[2].data||[]
- if(all[0].error||all[1].error||all[2].error)throw all[0].error||all[1].error||all[2].error
+ const p=qs(),year=p.get('year')||String(defaultTo.slice(0,4)),branch=p.get('branch')||'',from=year+'-01-01',to=year+'-12-31',ids=await approvedIds()
+ const approvedFilter=ids.length?ids:['00000000-0000-0000-0000-000000000000']
+ const [daily,warehouse,expenses]=await Promise.all([
+  fetchAllRows(
+   'v_branch_daily_kpis',
+   'branch_id,branch_name,business_date,gross_sales,net_sales,discounts,collections,closing_receivables',
+   q=>{
+    q=q.gte('business_date',from).lte('business_date',to).order('business_date').order('branch_id')
+    if(branch)q=q.eq('branch_id',branch)
+    return q
+   },
+   'تحميل التحليل الشهري'
+  ),
+  fetchAllRows(
+   'warehouse_daily_summary',
+   'id,branch_id,business_date,closing_value',
+   q=>{
+    q=q.in('batch_id',approvedFilter).gte('business_date',from).lte('business_date',to).order('business_date').order('id')
+    if(branch)q=q.eq('branch_id',branch)
+    return q
+   },
+   'تحميل مخزون YTD'
+  ),
+  fetchAllRows(
+   'v_expense_analysis',
+   'id,branch_id,entry_date,amount',
+   q=>{
+    q=q.gte('entry_date',from).lte('entry_date',to).order('entry_date').order('id')
+    if(branch)q=q.eq('branch_id',branch)
+    return q
+   },
+   'تحميل مصروفات YTD'
+  )
+ ])
  const byMonth=new Map(),lastDebt=new Map(),lastInv=new Map()
  daily.forEach(r=>{
   const m=r.business_date.slice(0,7),x=byMonth.get(m)||{month:m,gross:0,net:0,disc:0,coll:0,exp:0,debt:0,inv:0}
