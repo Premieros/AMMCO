@@ -30,6 +30,39 @@ export async function updateSession(request: NextRequest) {
   )
 
   const portalPath = request.nextUrl.pathname
+  const unifiedRoutes: Record<string, string> = {
+    '/sales': 'sales',
+    '/products': 'products',
+    '/product-matrix': 'products',
+    '/expenses': 'reports?report=expenses',
+    '/expense-matrix': 'reports?report=expense-matrix',
+    '/receivables': 'receivables',
+    '/representatives': 'reps',
+    '/inventory-movement': 'inventory',
+    '/banks-ytd': 'banks',
+    '/monthly-analysis': 'monthly',
+    '/executive-comparison': 'executive',
+    '/analytics': 'analytics',
+    '/reports': 'reports?report=executive',
+    '/treasury': 'treasury',
+    '/branches': 'branches',
+    '/imports': 'imports',
+    '/uploads': 'uploads',
+    '/settings': 'settings',
+  }
+
+  const unifiedTarget = unifiedRoutes[portalPath]
+  if (unifiedTarget) {
+    const url = request.nextUrl.clone()
+    const [hashPath, presetQuery = ''] = unifiedTarget.split('?')
+    const hashParams = new URLSearchParams(presetQuery)
+    request.nextUrl.searchParams.forEach((value, key) => hashParams.set(key, value))
+    url.pathname = '/'
+    url.search = ''
+    url.hash = '#/' + hashPath + (hashParams.toString() ? '?' + hashParams.toString() : '')
+    return NextResponse.redirect(url)
+  }
+
   if (
     portalPath === '/' ||
     portalPath.startsWith('/unified/') ||
