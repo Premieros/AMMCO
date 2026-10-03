@@ -129,7 +129,7 @@ const REPORT_GROUPS=[
  {label:'المبيعات والعملاء',items:[['sales','المبيعات'],['receivables','المديونيات والتحصيل'],['reps','أداء المناديب']]},
  {label:'المصروفات والتكاليف',items:[['expense-matrix','تحليلي المصروفات'],['expenses','تقرير المصروفات']]},
  {label:'المخزون والأصناف',items:[['inventory','حركة المخزون'],['products','أرصدة ومصفوفة الأصناف']]},
- {label:'النقدية والبنوك',items:[['treasury','الخزينة والبنوك'],['banks','البنوك وYTD']]}
+ {label:'النقدية والبنوك',items:[['banks','البنوك وYTD']]}
 ]
 const selectedReport=()=>qs().get('report')||'executive'
 function reportsHubNav(){
@@ -339,6 +339,7 @@ async function renderFresh(){
  try{
   if(r==='reports'){
    const report=selectedReport()
+   if(report==='treasury'){location.hash='#/treasury';return}
    if(report==='sales')return renderSales()
    if(report==='expenses')return renderExpenses()
    if(report==='expense-matrix')return renderExpenseMatrix()
@@ -348,32 +349,36 @@ async function renderFresh(){
    if(report==='products')return renderProducts()
    if(report==='monthly')return renderMonthly()
    if(report==='banks')return renderBanks()
-   if(report==='treasury')return renderTreasury()
    return renderExecutive()
   }
-  if(r==='analytics')return renderAnalytics()
-  if(r==='branch-sheets')return renderNextModule('شيتات الفروع','/branch-sheets')
-  if(r==='management-center')return renderNextModule('مركز الإدارة','/management-center')
-  if(r==='accrued-expenses')return renderNextModule('المصروفات المستحقة','/accrued-expenses')
-  if(r==='settings')return renderSettings()
-  if(r==='branches')return renderBranches()
-  if(r==='users')return renderUsers()
   if(r==='treasury')return renderTreasury()
-  if(r==='accounting-inputs'){location.hash='#/treasury';return}
-  if(r==='sales')return renderSales()
-  if(r==='expenses')return renderExpenses()
-  if(r==='expense-matrix')return renderExpenseMatrix()
-  if(r==='receivables')return renderReceivables()
-  if(r==='reps')return renderReps()
-  if(r==='inventory')return renderInventory()
-  if(r==='products')return renderProducts()
-  if(r==='monthly')return renderMonthly()
-  if(r==='banks')return renderBanks()
-  if(r==='imports')return renderImports()
-  if(r==='uploads')return renderUploads()
-  if(r==='executive')return renderExecutive()
-  return renderDashboard()
- }catch(e){shell('حدث خطأ','',`<div class="error">${e.message||e}</div>`)}
+  if(r==='dashboard'||!r)return renderDashboard()
+
+  const reportMap={
+   sales:'sales',
+   expenses:'expenses',
+   'expense-matrix':'expense-matrix',
+   receivables:'receivables',
+   reps:'reps',
+   inventory:'inventory',
+   products:'products',
+   monthly:'monthly',
+   banks:'banks',
+   executive:'executive'
+  }
+  if(reportMap[r]){
+   location.hash='#/reports?report='+encodeURIComponent(reportMap[r])
+   return
+  }
+  if(r==='accounting-inputs'){
+   location.hash='#/treasury'
+   return
+  }
+
+  location.hash='#/dashboard'
+ }catch(e){
+  shell('حدث خطأ','',`<div class="error">${escapeHtml(e.message||e)}</div>`)
+ }
 }
 
 async function render(options={}){
