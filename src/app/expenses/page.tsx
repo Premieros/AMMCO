@@ -211,13 +211,9 @@ export default async function ExpensesPage({
             { key: 'branch_name', label: 'الفرع', sortable: true },
             { key: 'source_code', label: 'الكود الأصلي', hideByDefault: true },
             { key: 'description', label: 'البيان الأصلي', sortable: true },
-            { key: 'canonicalCategory', label: 'التصنيف الموحد', sortable: true, render: (r) => (
-              <span className="pill-badge pill-blue">{r.canonicalCategory}</span>
-            )},
+            { key: 'canonicalCategory', label: 'التصنيف الموحد', sortable: true, format: 'blue-pill' },
             { key: 'expense_group', label: 'المجموعة الأصلية', hideByDefault: true },
-            { key: 'amount', label: 'المبلغ (EGP)', numeric: true, sortable: true, render: (r) => (
-              <strong>{money(Number(r.amount ?? 0))} EGP</strong>
-            )},
+            { key: 'amount', label: 'المبلغ (EGP)', numeric: true, sortable: true, format: 'money-egp', strong: true },
           ]}
         />
       </section>
