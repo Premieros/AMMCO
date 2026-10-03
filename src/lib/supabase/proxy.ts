@@ -29,13 +29,6 @@ export async function updateSession(request: NextRequest) {
     },
   )
 
-  if (
-    process.env.VERCEL_ENV === 'preview' &&
-    request.nextUrl.pathname.startsWith('/diagnostics/render')
-  ) {
-    return response
-  }
-
   const { data } = await supabase.auth.getClaims()
   const user = data?.claims
 
