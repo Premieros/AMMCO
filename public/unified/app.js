@@ -1251,13 +1251,28 @@ async function renderExecutive(){
  bindFilters('executive')
 }
 async function renderTreasury(){
- const cfg=currentFilters(),branch=cfg.branch,from=cfg.from,to=cfg.to
+ const cfg=currentFilters(),branch=cfg.branch,from=cfg.from,to=cfg.to,ids=await approvedIds()
+ const approvedFilter=ids.length?ids:['00000000-0000-0000-0000-000000000000']
  let accountQ=supabase.from('treasury_accounts').select('id,branch_id,name,code,account_type,is_default,is_active').eq('is_active',true)
- let entryQ=supabase.from('cash_entries').select('id,branch_id,entry_date,direction,description,amount,running_balance,category,canonical_category,expense_group,entry_kind,is_expense,treasury_account_id,destination_id').gte('entry_date',from).lte('entry_date',to).order('entry_date',{ascending:false})
  let destQ=supabase.from('cash_destinations').select('id,name,destination_type,branch_id,is_active').eq('is_active',true).order('destination_type').order('name')
- if(branch){accountQ=accountQ.eq('branch_id',branch);entryQ=entryQ.eq('branch_id',branch)}
- const rs=await Promise.all([accountQ,entryQ,destQ]),accounts=rs[0].data||[],entries=rs[1].data||[],destinations=rs[2].data||[]
- if(rs[0].error||rs[1].error||rs[2].error)throw rs[0].error||rs[1].error||rs[2].error
+ if(branch)accountQ=accountQ.eq('branch_id',branch)
+ const [accountRes,destRes,entries]=await Promise.all([
+  accountQ,
+  destQ,
+  fetchAllRows(
+   'cash_entries',
+   'id,branch_id,entry_date,direction,description,amount,running_balance,category,canonical_category,expense_group,entry_kind,is_expense,treasury_account_id,destination_id',
+   q=>{
+    q=q.in('batch_id',approvedFilter).gte('entry_date',from).lte('entry_date',to).order('entry_date',{ascending:false}).order('id',{ascending:false})
+    if(branch)q=q.eq('branch_id',branch)
+    return q
+   },
+   'تحميل حركات الخزينة المعتمدة'
+  )
+ ])
+ if(accountRes.error)throw accountRes.error
+ if(destRes.error)throw destRes.error
+ const accounts=accountRes.data||[],destinations=destRes.data||[]
  window.__treasuryEditData={accounts,entries,destinations}
  const branchMap=new Map(branches.map(function(b){return [b.id,b.name]}))
  const accountMap=new Map(accounts.map(function(a){return [a.id,a]}))
@@ -1614,11 +1629,29 @@ window.editUser=function(id){
 async function renderSales(){const {branch,from,to}=currentFilters();const daily=await loadDaily(branch,from,to);const rows=daily.map(r=>({business_date:r.business_date,branch_name:r.branch_name,gross:money(r.gross_sales),discounts:money(r.discounts),net:money(r.net_sales),collections:money(r.collections),expenses:money(r.expenses)}));shell('تقرير المبيعات','تفاصيل المبيعات اليومية حسب الفرع',filters(from,to,branch)+scope(from,to,branch)+table('المبيعات اليومية',[{key:'business_date',label:'التاريخ'},{key:'branch_name',label:'الفرع'},{key:'gross',label:'قبل الخصم',num:1},{key:'discounts',label:'الخصم',num:1},{key:'net',label:'صافي البيع',num:1},{key:'collections',label:'التحصيل',num:1},{key:'expenses',label:'المصروفات',num:1}],rows));bindFilters('sales')}
 async function renderExpenses(){
  const cfg=currentFilters(),branch=cfg.branch,from=cfg.from,to=cfg.to,ids=await approvedIds()
- let cashQ=supabase.from('cash_entries').select('branch_id,entry_date,category,canonical_category,expense_group,description,amount,is_expense,entry_kind,direction').in('batch_id',ids.length?ids:['00000000-0000-0000-0000-000000000000']).gte('entry_date',from).lte('entry_date',to)
- let salesQ=supabase.from('v_branch_daily_kpis').select('branch_id,net_sales').gte('business_date',from).lte('business_date',to)
- if(branch){cashQ=cashQ.eq('branch_id',branch);salesQ=salesQ.eq('branch_id',branch)}
- const pair=await Promise.all([cashQ,salesQ]),cash=pair[0].data||[],sales=pair[1].data||[]
- if(pair[0].error||pair[1].error)throw pair[0].error||pair[1].error
+ const approvedFilter=ids.length?ids:['00000000-0000-0000-0000-000000000000']
+ const [cash,sales]=await Promise.all([
+  fetchAllRows(
+   'cash_entries',
+   'id,branch_id,entry_date,category,canonical_category,expense_group,description,amount,is_expense,entry_kind,direction',
+   q=>{
+    q=q.in('batch_id',approvedFilter).gte('entry_date',from).lte('entry_date',to).order('entry_date').order('id')
+    if(branch)q=q.eq('branch_id',branch)
+    return q
+   },
+   'تحميل حركات المصروفات المعتمدة'
+  ),
+  fetchAllRows(
+   'v_branch_daily_kpis',
+   'branch_id,business_date,net_sales',
+   q=>{
+    q=q.gte('business_date',from).lte('business_date',to).order('business_date').order('branch_id')
+    if(branch)q=q.eq('branch_id',branch)
+    return q
+   },
+   'تحميل مبيعات تقرير المصروفات'
+  )
+ ])
  const bset=branch?branches.filter(b=>b.id===branch):branches
  const salesBy=new Map();sales.forEach(r=>salesBy.set(r.branch_id,(salesBy.get(r.branch_id)||0)+Number(r.net_sales||0)))
  const norm=s=>String(s||'').trim().replace(/\s+/g,' ').replace(/[أإآ]/g,'ا').replace(/ة/g,'ه').toLowerCase()
@@ -1742,18 +1775,45 @@ async function renderMonthly(){
 }
 
 async function renderBanks(){
- const p=qs();const to=p.get('to')||defaultTo,from=`${to.slice(0,4)}-01-01`,branch=p.get('branch')||''
+ const p=qs(),to=p.get('to')||defaultTo,from=to.slice(0,4)+'-01-01',branch=p.get('branch')||'',ids=await approvedIds()
+ const approvedFilter=ids.length?ids:['00000000-0000-0000-0000-000000000000']
  let accountQ=supabase.from('treasury_accounts').select('id,branch_id,name,code,account_type').eq('is_active',true)
- let entryQ=supabase.from('cash_entries').select('branch_id,treasury_account_id,entry_date,direction,amount').gte('entry_date',from).lte('entry_date',to)
- if(branch){accountQ=accountQ.eq('branch_id',branch);entryQ=entryQ.eq('branch_id',branch)}
- const [{data:accounts},{data:entries,error}]=await Promise.all([accountQ,entryQ]);if(error)throw error
- const names=new Map(branches.map(b=>[b.id,b.name])),byId=new Map((accounts||[]).map(a=>[a.id,a]))
+ if(branch)accountQ=accountQ.eq('branch_id',branch)
+ const [accountRes,entries]=await Promise.all([
+  accountQ,
+  fetchAllRows(
+   'cash_entries',
+   'id,branch_id,treasury_account_id,entry_date,direction,amount',
+   q=>{
+    q=q.in('batch_id',approvedFilter).gte('entry_date',from).lte('entry_date',to).order('entry_date').order('id')
+    if(branch)q=q.eq('branch_id',branch)
+    return q
+   },
+   'تحميل حركة البنوك المعتمدة'
+  )
+ ])
+ if(accountRes.error)throw accountRes.error
+ const accounts=accountRes.data||[]
+ const names=new Map(branches.map(b=>[b.id,b.name])),byId=new Map(accounts.map(a=>[a.id,a]))
  const rowsMap=new Map()
- ;(entries||[]).forEach(e=>{const a=byId.get(e.treasury_account_id);if(!a||a.account_type!=='bank')return;const key=`${a.branch_id}:${a.id}`;const x=rowsMap.get(key)||{branch_name:names.get(a.branch_id)||'-',account:a.name,in:0,out:0};if(e.direction==='in')x.in+=+e.amount||0;else x.out+=+e.amount||0;rowsMap.set(key,x)})
- const rows=[...rowsMap.values()].map(x=>({...x,in:money(x.in),out:money(x.out),net:money((+x.in.toString().replace(/,/g,''))-(+x.out.toString().replace(/,/g,'')))}))
- const form=`<form id="bank-filter" class="filters"><div class="field"><label>الفرع</label><select name="branch">${branchOptions(branch)}</select></div><div class="field"><label>حتى تاريخ</label><input type="date" name="to" value="${to}"></div><div></div><div class="field"><label>&nbsp;</label><button class="btn">تطبيق</button></div></form>`
- shell('البنوك وYTD','حركة الحسابات البنكية منذ بداية السنة',form+scope(from,to,branch)+table('الحسابات البنكية',[{key:'branch_name',label:'الفرع'},{key:'account',label:'الحساب'},{key:'in',label:'داخل',num:1},{key:'out',label:'خارج',num:1},{key:'net',label:'الصافي',num:1}],rows))
- document.getElementById('bank-filter')?.addEventListener('submit',e=>{e.preventDefault();const fd=new FormData(e.currentTarget);location.hash=`#/banks?branch=${fd.get('branch')||''}&to=${fd.get('to')}`})
+ entries.forEach(e=>{
+  const a=byId.get(e.treasury_account_id)
+  if(!a||a.account_type!=='bank')return
+  const key=a.branch_id+':'+a.id
+  const x=rowsMap.get(key)||{branch_name:names.get(a.branch_id)||'-',account:a.name,in:0,out:0}
+  if(e.direction==='in')x.in+=Number(e.amount||0);else x.out+=Number(e.amount||0)
+  rowsMap.set(key,x)
+ })
+ const rows=[...rowsMap.values()].map(x=>({...x,in:money(x.in),out:money(x.out),net:money(x.in-x.out)}))
+ const form='<form id="bank-filter" class="filters"><div class="field"><label>الفرع</label><select name="branch">'+branchOptions(branch)+'</select></div><div class="field"><label>حتى تاريخ</label><input type="date" name="to" value="'+to+'"></div><div></div><div class="field"><label>&nbsp;</label><button class="btn">تطبيق</button></div></form>'
+ shell('البنوك وYTD','حركة الحسابات البنكية من الدفعات المعتمدة فقط',form+scope(from,to,branch)+table('الحسابات البنكية',[
+  {key:'branch_name',label:'الفرع'},{key:'account',label:'الحساب'},{key:'in',label:'داخل',num:1},{key:'out',label:'خارج',num:1},{key:'net',label:'الصافي',num:1}
+ ],rows))
+ document.getElementById('bank-filter')?.addEventListener('submit',e=>{
+  e.preventDefault()
+  const fd=new FormData(e.currentTarget)
+  location.hash='#/banks?branch='+(fd.get('branch')||'')+'&to='+fd.get('to')
+ })
 }
 
 async function renderReps(){
