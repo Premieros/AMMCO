@@ -2173,3 +2173,41 @@ small{
 .canonical-source-banner span{color:#52677a}
 .canonical-source-banner.warning{border-color:#f6d88a;background:#fff9e8}
 .canonical-source-banner.warning strong{color:#92400e}
+
+
+/* Three-page treasury editor */
+.treasury-invalid-date{
+  display:inline-flex;
+  align-items:center;
+  padding:2px 7px;
+  border-radius:999px;
+  background:#fff1f2;
+  color:#be123c;
+  font-weight:700;
+  font-size:12px;
+}
+.treasury-sheet-note{
+  display:flex;
+  gap:8px;
+  flex-wrap:wrap;
+  align-items:center;
+}
+.treasury-editor-card{
+  width:min(760px,calc(100vw - 32px));
+  max-width:760px;
+}
+.treasury-editor-grid{
+  display:grid;
+  grid-template-columns:repeat(2,minmax(0,1fr));
+  gap:12px;
+}
+.treasury-editor-grid .treasury-wide{
+  grid-column:1 / -1;
+}
+.treasury-editor-grid input{
+  width:100%;
+}
+@media (max-width:720px){
+  .treasury-editor-grid{grid-template-columns:1fr}
+  .treasury-editor-grid .treasury-wide{grid-column:auto}
+}

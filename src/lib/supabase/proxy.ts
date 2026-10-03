@@ -48,7 +48,10 @@ export async function updateSession(request: NextRequest) {
     '/branches': 'branches',
     '/imports': 'imports',
     '/uploads': 'uploads',
-    '/settings': 'settings',
+    '/settings': 'dashboard',
+    '/branch-sheets': 'dashboard',
+    '/management-center': 'dashboard',
+    '/accrued-expenses': 'dashboard',
   }
 
   const unifiedTarget = unifiedRoutes[portalPath]
