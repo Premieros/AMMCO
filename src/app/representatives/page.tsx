@@ -2,6 +2,7 @@ import { redirect } from 'next/navigation'
 import { AppShell } from '@/components/app-shell'
 import { SmartTable } from '@/components/smart-table'
 import { createClient } from '@/lib/supabase/server'
+import { fetchAllPages, throwIfSupabaseError } from '@/lib/supabase/pagination'
 
 export const dynamic='force-dynamic'
 type Rep={branch_id:string;business_date:string;rep_name:string;opening_balance:number;sales_before_discount:number;net_after_discount:number;discounts:number;deposit_amount:number;expense_amount:number;closing_balance:number}
@@ -16,13 +17,19 @@ export default async function RepresentativePerformance({searchParams}:{searchPa
  const {data:auth}=await supabase.auth.getClaims()
  if(!auth?.claims?.sub) redirect('/login')
 
- const {data:approvedBatches}=await supabase.from('import_batches').select('id').eq('status','approved')
+ const {data:approvedBatches,error:approvedBatchesError}=await supabase.from('import_batches').select('id').eq('status','approved')
+ throwIfSupabaseError(approvedBatchesError,'تحميل دفعات المناديب المعتمدة')
  const approvedIds=(approvedBatches??[]).map(b=>b.id)
- let q=supabase.from('sales_rep_daily').select('branch_id,business_date,rep_name,opening_balance,sales_before_discount,net_after_discount,discounts,deposit_amount,expense_amount,closing_balance').in('batch_id',approvedIds.length?approvedIds:['00000000-0000-0000-0000-000000000000']).gte('business_date',from).lte('business_date',to).order('business_date')
- if(f.branch) q=q.eq('branch_id',f.branch)
-
- const [{data},{data:branchesData}]=await Promise.all([q,supabase.from('branches').select('id,name').eq('is_active',true).order('name')])
- const reps=(data??[]) as Rep[]
+ const reps=(await fetchAllPages(
+  (rangeFrom,rangeTo)=>{
+   let q=supabase.from('sales_rep_daily').select('branch_id,business_date,rep_name,opening_balance,sales_before_discount,net_after_discount,discounts,deposit_amount,expense_amount,closing_balance').in('batch_id',approvedIds.length?approvedIds:['00000000-0000-0000-0000-000000000000']).gte('business_date',from).lte('business_date',to).order('business_date').order('id')
+   if(f.branch) q=q.eq('branch_id',f.branch)
+   return q.range(rangeFrom,rangeTo)
+  },
+  'تحميل بيانات المناديب'
+ )) as Rep[]
+ const {data:branchesData,error:branchesError}=await supabase.from('branches').select('id,name').eq('is_active',true).order('name')
+ throwIfSupabaseError(branchesError,'تحميل الفروع')
  const branchNames=new Map((branchesData??[]).map(b=>[b.id,b.name] as const))
 
  type R={branchId:string;name:string;opening:number;gross:number;discount:number;net:number;deposit:number;expense:number;closing:number;first:string;last:string}
