@@ -1,268 +1,190 @@
-import { Suspense } from 'react'
 import { redirect } from 'next/navigation'
-import Link from 'next/link'
-import { AppShell } from '@/components/app-shell'
-import { UnifiedFilterBar } from '@/components/unified-filter-bar'
-import { KPICard } from '@/components/kpi-card'
-import { InteractiveTimeChart } from '@/components/interactive-time-chart'
-import { BranchBarChart } from '@/components/branch-bar-chart'
-import { AnomaliesList } from '@/components/anomalies-list'
 import { createClient } from '@/lib/supabase/server'
-import { getUnifiedIntelligenceData } from '@/lib/data-source'
-import { detectAnomalies } from '@/lib/anomalies'
-import { ArrowLeft, Clock, Building2, CheckCircle2 } from 'lucide-react'
+import { throwIfSupabaseError } from '@/lib/supabase/pagination'
 
 export const dynamic = 'force-dynamic'
 
-export default async function DashboardPage({
-  searchParams,
-}: {
-  searchParams: Promise<{ branch?: string; from?: string; to?: string; compare?: string }>
-}) {
-  const filters = await searchParams
+function cardStyle() {
+  return {
+    border: '1px solid #e2e8f0',
+    borderRadius: 14,
+    background: '#ffffff',
+    padding: 18,
+    boxShadow: '0 1px 2px rgba(15, 23, 42, 0.04)',
+  } as const
+}
+
+export default async function DashboardPage() {
   const supabase = await createClient()
 
   const { data: auth } = await supabase.auth.getClaims()
   const userId = auth?.claims?.sub
   if (!userId) redirect('/login')
 
-  const { data: profile } = await supabase
-    .from('profiles')
-    .select('full_name, role')
-    .eq('user_id', userId)
-    .maybeSingle()
+  const [
+    profileResult,
+    branchesResult,
+    latestBatchResult,
+  ] = await Promise.all([
+    supabase
+      .from('profiles')
+      .select('full_name, role, is_active')
+      .eq('user_id', userId)
+      .maybeSingle(),
+    supabase
+      .from('branches')
+      .select('id, name, code, is_active')
+      .eq('is_active', true)
+      .order('name'),
+    supabase
+      .from('import_batches')
+      .select('id, original_file_name, status, period_start, period_end, uploaded_at, branch_id')
+      .eq('status', 'approved')
+      .order('uploaded_at', { ascending: false })
+      .limit(1)
+      .maybeSingle(),
+  ])
 
-  if (!profile) {
+  throwIfSupabaseError(profileResult.error, 'تحميل بيانات المستخدم')
+  throwIfSupabaseError(branchesResult.error, 'تحميل الفروع')
+  throwIfSupabaseError(latestBatchResult.error, 'تحميل آخر دفعة معتمدة')
+
+  const profile = profileResult.data
+  if (!profile?.is_active) {
     return (
-      <AppShell title="AMMCO" subtitle="الحساب يحتاج تهيئة من مدير النظام">
-        <div className="notice">تم تسجيل الدخول، لكن الحساب غير مربوط بمؤسسة AMMCO بعد.</div>
-      </AppShell>
+      <main dir="rtl" style={{ maxWidth: 760, margin: '60px auto', padding: 24 }}>
+        <h1>AMMCO</h1>
+        <p>الحساب غير مفعّل. يرجى مراجعة مسؤول النظام.</p>
+      </main>
     )
   }
 
-  const preview = process.env.VERCEL_ENV === 'preview'
+  const branches = branchesResult.data ?? []
+  const latestBatch = latestBatchResult.data
+  const displayName = profile.full_name || 'الإدارة المركزية'
 
-  // Fetch unified data matching exact "One Number = One Source" principle.
-  // In preview, surface the exact server-side stage instead of React's opaque #441.
-  let data
-  try {
-    data = await getUnifiedIntelligenceData(supabase, {
-      from: filters.from,
-      to: filters.to,
-      branch: filters.branch,
-    })
-  } catch (error) {
-    const message = error instanceof Error ? error.message : String(error)
-    const stack = error instanceof Error ? error.stack : undefined
-    console.error('dashboard-unified-data-failed', error)
-
-    return (
-      <AppShell title="AMMCO" subtitle="تعذر تجهيز بيانات لوحة الإدارة">
-        <div className="notice">
-          <strong>فشل تجهيز البيانات الموحدة.</strong>
-          {preview && (
-            <pre style={{ marginTop: 12, whiteSpace: 'pre-wrap', direction: 'ltr', textAlign: 'left' }}>
-              {message}
-              {stack ? `\n\n${stack}` : ''}
-            </pre>
-          )}
-        </div>
-      </AppShell>
-    )
-  }
-
-  // Detect operational anomalies & deviations
-  let anomalies
-  try {
-    anomalies = await detectAnomalies(
-      supabase,
-      data.from,
-      data.to,
-      filters.branch
-    )
-  } catch (error) {
-    const message = error instanceof Error ? error.message : String(error)
-    const stack = error instanceof Error ? error.stack : undefined
-    console.error('dashboard-anomalies-failed', error)
-
-    return (
-      <AppShell title="AMMCO" subtitle="تعذر تجهيز تنبيهات لوحة الإدارة">
-        <div className="notice">
-          <strong>فشل تحليل الانحرافات.</strong>
-          {preview && (
-            <pre style={{ marginTop: 12, whiteSpace: 'pre-wrap', direction: 'ltr', textAlign: 'left' }}>
-              {message}
-              {stack ? `\n\n${stack}` : ''}
-            </pre>
-          )}
-        </div>
-      </AppShell>
-    )
-  }
-
-  const cur = data.currentSummary
-  const prev = data.prevSummary
-  const showCompare = filters.compare === '1'
-
-  // Format last updated date
-  const lastUpdateFormatted = cur.lastUpdatedBatchDate
-    ? new Date(cur.lastUpdatedBatchDate).toLocaleString('ar-EG', {
-        dateStyle: 'short',
-        timeStyle: 'short',
-      })
-    : 'غير محدد'
+  const links = [
+    ['شيتات الفروع', '/branch-sheets'],
+    ['المبيعات', '/sales'],
+    ['الأصناف', '/products'],
+    ['الخزينة', '/treasury'],
+    ['المصروفات', '/expenses'],
+    ['الفروع', '/branches'],
+    ['التحليلات', '/analytics'],
+    ['التقارير', '/reports'],
+    ['سجل الرفع والاعتماد', '/imports'],
+    ['مركز الإدارة', '/management-center'],
+    ['الإعدادات', '/settings'],
+  ] as const
 
   return (
-    <AppShell
-      title="مركز الإدارة والتحليل المالي"
-      subtitle={`فترة التقرير: ${data.from} إلى ${data.to} · البيانات مستخرجة من النسخ المعتمدة فقط`}
-      breadcrumbs={[{ label: 'لوحة الإدارة' }]}
-      actions={
-        <div className="flex items-center gap-2">
-          <Link href="/sales" className="btn-secondary-action">
-            <span>تقرير المبيعات</span>
-            <ArrowLeft className="w-3.5 h-3.5" />
-          </Link>
-          <Link href="/management-center" className="btn-primary-action">
-            <span>مركز المراجعة</span>
-          </Link>
-        </div>
-      }
+    <main
+      dir="rtl"
+      style={{
+        minHeight: '100vh',
+        background: '#f8fafc',
+        color: '#0f172a',
+        padding: '28px 18px 60px',
+        fontFamily: 'Arial, sans-serif',
+      }}
     >
-      {/* 1. Unified Global Filter Bar */}
-      <Suspense fallback={<div className="notice">جاري تجهيز الفلاتر...</div>}>
-        <UnifiedFilterBar
-          branches={data.branches}
-          defaultFrom={data.from}
-          defaultTo={data.to}
-          defaultBranch={filters.branch}
-          exportType="sales"
-        />
-      </Suspense>
-
-      {/* 2. Primary Executive KPIs (Requirement 3) */}
-      <section className="dashboard-kpis-grid">
-        {/* 1. Net Sales */}
-        <KPICard
-          label="صافي المبيعات"
-          currentValue={cur.netSales}
-          previousValue={prev.netSales}
-          format="currency"
-          showPrevious={showCompare}
-          subtitle={`قبل الخصم: ${new Intl.NumberFormat('en-US', { maximumFractionDigits: 0 }).format(cur.grossSales)} EGP`}
-        />
-
-        {/* 2. Total Actual Sales Cartons */}
-        <KPICard
-          label="كمية المبيعات الفعلية (Cartons)"
-          currentValue={cur.salesQty}
-          previousValue={prev.salesQty}
-          format="number"
-          showPrevious={showCompare}
-          subtitle={`الكمية الموحدة (Double×2): ${new Intl.NumberFormat('en-US').format(cur.standardizedQty)} كرتونة موحدة`}
-        />
-
-        {/* 3. Average Price per Carton */}
-        <KPICard
-          label="متوسط سعر الكرتونة الفعلي"
-          currentValue={cur.avgCartonPrice || cur.avgUnitPrice}
-          previousValue={prev.avgCartonPrice || prev.avgUnitPrice}
-          format="currency"
-          showPrevious={showCompare}
-          subtitle="صافي المبيعات ÷ عدد الكراتين الفعلي"
-        />
-
-        {/* 4. Total Expenses (INVERTED sentiment: increase is RED, decrease is GREEN) */}
-        <KPICard
-          label="إجمالي المصروفات"
-          currentValue={cur.expenses}
-          previousValue={prev.expenses}
-          format="currency"
-          invertSentiment={true}
-          showPrevious={showCompare}
-          subtitle="جميع بنود الصرف المعتمدة"
-        />
-
-        {/* 5. Net Operating Result (Sales - Expenses) */}
-        <KPICard
-          label="صافي النتيجة"
-          currentValue={cur.netResult}
-          previousValue={prev.netResult}
-          format="currency"
-          showPrevious={showCompare}
-          subtitle="المبيعات بعد خصم المصروفات"
-        />
-
-        {/* 6. Expense to Sales Ratio (INVERTED sentiment) */}
-        <KPICard
-          label="نسبة المصروفات للمبيعات"
-          currentValue={cur.expenseToSalesRate}
-          previousValue={prev.expenseToSalesRate}
-          format="percent"
-          invertSentiment={true}
-          showPrevious={showCompare}
-          subtitle="المستهدف أقل من 15%"
-        />
-
-        {/* 7. Reporting Branches Count */}
-        <div className="executive-kpi-card info-card">
-          <div className="kpi-header">
-            <span className="kpi-title">الفروع المرفوعة</span>
-            <Building2 className="w-4 h-4 text-blue-600" />
+      <div style={{ maxWidth: 1180, margin: '0 auto' }}>
+        <header
+          style={{
+            ...cardStyle(),
+            display: 'flex',
+            justifyContent: 'space-between',
+            gap: 20,
+            alignItems: 'center',
+            flexWrap: 'wrap',
+            marginBottom: 18,
+          }}
+        >
+          <div>
+            <div style={{ fontSize: 13, color: '#64748b', marginBottom: 6 }}>
+              AMMCO Intelligence
+            </div>
+            <h1 style={{ margin: 0, fontSize: 28 }}>لوحة الإدارة</h1>
+            <p style={{ margin: '8px 0 0', color: '#475569' }}>
+              أهلاً {displayName}
+            </p>
           </div>
-          <div className="kpi-current-val">
-            {cur.reportingBranchesCount}{' '}
-            <span className="text-sm font-normal text-slate-500">
-              من أصل {cur.totalActiveBranchesCount} فرع
-            </span>
-          </div>
-          <div className="kpi-footer">
-            <span className="kpi-subtitle">
-              نسبة التغطية:{' '}
-              <b>
-                {((cur.reportingBranchesCount / (cur.totalActiveBranchesCount || 1)) * 100).toFixed(0)}%
-              </b>
-            </span>
-          </div>
-        </div>
+          <a
+            href="/uploads"
+            style={{
+              textDecoration: 'none',
+              background: '#0f766e',
+              color: '#fff',
+              padding: '11px 16px',
+              borderRadius: 10,
+              fontWeight: 700,
+            }}
+          >
+            رفع شيت جديد
+          </a>
+        </header>
 
-        {/* 8. Last Data Update */}
-        <div className="executive-kpi-card info-card">
-          <div className="kpi-header">
-            <span className="kpi-title">آخر تحديث للبيانات</span>
-            <Clock className="w-4 h-4 text-slate-500" />
+        <section
+          style={{
+            display: 'grid',
+            gridTemplateColumns: 'repeat(auto-fit, minmax(220px, 1fr))',
+            gap: 14,
+            marginBottom: 18,
+          }}
+        >
+          <div style={cardStyle()}>
+            <div style={{ color: '#64748b', fontSize: 13 }}>الفروع النشطة</div>
+            <div style={{ fontSize: 30, fontWeight: 800, marginTop: 8 }}>
+              {branches.length}
+            </div>
           </div>
-          <div className="kpi-current-val text-lg">{lastUpdateFormatted}</div>
-          <div className="kpi-footer">
-            <span className="kpi-subtitle flex items-center gap-1 text-emerald-600 font-semibold">
-              <CheckCircle2 className="w-3.5 h-3.5" />
-              <span>نسخة معتمدة ومطابقة</span>
-            </span>
+
+          <div style={cardStyle()}>
+            <div style={{ color: '#64748b', fontSize: 13 }}>آخر فترة معتمدة</div>
+            <div style={{ fontSize: 17, fontWeight: 700, marginTop: 8 }}>
+              {latestBatch
+                ? `${latestBatch.period_start ?? '—'} إلى ${latestBatch.period_end ?? '—'}`
+                : 'لا توجد دفعات معتمدة'}
+            </div>
           </div>
-        </div>
-      </section>
 
-      {/* 3. Main Chart & Visual Intelligence (Requirement 4) */}
-      <section className="dashboard-main-chart-section">
-        <Suspense fallback={<div className="notice">جاري تجهيز الرسم البياني...</div>}>
-          <InteractiveTimeChart data={data.timeline} />
-        </Suspense>
-      </section>
+          <div style={cardStyle()}>
+            <div style={{ color: '#64748b', fontSize: 13 }}>آخر ملف معتمد</div>
+            <div style={{ fontSize: 15, fontWeight: 700, marginTop: 8, wordBreak: 'break-word' }}>
+              {latestBatch?.original_file_name || '—'}
+            </div>
+          </div>
+        </section>
 
-      {/* 4. Branch Performance Comparison & Drill-down (Requirement 5) */}
-      <section className="dashboard-branch-performance-section">
-        <Suspense fallback={<div className="notice">جاري تجهيز مقارنة الفروع...</div>}>
-          <BranchBarChart
-            branches={data.branchPerformance}
-            selectedBranchId={filters.branch}
-          />
-        </Suspense>
-      </section>
-
-      {/* 5. Smart Insights / Anomalies Detector (Requirement 9) */}
-      <section className="dashboard-anomalies-section">
-        <AnomaliesList anomalies={anomalies} />
-      </section>
-    </AppShell>
+        <section style={cardStyle()}>
+          <h2 style={{ marginTop: 0, fontSize: 20 }}>أقسام النظام</h2>
+          <div
+            style={{
+              display: 'grid',
+              gridTemplateColumns: 'repeat(auto-fit, minmax(200px, 1fr))',
+              gap: 10,
+            }}
+          >
+            {links.map(([label, href]) => (
+              <a
+                key={href}
+                href={href}
+                style={{
+                  textDecoration: 'none',
+                  color: '#0f172a',
+                  border: '1px solid #cbd5e1',
+                  borderRadius: 10,
+                  padding: '13px 14px',
+                  background: '#fff',
+                  fontWeight: 700,
+                }}
+              >
+                {label}
+              </a>
+            ))}
+          </div>
+        </section>
+      </div>
+    </main>
   )
 }
