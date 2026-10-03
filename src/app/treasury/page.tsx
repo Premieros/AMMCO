@@ -6,6 +6,7 @@ import { KPICard } from '@/components/kpi-card'
 import { SmartDataTable } from '@/components/smart-data-table'
 import { createClient } from '@/lib/supabase/server'
 import { getUnifiedIntelligenceData } from '@/lib/data-source'
+import { fetchAllPages, throwIfSupabaseError } from '@/lib/supabase/pagination'
 import { createTreasuryAccount } from './actions'
 import { Wallet, ArrowDownLeft, ArrowUpRight, History, Plus } from 'lucide-react'
 
@@ -39,27 +40,33 @@ export default async function TreasuryPage({
     branch: filters.branch,
   })
 
-  // Fetch cash entries with branch and correction logs
-  let entriesQuery = supabase
-    .from('cash_entries')
-    .select('id, branch_id, entry_date, direction, category, source_code, description, amount, running_balance, canonical_category, expense_group, treasury_account_id, branches(name), treasury_accounts(name, account_type), import_batches(uploaded_at, status)')
-    .gte('entry_date', data.from)
-    .lte('entry_date', data.to)
-    .order('entry_date', { ascending: false })
-    .order('id', { ascending: false })
-    .limit(5000)
+  // Fetch all cash entries in pages so PostgREST's row cap cannot truncate the ledger.
+  const cashList = await fetchAllPages(
+    (rangeFrom, rangeTo) => {
+      let query = supabase
+        .from('cash_entries')
+        .select('id, branch_id, entry_date, direction, category, source_code, description, amount, running_balance, canonical_category, expense_group, treasury_account_id, branches(name), treasury_accounts(name, account_type), import_batches(uploaded_at, status)')
+        .gte('entry_date', data.from)
+        .lte('entry_date', data.to)
+        .order('entry_date', { ascending: false })
+        .order('id', { ascending: false })
 
-  if (filters.branch) {
-    entriesQuery = entriesQuery.eq('branch_id', filters.branch)
-  }
+      if (filters.branch) query = query.eq('branch_id', filters.branch)
+      return query.range(rangeFrom, rangeTo)
+    },
+    'تحميل حركات الخزينة',
+  )
 
-  const [{ data: entries }, { data: accounts }, { data: corrections }] = await Promise.all([
-    entriesQuery,
+  const [
+    { data: accounts, error: accountsError },
+    { data: corrections, error: correctionsError },
+  ] = await Promise.all([
     supabase.from('treasury_accounts').select('id, branch_id, name, code, account_type').eq('is_active', true),
     supabase.from('cash_entry_correction_log').select('*').order('changed_at', { ascending: false }).limit(200),
   ])
 
-  const cashList = entries ?? []
+  throwIfSupabaseError(accountsError, 'تحميل حسابات الخزينة')
+  throwIfSupabaseError(correctionsError, 'تحميل سجل تعديلات الخزينة')
   const correctionMap = new Map<number, NonNullable<typeof corrections>[number]>()
   for (const c of corrections ?? []) {
     if (!correctionMap.has(c.cash_entry_id)) {
