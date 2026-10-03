@@ -1756,12 +1756,49 @@ async function renderBanks(){
  document.getElementById('bank-filter')?.addEventListener('submit',e=>{e.preventDefault();const fd=new FormData(e.currentTarget);location.hash=`#/banks?branch=${fd.get('branch')||''}&to=${fd.get('to')}`})
 }
 
-async function renderReps(){const {branch,from,to}=currentFilters();const ids=await approvedIds();let q=supabase.from('sales_rep_daily').select('branch_id,business_date,rep_name,sales_before_discount,net_after_discount,discounts,deposit_amount,closing_balance').in('batch_id',ids.length?ids:['00000000-0000-0000-0000-000000000000']).gte('business_date',from).lte('business_date',to).order('business_date',{ascending:true});if(branch)q=q.eq('branch_id',branch);const {data,error}=await q;if(error)throw error;const names=new Map(branches.map(b=>[b.id,b.name]));const by=new Map();(data||[]).forEach(r=>{const k=`${r.branch_id}:${r.rep_name}`;const x=by.get(k)||{branch_name:names.get(r.branch_id),rep_name:r.rep_name,gross:0,net:0,disc:0,deposit:0,closing:0};x.gross+=+r.sales_before_discount||0;x.net+=+r.net_after_discount||0;x.disc+=+r.discounts||0;x.deposit+=+r.deposit_amount||0;x.closing=+r.closing_balance||x.closing;by.set(k,x)});const rows=[...by.values()].map(x=>({...x,gross:money(x.gross),net:money(x.net),disc:money(x.disc),deposit:money(x.deposit),closing:money(x.closing)}));shell('أداء المناديب','المندوب × الفرع',filters(from,to,branch)+scope(from,to,branch)+table('أداء المناديب',[{key:'branch_name',label:'الفرع'},{key:'rep_name',label:'المندوب'},{key:'gross',label:'قبل الخصم',num:1},{key:'disc',label:'الخصم',num:1},{key:'net',label:'صافي البيع',num:1},{key:'deposit',label:'التوريد',num:1},{key:'closing',label:'الرصيد',num:1}],rows));bindFilters('reps')}
+async function renderReps(){
+ const {branch,from,to}=currentFilters(),ids=await approvedIds()
+ const approvedFilter=ids.length?ids:['00000000-0000-0000-0000-000000000000']
+ const data=await fetchAllRows(
+  'sales_rep_daily',
+  'id,branch_id,business_date,rep_name,sales_before_discount,net_after_discount,discounts,deposit_amount,closing_balance',
+  q=>{
+   q=q.in('batch_id',approvedFilter).gte('business_date',from).lte('business_date',to).order('business_date',{ascending:true}).order('id')
+   if(branch)q=q.eq('branch_id',branch)
+   return q
+  },
+  'تحميل بيانات المناديب المعتمدة'
+ )
+ const names=new Map(branches.map(b=>[b.id,b.name])),by=new Map()
+ data.forEach(r=>{
+  const k=r.branch_id+':'+r.rep_name
+  const x=by.get(k)||{branch_name:names.get(r.branch_id),rep_name:r.rep_name,gross:0,net:0,disc:0,deposit:0,closing:0,lastDate:''}
+  x.gross+=Number(r.sales_before_discount||0)
+  x.net+=Number(r.net_after_discount||0)
+  x.disc+=Number(r.discounts||0)
+  x.deposit+=Number(r.deposit_amount||0)
+  if(String(r.business_date)>=String(x.lastDate||'')){x.closing=Number(r.closing_balance||0);x.lastDate=r.business_date}
+  by.set(k,x)
+ })
+ const rows=[...by.values()].map(x=>({...x,gross:money(x.gross),net:money(x.net),disc:money(x.disc),deposit:money(x.deposit),closing:money(x.closing)}))
+ shell('أداء المناديب','المندوب × الفرع',filters(from,to,branch)+scope(from,to,branch)+table('أداء المناديب',[
+  {key:'branch_name',label:'الفرع'},{key:'rep_name',label:'المندوب'},{key:'gross',label:'قبل الخصم',num:1},{key:'disc',label:'الخصم',num:1},{key:'net',label:'صافي البيع',num:1},{key:'deposit',label:'التوريد',num:1},{key:'closing',label:'الرصيد',num:1}
+ ],rows))
+ bindFilters('reps')
+}
 async function renderInventory(){
  const cfg=currentFilters(),branch=cfg.branch,from=cfg.from,to=cfg.to,ids=await approvedIds()
- let q=supabase.from('warehouse_daily_summary').select('*').in('batch_id',ids.length?ids:['00000000-0000-0000-0000-000000000000']).gte('business_date',from).lte('business_date',to).order('business_date')
- if(branch)q=q.eq('branch_id',branch)
- const {data,error}=await q;if(error)throw error
+ const approvedFilter=ids.length?ids:['00000000-0000-0000-0000-000000000000']
+ const data=await fetchAllRows(
+  'warehouse_daily_summary',
+  '*',
+  q=>{
+   q=q.in('batch_id',approvedFilter).gte('business_date',from).lte('business_date',to).order('business_date').order('id')
+   if(branch)q=q.eq('branch_id',branch)
+   return q
+  },
+  'تحميل حركة المخزون المعتمدة'
+ )
  const names=new Map(branches.map(b=>[b.id,b.name])),by=new Map()
  ;(data||[]).forEach(r=>{
   const x=by.get(r.branch_id)||{branch_name:names.get(r.branch_id)||'—',firstDate:r.business_date,lastDate:r.business_date,qty:{},val:{}}
@@ -1797,13 +1834,17 @@ async function renderInventory(){
 }
 async function renderProducts(){
  const {branch,from,to}=currentFilters(),ids=await approvedIds()
- let q=supabase.from('inventory_daily')
-  .select('id,branch_id,business_date,product_id,product_name,sales_qty,closing_qty,closing_value')
-  .in('batch_id',ids.length?ids:['00000000-0000-0000-0000-000000000000'])
-  .gte('business_date',from).lte('business_date',to)
-  .order('business_date',{ascending:true})
- if(branch)q=q.eq('branch_id',branch)
- const {data,error}=await q;if(error)throw error
+ const approvedFilter=ids.length?ids:['00000000-0000-0000-0000-000000000000']
+ const data=await fetchAllRows(
+  'inventory_daily',
+  'id,branch_id,business_date,product_id,product_name,sales_qty,closing_qty,closing_value',
+  q=>{
+   q=q.in('batch_id',approvedFilter).gte('business_date',from).lte('business_date',to).order('business_date',{ascending:true}).order('id')
+   if(branch)q=q.eq('branch_id',branch)
+   return q
+  },
+  'تحميل مصفوفة الأصناف المعتمدة'
+ )
  const bset=branch?branches.filter(b=>b.id===branch):branches
  const sales=new Map()
  ;(data||[]).forEach(r=>{
