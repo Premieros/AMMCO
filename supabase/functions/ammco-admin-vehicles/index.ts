@@ -63,6 +63,117 @@ Deno.serve(async(req)=>{
   const branchId=String(body?.branch_id||'')
   const month=String(body?.month||'')
   const bounds=monthBounds(month)
+
+  if(action==='import_global'){
+    if(!bounds) return json({error:'الشهر مطلوب'},400)
+    const rows=Array.isArray(body?.rows)?body.rows:[]
+    const reportType=String(body?.report_type||'petro_up_non_cash').trim()
+    if(!rows.length) return json({error:'لا توجد صفوف قابلة للاستيراد'},400)
+
+    const {data:orgBranches,error:orgErr}=await admin.from('branches')
+      .select('id,name')
+      .eq('organization_id',me.organization_id)
+      .eq('is_active',true)
+    if(orgErr)return json({error:orgErr.message},500)
+    const branchIds=(orgBranches||[]).map((x:any)=>x.id)
+    if(!branchIds.length)return json({error:'لا توجد فروع نشطة'},400)
+
+    const {data:maps,error:mapErr}=await admin.from('vehicle_daily')
+      .select('id,branch_id,vehicle_label,rep_name,raw_payload')
+      .in('branch_id',branchIds)
+      .contains('raw_payload',{manual_assignment:true})
+      .order('id',{ascending:false})
+    if(mapErr)return json({error:mapErr.message},500)
+
+    const vehicleMap=new Map<string,{branch_id:string,rep_name:string}>()
+    for(const x of maps||[]){
+      const key=normalizeVehicleLabel(String(x.vehicle_label||''))
+      if(key&&!vehicleMap.has(key)&&x.rep_name)vehicleMap.set(key,{branch_id:x.branch_id,rep_name:String(x.rep_name)})
+    }
+
+    const mapped:any[]=[]
+    const unassigned=new Set<string>()
+    for(const r of rows){
+      const d=String(r.business_date||'')
+      const vehicle=String(r.vehicle_label||'').trim()
+      if(!vehicle||d<bounds.from||d>bounds.to)continue
+      const hit=vehicleMap.get(normalizeVehicleLabel(vehicle))
+      if(!hit){unassigned.add(vehicle);continue}
+      mapped.push({...r,__branch_id:hit.branch_id,__rep_name:hit.rep_name})
+    }
+    if(!mapped.length)return json({error:'لم يتم العثور على سيارات مربوطة بفروع لهذا التقرير',unassigned:[...unassigned]},400)
+
+    const mappedBranchIds=[...new Set(mapped.map((x:any)=>x.__branch_id))]
+    const {data:batches,error:batchErr}=await admin.from('import_batches')
+      .select('id,branch_id,version')
+      .in('branch_id',mappedBranchIds)
+      .eq('status','approved')
+      .lte('period_start',bounds.to)
+      .gte('period_end',bounds.from)
+      .order('version',{ascending:false})
+    if(batchErr)return json({error:batchErr.message},500)
+    const batchByBranch=new Map<string,string>()
+    for(const b of batches||[])if(!batchByBranch.has(b.branch_id))batchByBranch.set(b.branch_id,b.id)
+
+    const clean:any[]=[]
+    const missingBatch=new Set<string>()
+    for(const r of mapped){
+      const batchId=batchByBranch.get(r.__branch_id)
+      if(!batchId){missingBatch.add(r.__branch_id);continue}
+      const fuel=Math.max(0,Number(r.fuel_expense||0))
+      const maint=Math.max(0,Number(r.maintenance_expense||0))
+      const other=Math.max(0,Number(r.other_expense||0))
+      clean.push({
+        batch_id:batchId,branch_id:r.__branch_id,business_date:String(r.business_date),
+        vehicle_label:String(r.vehicle_label||'').trim(),
+        driver_name:String(r.driver_name||'').trim()||null,
+        rep_name:r.__rep_name,
+        sales:Number(r.sales||0),
+        fuel_expense:fuel,maintenance_expense:maint,other_expense:other,total_expense:fuel+maint+other,
+        opening_odometer:r.opening_odometer==null?null:Number(r.opening_odometer),
+        closing_odometer:r.closing_odometer==null?null:Number(r.closing_odometer),
+        raw_payload:{
+          source:'petro_up_non_cash',
+          report_type:reportType,
+          non_cash:true,
+          expense_category:'بترو أب',
+          uploaded_by:uid,
+          uploaded_at:new Date().toISOString(),
+          fuel_liters:Number(r.fuel_liters||0),
+          fuel_price:Number(r.fuel_price||0),
+          invoice_no:String(r.invoice_no||'').trim()||null,
+          station:String(r.station||'').trim()||null,
+          payment_method:String(r.payment_method||'').trim()||null
+        }
+      })
+    }
+    if(!clean.length)return json({error:'لا توجد حركات قابلة للحفظ بعد مطابقة الفروع والشهر',unassigned:[...unassigned],missing_batch_branches:[...missingBatch]},400)
+
+    const touched=[...new Set(clean.map((x:any)=>x.batch_id+'|'+x.branch_id))]
+    for(const key of touched){
+      const [batchId,bid]=key.split('|')
+      const vehicles=[...new Set(clean.filter((x:any)=>x.batch_id===batchId&&x.branch_id===bid).map((x:any)=>x.vehicle_label))]
+      const {data:old}=await admin.from('vehicle_daily')
+        .select('id,raw_payload')
+        .eq('batch_id',batchId).eq('branch_id',bid)
+        .gte('business_date',bounds.from).lte('business_date',bounds.to)
+        .in('vehicle_label',vehicles)
+      const deleteIds=(old||[]).filter((x:any)=>x.raw_payload?.source==='petro_up_non_cash').map((x:any)=>x.id)
+      if(deleteIds.length)await admin.from('vehicle_daily').delete().in('id',deleteIds)
+    }
+
+    const {error:insertErr}=await admin.from('vehicle_daily').insert(clean)
+    if(insertErr)return json({error:insertErr.message},500)
+
+    const branchNames=new Map((orgBranches||[]).map((x:any)=>[x.id,x.name]))
+    const distribution:any[]=[]
+    for(const bid of mappedBranchIds){
+      const count=clean.filter((x:any)=>x.branch_id===bid).length
+      if(count)distribution.push({branch_id:bid,branch_name:branchNames.get(bid)||bid,rows:count})
+    }
+    return json({ok:true,inserted:clean.length,distribution,unassigned:[...unassigned],missing_batch_branches:[...missingBatch]})
+  }
+
   if(!branchId||!bounds) return json({error:'الفرع والشهر مطلوبان'},400)
 
   const {data:batch,error:batchError}=await admin.from('import_batches')
