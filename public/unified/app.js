@@ -1886,35 +1886,183 @@ async function renderBanks(){
  })
 }
 
+function vehicleNorm(v){
+ return String(v??'').trim().toLowerCase().replace(/[أإآ]/g,'ا').replace(/ة/g,'ه').replace(/ى/g,'ي').replace(/[\s_\-\/\\]+/g,'')
+}
+function vehicleDate(v){
+ if(v instanceof Date&&!Number.isNaN(v.getTime()))return v.toISOString().slice(0,10)
+ if(typeof v==='number'&&Number.isFinite(v)){
+  const d=XLSX.SSF.parse_date_code(v)
+  if(d)return String(d.y).padStart(4,'0')+'-'+String(d.m).padStart(2,'0')+'-'+String(d.d).padStart(2,'0')
+ }
+ const s=String(v??'').trim()
+ if(!s)return ''
+ let m=s.match(/^(\d{4})[-\/.](\d{1,2})[-\/.](\d{1,2})$/)
+ if(m)return m[1]+'-'+m[2].padStart(2,'0')+'-'+m[3].padStart(2,'0')
+ m=s.match(/^(\d{1,2})[-\/.](\d{1,2})[-\/.](\d{4})$/)
+ if(m)return m[3]+'-'+m[2].padStart(2,'0')+'-'+m[1].padStart(2,'0')
+ return ''
+}
+function vehicleNum(v){
+ if(typeof v==='number'&&Number.isFinite(v))return v
+ const n=Number(String(v??'').replace(/,/g,'').trim())
+ return Number.isFinite(n)?n:0
+}
+async function parseVehicleReportFile(file){
+ const wb=XLSX.read(await file.arrayBuffer(),{type:'array',cellDates:true,cellFormula:true})
+ const aliases={
+  business_date:['التاريخ','تاريخ','date','اليوم'],
+  vehicle_label:['السياره','سيارة','رقمالسياره','رقمسياره','car','vehicle','vehicleno'],
+  driver_name:['السائق','سائق','السواق','driver'],
+  fuel_expense:['سولار','الوقود','وقود','بنزين','fuel','diesel'],
+  maintenance_expense:['الصيانه','صيانه','maintenance','repair'],
+  other_expense:['مصروفاتاخرى','مصروفاتاخري','اخري','اخرى','otherexpense'],
+  sales:['المبيعات','مبيعات','البيع','بيع','sales'],
+  opening_odometer:['عداداول','عدادالبدايه','عدادبدايه','openingodometer','startkm'],
+  closing_odometer:['عداداخر','عدادالنهايه','عدادنهايه','closingodometer','endkm']
+ }
+ const lookup=new Map()
+ Object.entries(aliases).forEach(([k,vals])=>vals.forEach(v=>lookup.set(vehicleNorm(v),k)))
+ let rows=[]
+ for(const sheetName of wb.SheetNames){
+  const aoa=XLSX.utils.sheet_to_json(wb.Sheets[sheetName],{header:1,raw:true,defval:null})
+  let header=-1,map={}
+  for(let r=0;r<Math.min(aoa.length,20);r++){
+   const candidate={}
+   ;(aoa[r]||[]).forEach((v,i)=>{const k=lookup.get(vehicleNorm(v));if(k)candidate[k]=i})
+   if(candidate.vehicle_label!==undefined&&(candidate.business_date!==undefined||candidate.fuel_expense!==undefined||candidate.sales!==undefined)){header=r;map=candidate;break}
+  }
+  if(header<0)continue
+  let lastVehicle=''
+  for(let r=header+1;r<aoa.length;r++){
+   const line=aoa[r]||[]
+   const val=k=>map[k]===undefined?null:line[map[k]]
+   const vehicle=String(val('vehicle_label')??'').trim()||lastVehicle
+   if(vehicle)lastVehicle=vehicle
+   const date=vehicleDate(val('business_date'))
+   if(!vehicle||!date)continue
+   const row={
+    business_date:date,vehicle_label:vehicle,
+    driver_name:String(val('driver_name')??'').trim(),
+    fuel_expense:vehicleNum(val('fuel_expense')),
+    maintenance_expense:vehicleNum(val('maintenance_expense')),
+    other_expense:vehicleNum(val('other_expense')),
+    sales:vehicleNum(val('sales')),
+    opening_odometer:map.opening_odometer===undefined?null:vehicleNum(val('opening_odometer')),
+    closing_odometer:map.closing_odometer===undefined?null:vehicleNum(val('closing_odometer'))
+   }
+   rows.push(row)
+  }
+ }
+ return rows
+}
+async function vehicleAdminCall(payload){
+ const {data:{session:active}}=await supabase.auth.getSession()
+ if(!active)throw new Error('انتهت جلسة الدخول')
+ const res=await fetch(SUPABASE_URL+'/functions/v1/ammco-admin-vehicles',{
+  method:'POST',
+  headers:{Authorization:'Bearer '+active.access_token,apikey:SUPABASE_KEY,'Content-Type':'application/json'},
+  body:JSON.stringify(payload)
+ })
+ const out=await res.json()
+ if(!res.ok)throw new Error(out.error||'تعذر تنفيذ العملية')
+ return out
+}
+window.syncVehicleRepOptions=function(){
+ const branchId=document.querySelector('#vehicle-assign-form [name="branch_id"]')?.value||''
+ const select=document.querySelector('#vehicle-assign-form [name="rep_name"]')
+ if(!select)return
+ select.querySelectorAll('option[data-branch]').forEach(o=>o.hidden=!!branchId&&o.dataset.branch!==branchId)
+ if(select.selectedOptions[0]?.hidden)select.value=''
+}
+window.saveVehicleAssignment=async function(ev){
+ ev.preventDefault()
+ const form=ev.currentTarget,msg=document.getElementById('vehicle-admin-msg'),fd=new FormData(form)
+ try{
+  msg.innerHTML='<div class="notice">جاري حفظ الربط…</div>'
+  await vehicleAdminCall({action:'assign',branch_id:fd.get('branch_id'),month:selectedMonth,vehicle_label:String(fd.get('vehicle_label')||'').trim(),rep_name:fd.get('rep_name')})
+  msg.innerHTML='<div class="success">تم ربط السيارة بالمندوب.</div>'
+  await renderReps()
+ }catch(e){msg.innerHTML='<div class="error">'+escapeHtml(e.message||e)+'</div>'}
+}
+window.uploadVehicleReport=async function(ev){
+ ev.preventDefault()
+ const form=ev.currentTarget,msg=document.getElementById('vehicle-upload-msg'),fd=new FormData(form),file=form.file.files?.[0]
+ if(!file){msg.innerHTML='<div class="error">اختر ملف تقرير السيارة.</div>';return}
+ try{
+  msg.innerHTML='<div class="notice">جاري قراءة تقرير السيارة…</div>'
+  const rows=await parseVehicleReportFile(file)
+  if(!rows.length)throw new Error('لم أتعرف على أعمدة التقرير. يجب أن يحتوي على السيارة والتاريخ، مع السولار/المبيعات أو المصروفات.')
+  msg.innerHTML='<div class="notice">تم العثور على '+rows.length+' حركة. جاري الحفظ…</div>'
+  const out=await vehicleAdminCall({action:'import',branch_id:fd.get('branch_id'),month:selectedMonth,rows})
+  let note='تم استيراد '+out.inserted+' حركة سيارة.'
+  if(out.unassigned?.length)note+=' سيارات بدون مندوب: '+out.unassigned.join('، ')
+  msg.innerHTML='<div class="success">'+escapeHtml(note)+'</div>'
+  form.file.value=''
+  await renderReps()
+ }catch(e){msg.innerHTML='<div class="error">'+escapeHtml(e.message||e)+'</div>'}
+}
+
 async function renderReps(){
- const {branch,from,to}=currentFilters(),ids=await approvedIds()
- const approvedFilter=ids.length?ids:['00000000-0000-0000-0000-000000000000']
- const data=await fetchAllRows(
-  'sales_rep_daily',
-  'id,branch_id,business_date,rep_name,sales_before_discount,net_after_discount,discounts,deposit_amount,closing_balance',
-  q=>{
-   q=q.in('batch_id',approvedFilter).gte('business_date',from).lte('business_date',to).order('business_date',{ascending:true}).order('id')
-   if(branch)q=q.eq('branch_id',branch)
-   return q
-  },
-  'تحميل بيانات المناديب المعتمدة'
- )
+ const {branch,from,to}=currentFilters(),ids=await approvedIds(),safeIds=ids.length?ids:['00000000-0000-0000-0000-000000000000']
+ let rq=supabase.from('sales_rep_daily')
+  .select('branch_id,business_date,rep_name,sales_before_discount,net_after_discount,discounts,deposit_amount,closing_balance,raw_payload')
+  .in('batch_id',safeIds).gte('business_date',from).lte('business_date',to).order('business_date',{ascending:true})
+ let vq=supabase.from('vehicle_daily')
+  .select('branch_id,business_date,vehicle_label,rep_name,sales,fuel_expense,maintenance_expense,other_expense,total_expense,raw_payload')
+  .in('batch_id',safeIds).gte('business_date',from).lte('business_date',to)
+ if(branch){rq=rq.eq('branch_id',branch);vq=vq.eq('branch_id',branch)}
+ const [rr,vr]=await Promise.all([rq,vq])
+ if(rr.error||vr.error)throw rr.error||vr.error
  const names=new Map(branches.map(b=>[b.id,b.name])),by=new Map()
- data.forEach(r=>{
+ ;(rr.data||[]).forEach(r=>{
   const k=r.branch_id+':'+r.rep_name
-  const x=by.get(k)||{branch_name:names.get(r.branch_id),rep_name:r.rep_name,gross:0,net:0,disc:0,deposit:0,closing:0,lastDate:''}
-  x.gross+=Number(r.sales_before_discount||0)
-  x.net+=Number(r.net_after_discount||0)
-  x.disc+=Number(r.discounts||0)
-  x.deposit+=Number(r.deposit_amount||0)
-  if(String(r.business_date)>=String(x.lastDate||'')){x.closing=Number(r.closing_balance||0);x.lastDate=r.business_date}
+  const x=by.get(k)||{branch_id:r.branch_id,branch_name:names.get(r.branch_id)||'—',rep_name:r.rep_name,gross:0,net:0,disc:0,deposit:0,closing:0,rawQty:0,equivQty:0,vehicles:new Set(),fuel:0,maintenance:0,vehicleOther:0,vehicleExpense:0,vehicleSales:0}
+  x.gross+=Number(r.sales_before_discount||0);x.net+=Number(r.net_after_discount||0);x.disc+=Number(r.discounts||0);x.deposit+=Number(r.deposit_amount||0);x.closing=Number(r.closing_balance||x.closing)
+  x.rawQty+=Number(r.raw_payload?.sales_qty||0);x.equivQty+=Number(r.raw_payload?.equivalent_sales_qty||0)
   by.set(k,x)
  })
- const rows=[...by.values()].map(x=>({...x,gross:money(x.gross),net:money(x.net),disc:money(x.disc),deposit:money(x.deposit),closing:money(x.closing)}))
- shell('أداء المناديب','المندوب × الفرع',filters(from,to,branch)+scope(from,to,branch)+table('أداء المناديب',[
-  {key:'branch_name',label:'الفرع'},{key:'rep_name',label:'المندوب'},{key:'gross',label:'قبل الخصم',num:1},{key:'disc',label:'الخصم',num:1},{key:'net',label:'صافي البيع',num:1},{key:'deposit',label:'التوريد',num:1},{key:'closing',label:'الرصيد',num:1}
- ],rows))
+ ;(vr.data||[]).forEach(v=>{
+  if(v.raw_payload?.manual_assignment)return
+  if(!v.rep_name)return
+  const k=v.branch_id+':'+v.rep_name
+  const x=by.get(k)
+  if(!x)return
+  if(v.vehicle_label)x.vehicles.add(v.vehicle_label)
+  x.fuel+=Number(v.fuel_expense||0);x.maintenance+=Number(v.maintenance_expense||0);x.vehicleOther+=Number(v.other_expense||0);x.vehicleExpense+=Number(v.total_expense||0);x.vehicleSales+=Number(v.sales||0)
+ })
+ const repOptions=[...by.values()].sort((a,b)=>String(a.rep_name).localeCompare(String(b.rep_name),'ar')).map(x=>'<option data-branch="'+x.branch_id+'" value="'+escapeAttr(x.rep_name)+'">'+escapeHtml(x.rep_name)+' — '+escapeHtml(x.branch_name)+'</option>').join('')
+ const branchOpts='<option value="">اختر الفرع</option>'+branches.map(b=>'<option value="'+b.id+'" '+(branch===b.id?'selected':'')+'>'+escapeHtml(b.name)+'</option>').join('')
+ const admin=profile?.role==='admin'?'<section class="rep-vehicle-admin"><div class="rep-vehicle-head"><div><h2>ربط السيارات بالمناديب</h2><p>حدد السيارة والمندوب مرة واحدة، ثم ارفع تقرير السيارة للشهر الحالي.</p></div><b>'+escapeHtml(monthLabel(selectedMonth))+'</b></div>'+
+  '<div class="rep-vehicle-grid">'+
+   '<form id="vehicle-assign-form" class="rep-vehicle-box" onsubmit="saveVehicleAssignment(event)"><h3>تعيين سيارة لمندوب</h3>'+
+    '<div class="field"><label>الفرع</label><select name="branch_id" onchange="syncVehicleRepOptions()" required>'+branchOpts+'</select></div>'+
+    '<div class="field"><label>السيارة / رقم السيارة</label><input name="vehicle_label" required placeholder="مثال: سيارة 3 أو أ س ب 1234"></div>'+
+    '<div class="field"><label>المندوب</label><select name="rep_name" required><option value="">اختر المندوب</option>'+repOptions+'</select></div>'+
+    '<button class="btn" type="submit">حفظ الربط</button><div id="vehicle-admin-msg"></div></form>'+
+   '<form id="vehicle-upload-form" class="rep-vehicle-box" onsubmit="uploadVehicleReport(event)"><h3>رفع تقرير السيارة</h3>'+
+    '<div class="field"><label>الفرع</label><select name="branch_id" required>'+branchOpts+'</select></div>'+
+    '<div class="field"><label>ملف Excel</label><input name="file" type="file" accept=".xlsx,.xls,.csv" required></div>'+
+    '<div class="vehicle-help">يتعرف على: التاريخ، السيارة، السولار/الوقود، الصيانة، المبيعات، المصروفات الأخرى، العداد.</div>'+
+    '<button class="btn" type="submit">رفع وربط التقرير</button><div id="vehicle-upload-msg"></div></form>'+
+  '</div></section>':''
+ const rows=[...by.values()].map(x=>({
+  branch_name:x.branch_name,rep_name:x.rep_name,vehicle:x.vehicles.size?[...x.vehicles].join('، '):'—',
+  gross:money(x.gross),disc:money(x.disc),discount_rate:pct(x.gross?x.disc/x.gross:0),net:money(x.net),
+  sales_qty:qty(x.rawQty),equiv_qty:qty(x.equivQty),avg_price:money(x.equivQty?x.net/x.equivQty:0),
+  deposit:money(x.deposit),closing:money(x.closing),fuel:money(x.fuel),maintenance:money(x.maintenance),
+  vehicle_other:money(x.vehicleOther),vehicle_expense:money(x.vehicleExpense)
+ }))
+ shell('أداء المناديب','المندوب + السيارة + المبيعات والمصروفات',filters(from,to,branch)+scope(from,to,branch)+admin+
+  table('أداء المناديب',[
+   {key:'branch_name',label:'الفرع'},{key:'rep_name',label:'المندوب'},{key:'vehicle',label:'السيارة'},
+   {key:'gross',label:'قبل الخصم',num:1},{key:'disc',label:'الخصم',num:1},{key:'discount_rate',label:'% الخصم'},
+   {key:'net',label:'صافي البيع',num:1},{key:'sales_qty',label:'كمية البيع',num:1},{key:'equiv_qty',label:'الكمية المكافئة',num:1},
+   {key:'avg_price',label:'متوسط السعر',num:1},{key:'deposit',label:'التوريد',num:1},{key:'closing',label:'الرصيد',num:1},
+   {key:'fuel',label:'السولار',num:1},{key:'maintenance',label:'الصيانة',num:1},{key:'vehicle_other',label:'مصروف سيارة آخر',num:1},{key:'vehicle_expense',label:'إجمالي مصروف السيارة',num:1}
+  ],rows))
  bindFilters('reps')
+ syncVehicleRepOptions()
 }
 async function renderInventory(){
  const cfg=currentFilters(),branch=cfg.branch,from=cfg.from,to=cfg.to,ids=await approvedIds()
