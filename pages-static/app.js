@@ -47,7 +47,7 @@ async function boot(forceMeta=false){
  })()
  try{await bootPromise}finally{bootPromise=null}
 }
-window.addEventListener('hashchange',()=>render())
+window.addEventListener('hashchange',()=>render({force:true}))
 supabase.auth.onAuthStateChange((event,s)=>{
  const prevUser=session?.user?.id
  session=s
@@ -384,26 +384,9 @@ async function renderFresh(){
 }
 
 async function render(options={}){
- const force=!!options.force
- const targetKey=pageCacheKey()
- const targetCacheable=isCacheableRoute()
-
- // Cache read-only reporting pages only. Operational pages must always be fresh.
- if(currentRenderedKey&&currentRenderedKey!==targetKey&&app.firstElementChild){
-  const previousRoute=(currentRenderedKey.replace(/^#\/?/,'').split('?')[0]||'dashboard')
-  if(cacheableRoutes.has(previousRoute))pageViewCache.set(currentRenderedKey,app.firstElementChild)
- }
- if(!force&&targetCacheable&&pageViewCache.has(targetKey)){
-  const cached=pageViewCache.get(targetKey)
-  app.replaceChildren(cached)
-  currentRenderedKey=targetKey
-  return
- }
-
+ clearPageCache()
  await renderFresh()
- currentRenderedKey=targetKey
- if(targetCacheable&&app.firstElementChild)pageViewCache.set(targetKey,app.firstElementChild)
- else pageViewCache.delete(targetKey)
+ currentRenderedKey=pageCacheKey()
 }
 
 function renderLogin(){
