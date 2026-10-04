@@ -61,6 +61,41 @@ Deno.serve(async(req)=>{
 
   try{
     const body=await req.json()
+
+    if(body?.action==='set_expense_type'){
+      const ids=Array.isArray(body?.ids)?body.ids.map((x:any)=>Number(x)).filter((x:number)=>Number.isInteger(x)&&x>0):[]
+      const expenseType=String(body?.expense_type||'').trim()
+      const label=String(body?.label||'').trim()
+      if(!ids.length)return json({error:'لا توجد حركات مصروف لتعديلها'},400)
+      if(!['تشغيلي','غير تشغيلي'].includes(expenseType))return json({error:'نوع المصروف غير صالح'},400)
+
+      const {data:allowedBranches,error:bErr}=await admin.from('branches').select('id').eq('organization_id',me.organization_id)
+      if(bErr)return json({error:bErr.message},500)
+      const allowed=new Set((allowedBranches||[]).map((x:any)=>x.id))
+
+      const {data:rows,error:rErr}=await admin.from('cash_entries')
+        .select('id,branch_id,raw_payload')
+        .in('id',ids)
+      if(rErr)return json({error:rErr.message},500)
+
+      const validRows=(rows||[]).filter((x:any)=>allowed.has(x.branch_id))
+      if(validRows.length!==ids.length)return json({error:'بعض الحركات لا تتبع المؤسسة الحالية'},403)
+
+      const changedAt=new Date().toISOString()
+      for(const row of validRows){
+        const payload=(row.raw_payload&&typeof row.raw_payload==='object')?row.raw_payload:{}
+        const history=Array.isArray((payload as any).expense_type_history)?(payload as any).expense_type_history:[]
+        const raw_payload={
+          ...payload,
+          manual_expense_type:expenseType,
+          expense_type_history:[...history,{at:changedAt,by:uid,label,expense_type:expenseType}]
+        }
+        const {error:uErr}=await admin.from('cash_entries').update({raw_payload}).eq('id',row.id)
+        if(uErr)return json({error:uErr.message},500)
+      }
+      return json({ok:true,updated:validRows.length,expense_type:expenseType})
+    }
+
     const id=Number(body?.id)
     const source_code=String(body?.source_code??'').trim()||null
     const entry_date=String(body?.entry_date??'').trim()
