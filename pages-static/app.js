@@ -112,7 +112,8 @@ const EXEC_NAV_SECTIONS=[
  {id:'reps-daily',label:'يوميات المناديب',icon:'<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="3" y="4" width="18" height="17" rx="2"></rect><path d="M8 2v4M16 2v4M3 9h18"></path><path d="M8 13h3M13 13h3M8 17h3M13 17h3"></path></svg>'},
  {id:'expenses-center',label:'المصروفات',icon:'<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="3" y="5" width="18" height="14" rx="2"></rect><path d="M7 9h10M7 13h6"></path></svg>'},
  {id:'treasury',label:'الخزينة',icon:'<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="2" y="6" width="20" height="12" rx="2"></rect><circle cx="12" cy="12" r="2"></circle></svg>'},
- {id:'uploads',label:'رفع الشيتات والسجل',icon:'<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"></path><polyline points="17 8 12 3 7 8"></polyline><line x1="12" y1="3" x2="12" y2="15"></line></svg>'}
+ {id:'uploads',label:'رفع الشيتات والسجل',icon:'<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"></path><polyline points="17 8 12 3 7 8"></polyline><line x1="12" y1="3" x2="12" y2="15"></line></svg>'},
+ {id:'users',label:'إدارة المستخدمين',adminOnly:true,icon:'<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="9" cy="7" r="4"></circle><path d="M2 21v-2a6 6 0 0 1 6-6h2a6 6 0 0 1 6 6v2"></path><path d="M17 8h5M19.5 5.5v5"></path></svg>'}
 ]
 function globalMonthRange(month=selectedMonth){
  const m=month||today.toISOString().slice(0,7)
@@ -195,7 +196,7 @@ window.openGlobalDateRangePicker=function(){
 
 function shell(title,subtitle,body){
  const r=route().split('?')[0],collapsed=localStorage.getItem('ammco.sidebar.collapsed')==='1'
- const nav=EXEC_NAV_SECTIONS.filter(x=>x.id!=='users').map(x=>{
+ const nav=EXEC_NAV_SECTIONS.filter(x=>!x.adminOnly||profile?.role==='admin').map(x=>{
   const href=x.href||('#/'+x.id),active=r===x.id
   return '<a href="'+href+'" class="sidebar-nav-item '+(active?'active':'')+'">'+x.icon+'<span>'+x.label+'</span></a>'
  }).join('')
@@ -2359,6 +2360,118 @@ async function renderProducts(){
   '<section class="table-card matrix"><div class="table-head"><div><h2>أرصدة الفروع حسب آخر رصيد للصنف</h2><small>'+matrix.size+' صنف</small></div></div><div class="table-wrap"><table><thead><tr><th rowspan="2">الصنف</th>'+head+'</tr><tr>'+sub+'</tr></thead><tbody>'+rows+'</tbody></table></div></section>')
  bindFilters('products')
 }
+async function adminUsersCall(method='GET',payload=null){
+ const {data:{session:active}}=await supabase.auth.getSession()
+ if(!active)throw new Error('انتهت جلسة الدخول')
+ const options={method,headers:{Authorization:'Bearer '+active.access_token,apikey:SUPABASE_KEY}}
+ if(payload){options.headers['Content-Type']='application/json';options.body=JSON.stringify(payload)}
+ const res=await fetch(SUPABASE_URL+'/functions/v1/ammco-admin-users',options)
+ const out=await res.json()
+ if(!res.ok)throw new Error(out.error||'تعذر تنفيذ العملية')
+ return out
+}
+
+window.openCreateUserDialog=function(){
+ if(profile?.role!=='admin')return
+ document.getElementById('user-dialog')?.remove()
+ const branchChecks=branches.map(b=>'<label class="user-branch-option"><input type="checkbox" name="branch_ids" value="'+b.id+'"><span>'+escapeHtml(b.name)+'</span></label>').join('')
+ const html='<div class="dialog-backdrop" id="user-dialog"><div class="dialog-card user-dialog-card">'+
+  '<div class="dialog-head"><h3>إضافة مستخدم جديد</h3><button class="tool-btn" type="button" onclick="document.getElementById(\'user-dialog\').remove()">إغلاق</button></div>'+
+  '<form id="create-user-form" class="dialog-form">'+
+   '<div class="user-form-grid">'+
+    '<div class="field"><label>الاسم</label><input name="full_name" required></div>'+
+    '<div class="field"><label>البريد الإلكتروني</label><input name="email" type="email" dir="ltr" required></div>'+
+    '<div class="field"><label>كلمة مرور مؤقتة</label><input name="password" type="password" minlength="8" required></div>'+
+    '<div class="field"><label>الدور</label><select name="role"><option value="branch_user">مستخدم فرع</option><option value="analyst">محلل</option><option value="admin">مدير</option></select></div>'+
+   '</div>'+
+   '<div class="field"><label>الفروع المسموح بها</label><div class="user-branch-grid">'+branchChecks+'</div><small>المدير يحصل على كل الفروع تلقائيًا.</small></div>'+
+   '<div id="user-form-msg"></div><button class="btn" type="submit">إنشاء المستخدم</button>'+
+  '</form></div></div>'
+ document.body.insertAdjacentHTML('beforeend',html)
+ document.getElementById('create-user-form')?.addEventListener('submit',async e=>{
+  e.preventDefault();const form=e.currentTarget,msg=document.getElementById('user-form-msg'),fd=new FormData(form),btn=form.querySelector('button[type=submit]')
+  try{
+   btn.disabled=true;msg.innerHTML='<div class="notice">جاري إنشاء المستخدم…</div>'
+   await adminUsersCall('POST',{
+    action:'create',full_name:String(fd.get('full_name')||'').trim(),email:String(fd.get('email')||'').trim(),
+    password:String(fd.get('password')||''),role:String(fd.get('role')||'branch_user'),
+    branch_ids:fd.getAll('branch_ids')
+   })
+   msg.innerHTML='<div class="success">تم إنشاء المستخدم.</div>'
+   setTimeout(()=>{document.getElementById('user-dialog')?.remove();renderUsers()},350)
+  }catch(err){msg.innerHTML='<div class="error">'+escapeHtml(err.message||err)+'</div>'}
+  finally{btn.disabled=false}
+ })
+}
+
+window.openEditUserDialog=function(userId){
+ if(profile?.role!=='admin')return
+ const user=window.adminUsersCache?.users?.find(x=>x.user_id===userId)
+ const branchList=window.adminUsersCache?.branches||branches
+ if(!user)return
+ document.getElementById('user-dialog')?.remove()
+ const branchChecks=branchList.map(b=>'<label class="user-branch-option"><input type="checkbox" name="branch_ids" value="'+b.id+'" '+(user.branch_ids?.includes(b.id)?'checked':'')+'><span>'+escapeHtml(b.name)+'</span></label>').join('')
+ const html='<div class="dialog-backdrop" id="user-dialog"><div class="dialog-card user-dialog-card">'+
+  '<div class="dialog-head"><h3>تعديل المستخدم</h3><button class="tool-btn" type="button" onclick="document.getElementById(\'user-dialog\').remove()">إغلاق</button></div>'+
+  '<form id="edit-user-form" class="dialog-form">'+
+   '<div class="user-form-grid">'+
+    '<div class="field"><label>الاسم</label><input name="full_name" value="'+escapeAttr(user.full_name||'')+'" required></div>'+
+    '<div class="field"><label>البريد</label><input value="'+escapeAttr(user.email||'')+'" disabled dir="ltr"></div>'+
+    '<div class="field"><label>الدور</label><select name="role"><option value="branch_user" '+(user.role==='branch_user'?'selected':'')+'>مستخدم فرع</option><option value="analyst" '+(user.role==='analyst'?'selected':'')+'>محلل</option><option value="admin" '+(user.role==='admin'?'selected':'')+'>مدير</option></select></div>'+
+    '<div class="field"><label>الحالة</label><select name="is_active"><option value="1" '+(user.is_active?'selected':'')+'>نشط</option><option value="0" '+(!user.is_active?'selected':'')+'>موقوف</option></select></div>'+
+   '</div>'+
+   '<div class="field"><label>الفروع المسموح بها</label><div class="user-branch-grid">'+branchChecks+'</div><small>المدير يحصل على كل الفروع تلقائيًا.</small></div>'+
+   '<div id="user-form-msg"></div><button class="btn" type="submit">حفظ التعديلات</button>'+
+  '</form></div></div>'
+ document.body.insertAdjacentHTML('beforeend',html)
+ document.getElementById('edit-user-form')?.addEventListener('submit',async e=>{
+  e.preventDefault();const form=e.currentTarget,msg=document.getElementById('user-form-msg'),fd=new FormData(form),btn=form.querySelector('button[type=submit]')
+  try{
+   btn.disabled=true;msg.innerHTML='<div class="notice">جاري حفظ التعديلات…</div>'
+   await adminUsersCall('POST',{
+    action:'update',user_id:user.user_id,full_name:String(fd.get('full_name')||'').trim(),
+    role:String(fd.get('role')||'branch_user'),is_active:fd.get('is_active')==='1',branch_ids:fd.getAll('branch_ids')
+   })
+   msg.innerHTML='<div class="success">تم حفظ التعديلات.</div>'
+   setTimeout(()=>{document.getElementById('user-dialog')?.remove();renderUsers()},350)
+  }catch(err){msg.innerHTML='<div class="error">'+escapeHtml(err.message||err)+'</div>'}
+  finally{btn.disabled=false}
+ })
+}
+
+async function renderUsers(){
+ if(profile?.role!=='admin'){
+  shell('إدارة المستخدمين','صلاحية المدير مطلوبة','<div class="error">هذه الشاشة متاحة للمدير فقط.</div>')
+  return
+ }
+ shell('إدارة المستخدمين','المستخدمون والصلاحيات والفروع','<div class="notice">جاري تحميل المستخدمين…</div>')
+ try{
+  const out=await adminUsersCall('GET')
+  window.adminUsersCache=out
+  const branchMap=new Map((out.branches||[]).map(b=>[b.id,b.name]))
+  const roleLabel={admin:'مدير',analyst:'محلل',branch_user:'مستخدم فرع'}
+  const rows=(out.users||[]).map(u=>({
+   full_name:escapeHtml(u.full_name||'—'),
+   email:'<span dir="ltr">'+escapeHtml(u.email||'—')+'</span>',
+   role:roleLabel[u.role]||u.role,
+   status:u.is_active?'نشط':'موقوف',
+   branches:u.role==='admin'?'كل الفروع':(u.branch_ids||[]).map(id=>branchMap.get(id)||'—').join('، ')||'—',
+   last_sign_in:u.last_sign_in_at?new Date(u.last_sign_in_at).toLocaleString('en-GB'):'—',
+   created_at:u.created_at?new Date(u.created_at).toLocaleDateString('en-GB'):'—',
+   action:'<button class="inline-action" type="button" onclick="openEditUserDialog(\''+u.user_id+'\')">تعديل</button>'
+  }))
+  shell('إدارة المستخدمين','المستخدمون والصلاحيات والفروع',
+   '<div class="users-page-actions"><button class="btn" type="button" onclick="openCreateUserDialog()">+ إضافة مستخدم</button></div>'+
+   table('المستخدمون',[
+    {key:'full_name',label:'الاسم'},{key:'email',label:'البريد الإلكتروني'},{key:'role',label:'الدور'},
+    {key:'status',label:'الحالة'},{key:'branches',label:'الفروع'},{key:'last_sign_in',label:'آخر دخول'},
+    {key:'created_at',label:'تاريخ الإنشاء'},{key:'action',label:'إجراء',filter:false}
+   ],rows))
+ }catch(err){
+  shell('إدارة المستخدمين','المستخدمون والصلاحيات والفروع','<div class="error">'+escapeHtml(err.message||err)+'</div>')
+ }
+}
+
 async function renderBranches(){const {data,error}=await supabase.from('branches').select('id,name,code,is_active,created_at,treasury_accounts(id,is_active)').order('created_at');if(error)throw error;const rows=(data||[]).map(b=>({name:b.name,code:b.code,status:b.is_active?'نشط':'متوقف',treasuries:(b.treasury_accounts||[]).filter(x=>x.is_active).length,created_at:new Date(b.created_at).toLocaleString('en-GB')}));const add=profile?.role==='admin'?`<section class="card" style="margin-bottom:14px"><h2>+ إضافة فرع جديد</h2><form id="add-branch" class="filters" style="margin:0"><div class="field"><label>اسم الفرع</label><input name="name" required></div><div class="field"><label>كود الفرع</label><input name="code" dir="ltr" required></div><div></div><div class="field"><label>&nbsp;</label><button class="btn">إنشاء الفرع</button></div></form><div id="branch-msg"></div></section>`:'';shell('إدارة الفروع','إضافة الفروع وإدارة الحالة',add+table('الفروع الحالية',[{key:'name',label:'الفرع'},{key:'code',label:'الكود'},{key:'status',label:'الحالة'},{key:'treasuries',label:'عدد الخزائن',num:1},{key:'created_at',label:'تاريخ الإنشاء'}],rows));document.getElementById('add-branch')?.addEventListener('submit',async e=>{e.preventDefault();const fd=new FormData(e.currentTarget);const {error}=await supabase.rpc('create_branch_with_default_treasury',{p_code:String(fd.get('code')).trim(),p_name:String(fd.get('name')).trim()});document.getElementById('branch-msg').innerHTML=error?`<div class="error">${error.message}</div>`:'<div class="success">تم إنشاء الفرع والخزنة الرئيسية.</div>';if(!error)boot()})}
 async function renderImports(){
  const {data,error}=await supabase.from('import_batches').select('id,branch_id,original_file_name,period_start,period_end,version,status,uploaded_at,approved_at,validated_at,failure_message,branches(name)').order('uploaded_at',{ascending:false}).limit(300)
