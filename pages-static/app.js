@@ -545,9 +545,9 @@ async function loadExecutiveIntelligence(f){
  })
  const branchList=[...branchAgg.values()].map(b=>({...b,sharePct:netSales?b.sales/netSales:0,avgPrice:b.equivQty?b.sales/b.equivQty:0,expenseRatio:b.sales?b.expenses/b.sales:0})).sort((a,b)=>b.sales-a.sales)
  const equivSalesQty=branchList.reduce((a,b)=>a+b.equivQty,0),rawSalesQty=branchList.reduce((a,b)=>a+b.qty,0)
- const avgCartonPrice=equivSalesQty?netSales/equivSalesQty:0,expenseRatio=netSales?totalExpenses/netSales:0
+ const avgCartonPrice=equivSalesQty?netSales/equivSalesQty:0,expenseRatio=netSales?totalExpenses/netSales:0,discountRate=grossSales?discounts/grossSales:0
  const expensesByCategory={};exp.forEach(r=>{const k=normalizeExecCategory((r.canonical_category||'')+' '+(r.expense_group||''));expensesByCategory[k]=(expensesByCategory[k]||0)+Number(r.amount||0)})
- let prevNetSales=0,prevTotalExpenses=0,prevEquivQty=0,prevAvgPrice=0,prevExpenseRatio=0
+ let prevNetSales=0,prevTotalExpenses=0,prevEquivQty=0,prevAvgPrice=0,prevExpenseRatio=0,prevDiscountRate=0
  if(f.compare){
   const s=new Date(f.from),e=new Date(f.to),days=Math.round((e-s)/86400000)+1,pe=new Date(s.getTime()-86400000),ps=new Date(pe.getTime()-(days-1)*86400000),pf=ps.toISOString().slice(0,10),pt=pe.toISOString().slice(0,10)
   let pq=supabase.from('v_branch_daily_kpis').select('net_sales').gte('business_date',pf).lte('business_date',pt),px=supabase.from('v_expense_analysis').select('amount').gte('entry_date',pf).lte('entry_date',pt)
@@ -556,7 +556,7 @@ async function loadExecutiveIntelligence(f){
   prevExpenseRatio=prevNetSales?prevTotalExpenses/prevNetSales:0
  }
  const points=[...timeline.values()].sort((a,b)=>a.date.localeCompare(b.date));points.forEach(p=>{p.avgPrice=p.equivQty?p.sales/p.equivQty:0})
- return {kpis:{netSales,prevNetSales,equivSalesQty,prevEquivQty,avgCartonPrice,prevAvgPrice,totalExpenses,prevTotalExpenses,netResult:netSales-totalExpenses,prevNetResult:prevNetSales-prevTotalExpenses,expenseRatio,prevExpenseRatio,reportingBranches:branchList.filter(b=>b.hasData).length,totalBranchesCount:branchAgg.size,lastUpdate:br.data?.[0]?.created_at?new Date(br.data[0].created_at).toLocaleString('ar-EG'):'—'},timelinePoints:points,branchList,expensesByCategory,discounts,grossSales,collections,rawExpenses:exp,rawInventory:inv,products,productMap,rawSalesQty}
+ return {kpis:{netSales,prevNetSales,equivSalesQty,prevEquivQty,avgCartonPrice,prevAvgPrice,totalExpenses,prevTotalExpenses,netResult:netSales-totalExpenses,prevNetResult:prevNetSales-prevTotalExpenses,expenseRatio,prevExpenseRatio,discountRate,prevDiscountRate,reportingBranches:branchList.filter(b=>b.hasData).length,totalBranchesCount:branchAgg.size,lastUpdate:br.data?.[0]?.created_at?new Date(br.data[0].created_at).toLocaleString('ar-EG'):'—'},timelinePoints:points,branchList,expensesByCategory,discounts,grossSales,collections,rawExpenses:exp,rawInventory:inv,products,productMap,rawSalesQty}
 }
 
 async function approvedIds(){
@@ -659,6 +659,7 @@ function render8KPIGrid(kpis, compare) {
       ${renderKPICard('إجمالي المبيعات (صافي)', kpis.netSales, compare ? kpis.prevNetSales : null, 'currency', false, 'صافي الإيرادات بعد الخصم')}
       ${renderKPICard('كمية المبيعات (المكافئة)', kpis.equivSalesQty, compare ? kpis.prevEquivQty : null, 'qty', false, 'مع احتساب دبل × 2')}
       ${renderKPICard('متوسط سعر الكرتونة', kpis.avgCartonPrice, compare ? kpis.prevAvgPrice : null, 'currency', false, 'المبيعات ÷ الكمية المكافئة')}
+      ${renderKPICard('نسبة الخصم', kpis.discountRate, compare ? kpis.prevDiscountRate : null, 'percent', true, 'الخصم ÷ إجمالي المبيعات قبل الخصم')}
       ${renderKPICard('إجمالي المصروفات', kpis.totalExpenses, compare ? kpis.prevTotalExpenses : null, 'currency', true, 'المنصرف الفعلي من الخزائن')}
       ${renderKPICard('صافي النتيجة (المبيعات - المصروفات)', kpis.netResult, compare ? kpis.prevNetResult : null, 'currency', false, 'الأرباح التشغيلية المحققة')}
       ${renderKPICard('نسبة المصروفات للمبيعات', kpis.expenseRatio, compare ? kpis.prevExpenseRatio : null, 'percent', true, 'الحد المعياري المستهدف < 15%')}
@@ -1300,7 +1301,7 @@ window.editTreasurySheetRow=function(id){
 }
 
 
-async function renderSales(){const {branch,from,to}=currentFilters();const daily=await loadDaily(branch,from,to);const rows=daily.map(r=>({business_date:r.business_date,branch_name:r.branch_name,gross:money(r.gross_sales),discounts:money(r.discounts),net:money(r.net_sales),collections:money(r.collections),expenses:money(r.expenses)}));shell('تقرير المبيعات','تفاصيل المبيعات اليومية حسب الفرع',filters(from,to,branch)+scope(from,to,branch)+table('المبيعات اليومية',[{key:'business_date',label:'التاريخ'},{key:'branch_name',label:'الفرع'},{key:'gross',label:'قبل الخصم',num:1},{key:'discounts',label:'الخصم',num:1},{key:'net',label:'صافي البيع',num:1},{key:'collections',label:'التحصيل',num:1},{key:'expenses',label:'المصروفات',num:1}],rows));bindFilters('sales')}
+async function renderSales(){const {branch,from,to}=currentFilters();const daily=await loadDaily(branch,from,to);const rows=daily.map(r=>{const gross=Number(r.gross_sales||0),disc=Number(r.discounts||0);return{business_date:r.business_date,branch_name:r.branch_name,gross:money(gross),discounts:money(disc),discount_rate:pct(gross?disc/gross:0),net:money(r.net_sales),collections:money(r.collections),expenses:money(r.expenses)}});shell('تقرير المبيعات','تفاصيل المبيعات اليومية حسب الفرع',filters(from,to,branch)+scope(from,to,branch)+table('المبيعات اليومية',[{key:'business_date',label:'التاريخ'},{key:'branch_name',label:'الفرع'},{key:'gross',label:'قبل الخصم',num:1},{key:'discounts',label:'الخصم',num:1},{key:'discount_rate',label:'% الخصم'},{key:'net',label:'صافي البيع',num:1},{key:'collections',label:'التحصيل',num:1},{key:'expenses',label:'المصروفات',num:1}],rows));bindFilters('sales')}
 async function renderExpensesCenter(){
  const {branch,from,to}=currentFilters()
  let expQ=supabase.from('v_expense_analysis')
@@ -1549,9 +1550,9 @@ async function renderMonthly(){
  lastDebt.forEach((v,key)=>{const m=key.slice(0,7),x=byMonth.get(m);if(x)x.debt+=v.value})
  lastInv.forEach((v,key)=>{const m=key.slice(0,7),x=byMonth.get(m);if(x)x.inv+=v.value})
  let ytd=0
- const rows=[...byMonth.values()].sort((a,b)=>a.month.localeCompare(b.month)).map(x=>{ytd+=x.net;return{month:x.month,gross:money(x.gross),disc:money(x.disc),net:money(x.net),coll:money(x.coll),exp:money(x.exp),debt:money(x.debt),inv:money(x.inv),ytd:money(ytd)}})
+ const rows=[...byMonth.values()].sort((a,b)=>a.month.localeCompare(b.month)).map(x=>{ytd+=x.net;return{month:x.month,gross:money(x.gross),disc:money(x.disc),disc_rate:pct(x.gross?x.disc/x.gross:0),net:money(x.net),coll:money(x.coll),exp:money(x.exp),debt:money(x.debt),inv:money(x.inv),ytd:money(ytd)}})
  const form='<form id="year-filter" class="filters"><div class="field"><label>الفرع</label><select name="branch">'+branchOptions(branch)+'</select></div><div class="field"><label>السنة</label><input name="year" value="'+year+'"></div><div></div><div class="field"><label>&nbsp;</label><button class="btn">تطبيق</button></div></form>'
- shell('التحليل الشهري وYTD','مقارنة الشهور والتراكم السنوي من المصادر المعتمدة',form+table('Monthly / YTD',[{key:'month',label:'الشهر'},{key:'gross',label:'قبل الخصم',num:1},{key:'disc',label:'الخصم',num:1},{key:'net',label:'صافي المبيعات',num:1},{key:'coll',label:'التحصيل',num:1},{key:'exp',label:'المصروفات الفعلية',num:1},{key:'debt',label:'مديونية آخر الشهر',num:1},{key:'inv',label:'قيمة مخزون آخر الشهر',num:1},{key:'ytd',label:'YTD صافي المبيعات',num:1}],rows))
+ shell('التحليل الشهري وYTD','مقارنة الشهور والتراكم السنوي من المصادر المعتمدة',form+table('Monthly / YTD',[{key:'month',label:'الشهر'},{key:'gross',label:'قبل الخصم',num:1},{key:'disc',label:'الخصم',num:1},{key:'disc_rate',label:'% الخصم'},{key:'net',label:'صافي المبيعات',num:1},{key:'coll',label:'التحصيل',num:1},{key:'exp',label:'المصروفات الفعلية',num:1},{key:'debt',label:'مديونية آخر الشهر',num:1},{key:'inv',label:'قيمة مخزون آخر الشهر',num:1},{key:'ytd',label:'YTD صافي المبيعات',num:1}],rows))
  document.getElementById('year-filter')?.addEventListener('submit',e=>{e.preventDefault();const fd=new FormData(e.currentTarget);location.hash='#/monthly?branch='+(fd.get('branch')||'')+'&year='+fd.get('year')})
 }
 
