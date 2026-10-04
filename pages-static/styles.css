@@ -2512,3 +2512,52 @@ body{background:#f5f7fa;color:var(--ui-text)}
   }
   .content{padding-top:60px!important}
 }
+
+
+/* Rep vehicle mapping */
+.rep-vehicle-admin{
+  margin:14px 0;
+  padding:16px;
+  border:1px solid #dfe6ed;
+  border-radius:14px;
+  background:#fff;
+}
+.rep-vehicle-head{
+  display:flex;
+  justify-content:space-between;
+  align-items:flex-start;
+  gap:12px;
+  margin-bottom:14px;
+}
+.rep-vehicle-head h2{margin:0 0 4px;font-size:16px}
+.rep-vehicle-head p{margin:0;color:#6b7c8f;font-size:12px}
+.rep-vehicle-head>b{
+  padding:6px 10px;
+  border-radius:9px;
+  background:#eef5fa;
+  color:#185c86;
+  font-size:12px;
+  white-space:nowrap;
+}
+.rep-vehicle-grid{
+  display:grid;
+  grid-template-columns:1fr 1fr;
+  gap:12px;
+}
+.rep-vehicle-box{
+  padding:14px;
+  border:1px solid #e3e9ef;
+  border-radius:11px;
+  background:#f9fbfc;
+}
+.rep-vehicle-box h3{margin:0 0 12px;font-size:14px}
+.rep-vehicle-box .field{margin-bottom:10px}
+.vehicle-help{
+  margin:8px 0 12px;
+  color:#6c7d8f;
+  font-size:11px;
+  line-height:1.6;
+}
+@media(max-width:850px){
+  .rep-vehicle-grid{grid-template-columns:1fr}
+}
