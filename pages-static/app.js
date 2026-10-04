@@ -1419,15 +1419,41 @@ window.editTreasurySheetRow=function(id){
 
 async function renderSales(){const {branch,from,to}=currentFilters();const daily=await loadDaily(branch,from,to);const rows=daily.map(r=>{const gross=Number(r.gross_sales||0),disc=Number(r.discounts||0);return{business_date:r.business_date,branch_name:r.branch_name,gross:money(gross),discounts:money(disc),discount_rate:pct(gross?disc/gross:0),net:money(r.net_sales),collections:money(r.collections),expenses:money(r.expenses)}});shell('تقرير المبيعات','تفاصيل المبيعات اليومية حسب الفرع',filters(from,to,branch)+scope(from,to,branch)+table('المبيعات اليومية',[{key:'business_date',label:'التاريخ'},{key:'branch_name',label:'الفرع'},{key:'gross',label:'قبل الخصم',num:1},{key:'discounts',label:'الخصم',num:1},{key:'discount_rate',label:'% الخصم'},{key:'net',label:'صافي البيع',num:1},{key:'collections',label:'التحصيل',num:1},{key:'expenses',label:'المصروفات',num:1}],rows));bindFilters('sales')}
 function expenseOperationalType(row){
+ const manual=String(row?.raw_payload?.manual_expense_type||'').trim()
+ if(['تشغيلي','غير تشغيلي'].includes(manual))return manual
  const group=String(row?.expense_group||'').trim()
  if(['مصروفات السيارات','اجور وحوافز وعمولات','انتقالات وسفر','تشغيل ومرافق'].includes(group))return 'تشغيلي'
  return 'غير تشغيلي'
 }
+window.saveExpenseOperationalType=async function(encodedIds,selectId,label){
+ if(profile?.role!=='admin')return
+ const select=document.getElementById(selectId),msg=document.getElementById('expense-type-msg')
+ const expenseType=select?.value||''
+ let ids=[]
+ try{ids=JSON.parse(decodeURIComponent(encodedIds))}catch{}
+ if(!ids.length||!expenseType)return
+ try{
+  if(msg)msg.innerHTML='<div class="notice">جاري حفظ نوع المصروف…</div>'
+  const {data:{session:active}}=await supabase.auth.getSession()
+  if(!active)throw new Error('انتهت جلسة الدخول')
+  const res=await fetch(SUPABASE_URL+'/functions/v1/ammco-admin-cash',{
+   method:'POST',
+   headers:{Authorization:'Bearer '+active.access_token,apikey:SUPABASE_KEY,'Content-Type':'application/json'},
+   body:JSON.stringify({action:'set_expense_type',ids,expense_type:expenseType,label})
+  })
+  const out=await res.json()
+  if(!res.ok)throw new Error(out.error||'تعذر حفظ نوع المصروف')
+  if(msg)msg.innerHTML='<div class="success">تم تغيير نوع المصروف إلى '+escapeHtml(expenseType)+' لعدد '+out.updated+' حركة.</div>'
+  clearPageCache()
+  setTimeout(()=>render({force:true}),350)
+ }catch(e){if(msg)msg.innerHTML='<div class="error">'+escapeHtml(e.message||e)+'</div>'}
+}
 
 async function renderExpensesCenter(){
  const {branch,from,to}=currentFilters()
- let expQ=supabase.from('v_expense_analysis')
-  .select('branch_id,entry_date,canonical_category,expense_group,amount')
+ let expQ=supabase.from('cash_entries')
+  .select('id,branch_id,entry_date,canonical_category,expense_group,amount,raw_payload,is_expense')
+  .eq('is_expense',true)
   .gte('entry_date',from).lte('entry_date',to)
  let salesQ=supabase.from('v_branch_daily_kpis')
   .select('branch_id,business_date,net_sales')
@@ -1458,16 +1484,25 @@ async function renderExpensesCenter(){
  const categoryMap=new Map()
  expenses.forEach(r=>{
   const label=(r.canonical_category||r.expense_group||'غير مصنف').trim()||'غير مصنف'
-  const x=categoryMap.get(label)||{label,total:0,branches:new Map(),expenseType:expenseOperationalType(r)}
+  const currentType=expenseOperationalType(r)
+  const x=categoryMap.get(label)||{label,total:0,branches:new Map(),expenseType:currentType,ids:[],mixed:false}
+  if(x.expenseType!==currentType)x.mixed=true
   const v=Number(r.amount||0)
   x.total+=v
+  x.ids.push(r.id)
   x.branches.set(r.branch_id,(x.branches.get(r.branch_id)||0)+v)
   categoryMap.set(label,x)
  })
  const detailRows=[...categoryMap.values()]
   .sort((a,b)=>b.total-a.total)
   .map(x=>{
-   const row={label:escapeHtml(x.label),expense_type:x.expenseType}
+   const type=x.mixed?'مختلط':x.expenseType
+   const selectId='expense-type-'+Math.random().toString(36).slice(2,9)
+   const encodedIds=encodeURIComponent(JSON.stringify(x.ids))
+   const editor=profile?.role==='admin'
+    ? '<div class="expense-type-editor"><select id="'+selectId+'"><option value="تشغيلي" '+(x.expenseType==='تشغيلي'?'selected':'')+'>تشغيلي</option><option value="غير تشغيلي" '+(x.expenseType==='غير تشغيلي'?'selected':'')+'>غير تشغيلي</option></select><button class="tool-btn" type="button" onclick="saveExpenseOperationalType(\''+encodedIds+'\',\''+selectId+'\',\''+escapeAttr(x.label).replace(/&#39;/g,"\\'")+'\')">حفظ</button></div>'
+    : '—'
+   const row={label:escapeHtml(x.label),expense_type:type,expense_type_edit:editor}
    bset.forEach(b=>row[b.id]=money(x.branches.get(b.id)||0))
    row.total=money(x.total)
    row.rate=pct(totalExpenses?x.total/totalExpenses:0)
@@ -1476,6 +1511,7 @@ async function renderExpensesCenter(){
  const detailCols=[
   {key:'label',label:'بند المصروف'},
   {key:'expense_type',label:'نوع المصروف'},
+  {key:'expense_type_edit',label:'تغيير النوع',filter:false},
   ...bset.map(b=>({key:b.id,label:b.name,num:1})),
   {key:'total',label:'الإجمالي',num:1},
   {key:'rate',label:'% من المصروفات'}
@@ -1535,7 +1571,7 @@ async function renderExpensesCenter(){
   '<button class="expense-tab" data-target="expense-analysis" onclick="switchExpenseTab(this)">تحليلي المصاريف</button>'+
  '</div>'
 
- const body=filters(from,to,branch)+scope(from,to,branch)+cards+tabs+
+ const body=filters(from,to,branch)+scope(from,to,branch)+cards+'<div id="expense-type-msg"></div>'+tabs+
   '<div id="expense-details" class="expense-tab-panel active">'+table('المصروفات حسب البند والفروع',detailCols,detailRows)+'</div>'+
   '<div id="expense-analysis" class="expense-tab-panel">'+table('تحليلي المصاريف',analyticCols,analyticRows)+'</div>'
 
