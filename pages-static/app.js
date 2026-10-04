@@ -1458,14 +1458,25 @@ async function renderExpensesCenter(){
  let setQ=supabase.from('branch_expense_accrual_settings')
   .select('branch_id,month_start,wages,branch_manager,sector_manager,rent,carried_expenses,commission_rate,working_days_basis')
   .lte('month_start',to).order('month_start',{ascending:false})
+ let petroQ=supabase.from('vehicle_daily')
+  .select('id,branch_id,business_date,fuel_expense,other_expense,raw_payload')
+  .gte('business_date',from).lte('business_date',to)
+  .contains('raw_payload',{non_cash:true})
  if(branch){
   expQ=expQ.eq('branch_id',branch)
   salesQ=salesQ.eq('branch_id',branch)
   setQ=setQ.eq('branch_id',branch)
+  petroQ=petroQ.eq('branch_id',branch)
  }
- const [er,sr,tr]=await Promise.all([expQ,salesQ,setQ])
- if(er.error||sr.error||tr.error)throw er.error||sr.error||tr.error
- const expenses=er.data||[],sales=sr.data||[],settings=tr.data||[]
+ const [er,sr,tr,pr]=await Promise.all([expQ,salesQ,setQ,petroQ])
+ if(er.error||sr.error||tr.error||pr.error)throw er.error||sr.error||tr.error||pr.error
+ const expenses=[...(er.data||[]),...(pr.data||[]).map(r=>({
+  id:'petro-'+r.id,branch_id:r.branch_id,entry_date:r.business_date,
+  canonical_category:'بترو أب',expense_group:'مصروفات السيارات',
+  amount:Number(r.fuel_expense||0)+Number(r.other_expense||0),
+  raw_payload:{...(r.raw_payload||{}),manual_expense_type:'تشغيلي'},
+  is_expense:true
+ }))],sales=sr.data||[],settings=tr.data||[]
  const bset=branch?branches.filter(b=>b.id===branch):branches
  const branchMap=new Map(branches.map(b=>[b.id,b.name]))
 
@@ -1809,6 +1820,24 @@ async function parseVehicleReportFile(file){
  }
  return rows
 }
+window.uploadPetroUpReport=async function(ev){
+ ev.preventDefault()
+ const form=ev.currentTarget,msg=document.getElementById('petro-up-upload-msg'),fd=new FormData(form),file=form.file.files?.[0]
+ if(!file){msg.innerHTML='<div class="error">اختر ملف تقرير بترو أب.</div>';return}
+ try{
+  msg.innerHTML='<div class="notice">جاري قراءة تقرير بترو أب غير النقدي…</div>'
+  const rows=await parseVehicleReportFile(file)
+  if(!rows.length)throw new Error('لم أتعرف على التقرير. يجب أن يحتوي على المركبة والتاريخ والتكلفة.')
+  msg.innerHTML='<div class="notice">تم العثور على '+rows.length+' حركة. جاري الحفظ…</div>'
+  const out=await vehicleAdminCall({action:'import',report_type:'petro_up_non_cash',branch_id:fd.get('branch_id'),month:fd.get('month')||selectedMonth,rows})
+  let note='تم استيراد '+out.inserted+' حركة بترو أب غير نقدية.'
+  if(out.unassigned?.length)note+=' سيارات بدون مندوب: '+out.unassigned.join('، ')
+  msg.innerHTML='<div class="success">'+escapeHtml(note)+' لن يتم خصم هذه الحركات من رصيد الخزينة.</div>'
+  form.file.value=''
+  clearPageCache()
+ }catch(e){msg.innerHTML='<div class="error">'+escapeHtml(e.message||e)+'</div>'}
+}
+
 async function vehicleAdminCall(payload){
  const {data:{session:active}}=await supabase.auth.getSession()
  if(!active)throw new Error('انتهت جلسة الدخول')
@@ -2433,8 +2462,22 @@ function renderUploads(){
    <div id="simple-upload-progress" class="simple-upload-progress" hidden><span></span><b>جاري المعالجة…</b></div>
   </section>
 
+  <section class="upload-simple-card petro-up-upload-card">
+   <div class="upload-step-head"><span class="step-badge">2</span><div><h2>رفع تقرير بترو أب – غير نقدي</h2><p>هذا التقرير يُسجل كمصروف سيارات غير نقدي ولا يؤثر على رصيد الخزينة.</p></div></div>
+   <form id="petro-up-upload-form" class="upload-simple-form" onsubmit="uploadPetroUpReport(event)">
+    <div class="field"><label>الفرع</label><select name="branch_id" required>${branchOpts}</select></div>
+    <div class="field"><label>الشهر</label><select name="month" required>
+      ${(availableMonths.length?availableMonths:[month]).map(m=>'<option value="'+m+'" '+(m===month?'selected':'')+'>'+monthLabel(m)+'</option>').join('')}
+    </select></div>
+    <div class="field upload-file-wide"><label>ملف تقرير بترو أب</label><input name="file" type="file" accept=".xlsx,.xls,.csv" required></div>
+    <div class="vehicle-help">المركبة، التكلفة، إكرامية العامل، عدد اللترات، سعر الوقود، عداد الكيلومتر، قائد المركبة، المحطة والتاريخ.</div>
+    <div class="upload-primary-action"><button class="btn" type="submit">رفع تقرير بترو أب</button></div>
+   </form>
+   <div id="petro-up-upload-msg"></div>
+  </section>
+
   <section class="upload-simple-card bulk-upload-card">
-   <div class="upload-step-head"><span class="step-badge">2</span><div><h2>رفع جماعي للفروع</h2><p>اختر ملف Excel أمام كل فرع تريد رفعه، ثم ارفع الملفات معًا.</p></div></div>
+   <div class="upload-step-head"><span class="step-badge">3</span><div><h2>رفع جماعي للفروع</h2><p>اختر ملف Excel أمام كل فرع تريد رفعه، ثم ارفع الملفات معًا.</p></div></div>
    <form id="bulk-upload-form" class="bulk-upload-form" onsubmit="submitBulkBranchUploads(event)">
     <div class="bulk-upload-settings">
      <div class="field"><label>الشهر</label><select name="month" required>
@@ -2455,7 +2498,7 @@ function renderUploads(){
   </section>
 
   <section class="upload-history-section">
-   <div class="upload-step-head"><span class="step-badge">3</span><div><h2>سجل الشيتات</h2><p>راجع النسخ السابقة أو أعد رفعها أو احذفها.</p></div></div>
+   <div class="upload-step-head"><span class="step-badge">4</span><div><h2>سجل الشيتات</h2><p>راجع النسخ السابقة أو أعد رفعها أو احذفها.</p></div></div>
    <div id="upload-history"></div>
   </section>
  `)
