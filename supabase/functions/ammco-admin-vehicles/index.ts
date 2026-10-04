@@ -105,6 +105,7 @@ Deno.serve(async(req)=>{
 
   if(action==='import'){
     const rows=Array.isArray(body?.rows)?body.rows:[]
+    const reportType=String(body?.report_type||'vehicle').trim()
     if(!rows.length) return json({error:'لا توجد صفوف سيارة قابلة للاستيراد'},400)
 
     const {data:maps}=await admin.from('vehicle_daily')
@@ -136,7 +137,10 @@ Deno.serve(async(req)=>{
         opening_odometer:r.opening_odometer==null?null:Number(r.opening_odometer),
         closing_odometer:r.closing_odometer==null?null:Number(r.closing_odometer),
         raw_payload:{
-          source:'manual_vehicle_report_upload',
+          source:reportType==='petro_up_non_cash'?'petro_up_non_cash':'manual_vehicle_report_upload',
+          report_type:reportType,
+          non_cash:reportType==='petro_up_non_cash',
+          expense_category:reportType==='petro_up_non_cash'?'بترو أب':null,
           uploaded_by:uid,
           uploaded_at:new Date().toISOString(),
           fuel_liters:Number(r.fuel_liters||0),
