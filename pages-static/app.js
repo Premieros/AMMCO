@@ -88,7 +88,7 @@ const sheetSectionForRoute=r=>{
 const REPORT_GROUPS=[
  {label:'الإدارة المالية',items:[['executive','التقرير التنفيذي'],['monthly','التحليل الشهري وYTD']]},
  {label:'المبيعات والعملاء',items:[['sales','المبيعات'],['receivables','المديونيات والتحصيل'],['reps','أداء المناديب']]},
- {label:'المصروفات والتكاليف',items:[['expense-matrix','تحليلي المصروفات'],['expenses','تقرير المصروفات']]},
+ {label:'المصروفات والتكاليف',items:[['fuel-analysis','تحليلي السولار والسيارات'],['expense-matrix','تحليلي المصروفات'],['expenses','تقرير المصروفات']]},
  {label:'المخزون والأصناف',items:[['inventory','حركة المخزون'],['products','أرصدة ومصفوفة الأصناف']]},
  {label:'النقدية والبنوك',items:[['treasury','الخزينة والبنوك'],['banks','البنوك وYTD']]}
 ]
@@ -441,6 +441,7 @@ async function renderFresh(){
    if(report==='sales')return renderSales()
    if(report==='expenses')return renderExpenses()
    if(report==='expense-matrix')return renderExpenseMatrix()
+   if(report==='fuel-analysis')return renderFuelAnalysis()
    if(report==='receivables')return renderReceivables()
    if(report==='reps')return renderReps()
    if(report==='inventory')return renderInventory()
@@ -2158,6 +2159,101 @@ async function renderRepDaily(){
   location.hash='#/reps-daily?'+params.toString()
  })
 }
+async function renderFuelAnalysis(){
+ const {branch,from,to}=currentFilters(),ids=await approvedIds(),safeIds=ids.length?ids:['00000000-0000-0000-0000-000000000000']
+ const refDate='2026-09-28',refPeriodCovered=from<='2026-09-01'&&to>=refDate
+
+ const [assignments,repRows,vehicleRows]=await Promise.all([
+  fetchAllPaged(()=>{let q=supabase.from('vehicle_daily')
+   .select('id,branch_id,vehicle_label,rep_name,raw_payload')
+   .in('batch_id',safeIds).contains('raw_payload',{manual_assignment:true}).order('id',{ascending:false});if(branch)q=q.eq('branch_id',branch);return q}),
+  fetchAllPaged(()=>{let q=supabase.from('sales_rep_daily')
+   .select('branch_id,rep_name,sales_before_discount,discounts,net_after_discount,raw_payload')
+   .in('batch_id',safeIds).gte('business_date',from).lte('business_date',to);if(branch)q=q.eq('branch_id',branch);return q}),
+  fetchAllPaged(()=>{let q=supabase.from('vehicle_daily')
+   .select('branch_id,business_date,vehicle_label,rep_name,fuel_expense,other_expense,raw_payload')
+   .in('batch_id',safeIds).gte('business_date',from).lte('business_date',to)
+   .contains('raw_payload',{non_cash:true});if(branch)q=q.eq('branch_id',branch);return q})
+ ])
+
+ const branchMap=new Map(branches.map(b=>[b.id,b.name]))
+ const latestAssignments=new Map()
+ assignments.forEach(a=>{
+  if(!a.rep_name||!a.vehicle_label)return
+  const k=a.branch_id+'|'+a.vehicle_label
+  if(!latestAssignments.has(k))latestAssignments.set(k,a)
+ })
+
+ const repAgg=new Map()
+ repRows.forEach(r=>{
+  const k=r.branch_id+'|'+String(r.rep_name||'').trim()
+  const x=repAgg.get(k)||{gross:0,discount:0,net:0,rawQty:0,equivQty:0}
+  x.gross+=Number(r.sales_before_discount||0)
+  x.discount+=Number(r.discounts||0)
+  x.net+=Number(r.net_after_discount||0)
+  x.rawQty+=Number(r.raw_payload?.sales_qty||0)
+  x.equivQty+=Number(r.raw_payload?.equivalent_sales_qty||0)
+  repAgg.set(k,x)
+ })
+
+ const petroByVehicle=new Map(),petroByRep=new Map()
+ vehicleRows.forEach(v=>{
+  const amount=Number(v.fuel_expense||0)+Number(v.other_expense||0)
+  const kv=v.branch_id+'|'+String(v.vehicle_label||'').trim()
+  petroByVehicle.set(kv,(petroByVehicle.get(kv)||0)+amount)
+  if(v.rep_name){
+   const kr=v.branch_id+'|'+String(v.rep_name).trim()
+   petroByRep.set(kr,(petroByRep.get(kr)||0)+amount)
+  }
+ })
+
+ const rows=[...latestAssignments.values()].map(a=>{
+  const ar=a.raw_payload?.analysis_report||{}
+  const repKey=a.branch_id+'|'+String(a.rep_name||'').trim()
+  const carKey=a.branch_id+'|'+String(a.vehicle_label||'').trim()
+  const s=repAgg.get(repKey)||{gross:0,discount:0,net:0,rawQty:0,equivQty:0}
+  const livePetro=Number(petroByVehicle.get(carKey)||0)
+  const petro=livePetro>0?livePetro:(refPeriodCovered?Number(ar.petro_up_reference||0):0)
+  const cash=refPeriodCovered?Number(ar.cash_fuel||0):0
+  const totalFuel=petro+cash
+  const target=Number(ar.target||0)
+  return {
+   vehicle:a.vehicle_label,
+   branch_name:branchMap.get(a.branch_id)||'—',
+   rep_name:a.rep_name||'—',
+   sale_type:ar.sale_type||'—',
+   petro_up:money(petro),
+   cash_fuel:money(cash),
+   total_fuel:money(totalFuel),
+   fuel_rate:pct(s.net?totalFuel/s.net:0),
+   fuel_per_carton:money(s.equivQty?totalFuel/s.equivQty:0),
+   target:money(target),
+   gross:money(s.gross),
+   discount:money(s.discount),
+   net:money(s.net),
+   cartons:qty(s.equivQty),
+   avg_price:money(s.equivQty?s.net/s.equivQty:0),
+   achievement:pct(target?s.net/target:0),
+   source:livePetro>0?'مصادر موحدة':'مرجع 28/9 + مصادر موحدة'
+  }
+ }).sort((a,b)=>a.branch_name.localeCompare(b.branch_name,'ar')||a.rep_name.localeCompare(b.rep_name,'ar'))
+
+ const note='<div class="notice source-policy-note"><b>المصادر الموحدة:</b> المبيعات والخصم والكراتين من بيانات المناديب المعتمدة، بترو أب من تقرير بترو أب غير النقدي، وربط السيارة من سجل السيارات. السولار النقدي والتارجت ونوع البيع من تقرير 28/9 لحين إضافة مصدر مستقل لهما.'+
+  (!refPeriodCovered?' <b>ملاحظة:</b> الفترة الحالية لا تغطي 1–28 سبتمبر، لذلك لم يتم تحميل الأرقام التجميعية المرجعية للسولار النقدي/بترو أب من ملف 28/9.':'')+'</div>'
+
+ shell('تحليلي السولار والسيارات','تقرير موحد بالمصادر المشتركة',
+  reportsHubNav()+filters(from,to,branch)+scope(from,to,branch)+note+
+  table('تحليلي السولار والسيارات',[
+   {key:'vehicle',label:'السيارة'},{key:'branch_name',label:'الفرع'},{key:'rep_name',label:'المندوب'},{key:'sale_type',label:'نوع البيع'},
+   {key:'petro_up',label:'بترو أب غير نقدي',num:1},{key:'cash_fuel',label:'سولار نقدي',num:1},{key:'total_fuel',label:'إجمالي السولار',num:1},
+   {key:'fuel_rate',label:'نسبة السولار'},{key:'fuel_per_carton',label:'نصيب الكرتونة من السولار',num:1},{key:'target',label:'التارجت',num:1},
+   {key:'gross',label:'البيع قبل الخصم',num:1},{key:'discount',label:'الخصومات',num:1},{key:'net',label:'البيع',num:1},
+   {key:'cartons',label:'عدد الكراتين',num:1},{key:'avg_price',label:'متوسط سعر الكرتونة',num:1},{key:'achievement',label:'النسبة المحققة من التارجت'},
+   {key:'source',label:'المصدر'}
+  ],rows))
+ bindFilters('reports?report=fuel-analysis')
+}
+
 async function renderInventory(){
  const cfg=currentFilters(),branch=cfg.branch,from=cfg.from,to=cfg.to,ids=await approvedIds()
  let q=supabase.from('warehouse_daily_summary').select('*').in('batch_id',ids.length?ids:['00000000-0000-0000-0000-000000000000']).gte('business_date',from).lte('business_date',to).order('business_date')
