@@ -1698,7 +1698,7 @@ async function renderReps(){
   .select('branch_id,business_date,rep_name,sales_before_discount,net_after_discount,discounts,deposit_amount,closing_balance,raw_payload')
   .in('batch_id',safeIds).gte('business_date',from).lte('business_date',to).order('business_date',{ascending:true})
  let vq=supabase.from('vehicle_daily')
-  .select('branch_id,business_date,vehicle_label,rep_name,sales,fuel_expense,maintenance_expense,other_expense,total_expense,raw_payload')
+  .select('id,branch_id,business_date,vehicle_label,rep_name,sales,fuel_expense,maintenance_expense,other_expense,total_expense,raw_payload')
   .in('batch_id',safeIds).gte('business_date',from).lte('business_date',to)
  if(branch){rq=rq.eq('branch_id',branch);vq=vq.eq('branch_id',branch)}
  const [rr,vr]=await Promise.all([rq,vq])
