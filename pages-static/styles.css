@@ -2735,3 +2735,91 @@ body{background:#f5f7fa;color:var(--ui-text)}
 .chart-pt{
   cursor:pointer;
 }
+
+
+/* Upload page: add branch + multi-branch uploads */
+.upload-page-actions{
+  display:flex;
+  justify-content:flex-end;
+  margin-bottom:10px;
+}
+.bulk-upload-card{
+  margin-top:14px;
+}
+.bulk-upload-settings{
+  display:grid;
+  grid-template-columns:repeat(2,minmax(0,1fr));
+  gap:12px;
+  margin-bottom:14px;
+}
+.bulk-branch-list{
+  display:flex;
+  flex-direction:column;
+  gap:8px;
+}
+.bulk-branch-row{
+  display:grid;
+  grid-template-columns:minmax(180px,260px) 1fr;
+  gap:12px;
+  align-items:center;
+  padding:10px 12px;
+  border:1px solid #e2e8f0;
+  border-radius:10px;
+  background:#fbfdff;
+}
+.bulk-branch-name{
+  display:flex;
+  flex-direction:column;
+  gap:2px;
+}
+.bulk-branch-name b{
+  font-size:12.5px;
+  color:#17324d;
+}
+.bulk-branch-name small{
+  font-size:10px;
+  color:#7a8998;
+}
+.bulk-upload-action{
+  margin-top:14px;
+  display:flex;
+  justify-content:flex-start;
+}
+.bulk-upload-results{
+  display:flex;
+  flex-direction:column;
+  gap:7px;
+  margin-top:10px;
+}
+.bulk-upload-result{
+  display:flex;
+  align-items:center;
+  justify-content:space-between;
+  gap:10px;
+  padding:9px 11px;
+  border-radius:9px;
+  border:1px solid #dfe6ed;
+  background:#fff;
+  font-size:11.5px;
+}
+.bulk-upload-result.processing{
+  background:#f8fafc;
+}
+.bulk-upload-result.success{
+  background:#ecfdf5;
+  border-color:#a7f3d0;
+}
+.bulk-upload-result.notice{
+  background:#fffbeb;
+  border-color:#fde68a;
+}
+.bulk-upload-result.error{
+  background:#fef2f2;
+  border-color:#fecaca;
+}
+@media(max-width:760px){
+  .bulk-upload-settings{grid-template-columns:1fr}
+  .bulk-branch-row{grid-template-columns:1fr}
+  .upload-page-actions{justify-content:stretch}
+  .upload-page-actions .btn{width:100%}
+}
