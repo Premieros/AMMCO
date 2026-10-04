@@ -1738,16 +1738,16 @@ window.saveExpenseOperationalType=async function(encodedIds,selectId,label){
  }catch(e){if(msg)msg.innerHTML='<div class="error">'+escapeHtml(e.message||e)+'</div>'}
 }
 
-window.saveManualExpenseAccrual=async function(branchId,wagesId,rentId){
+window.saveManualExpenseAccrual=async function(branchId,wagesId,rentId,daysId){
  if(profile?.role!=='admin')return
- const wagesInput=document.getElementById(wagesId),rentInput=document.getElementById(rentId),msg=document.getElementById('manual-accrual-msg')
- const wages=Number(wagesInput?.value||0),rent=Number(rentInput?.value||0)
- if(!Number.isFinite(wages)||wages<0||!Number.isFinite(rent)||rent<0){
-  if(msg)msg.innerHTML='<div class="error">الأجور والإيجار يجب أن يكونا أرقامًا صحيحة غير سالبة.</div>'
+ const wagesInput=document.getElementById(wagesId),rentInput=document.getElementById(rentId),daysInput=document.getElementById(daysId),msg=document.getElementById('manual-accrual-msg')
+ const wages=Number(wagesInput?.value||0),rent=Number(rentInput?.value||0),workingDays=Number(daysInput?.value||0)
+ if(!Number.isFinite(wages)||wages<0||!Number.isFinite(rent)||rent<0||!Number.isInteger(workingDays)||workingDays<1||workingDays>31){
+  if(msg)msg.innerHTML='<div class="error">الأجور والإيجار يجب أن يكونا غير سالبين، وأيام العمل من 1 إلى 31.</div>'
   return
  }
  try{
-  if(msg)msg.innerHTML='<div class="notice">جاري حفظ الأجور والإيجار…</div>'
+  if(msg)msg.innerHTML='<div class="notice">جاري حفظ الأجور والإيجار وأيام العمل…</div>'
   const {data:{session:active}}=await supabase.auth.getSession()
   if(!active)throw new Error('انتهت جلسة الدخول')
   const res=await fetch(SUPABASE_URL+'/functions/v1/ammco-admin-cash',{
@@ -1758,12 +1758,13 @@ window.saveManualExpenseAccrual=async function(branchId,wagesId,rentId){
     branch_id:branchId,
     month_start:selectedMonth+'-01',
     wages,
-    rent
+    rent,
+    working_days_basis:workingDays
    })
   })
   const out=await res.json()
-  if(!res.ok)throw new Error(out.error||'تعذر حفظ الأجور والإيجار')
-  if(msg)msg.innerHTML='<div class="success">تم حفظ الأجور والإيجار للشهر الحالي.</div>'
+  if(!res.ok)throw new Error(out.error||'تعذر حفظ الإعدادات')
+  if(msg)msg.innerHTML='<div class="success">تم حفظ الأجور والإيجار وأيام العمل للشهر الحالي.</div>'
   clearPageCache()
   setTimeout(()=>render({force:true}),250)
  }catch(e){if(msg)msg.innerHTML='<div class="error">'+escapeHtml(e.message||e)+'</div>'}
@@ -1858,11 +1859,12 @@ async function renderExpensesCenter(){
   ? '<section class="manual-accrual-card"><div class="manual-accrual-head"><div><h3>الأجور والإيجارات اليدوية</h3><p>القيم شهرية وتُحفظ لكل فرع في '+escapeHtml(monthLabel(selectedMonth))+'</p></div></div>'+
     '<div id="manual-accrual-msg"></div><div class="manual-accrual-grid">'+
     bset.map((b,i)=>{
-      const st=latestSetting.get(b.id)||{},wid='manual-wages-'+i,rid='manual-rent-'+i
+      const st=latestSetting.get(b.id)||{},wid='manual-wages-'+i,rid='manual-rent-'+i,did='manual-days-'+i
       return '<div class="manual-accrual-row"><strong>'+escapeHtml(b.name)+'</strong>'+
        '<label>الأجور<input id="'+wid+'" type="number" min="0" step="0.01" value="'+Number(st.wages||0)+'"></label>'+
        '<label>الإيجار<input id="'+rid+'" type="number" min="0" step="0.01" value="'+Number(st.rent||0)+'"></label>'+
-       '<button class="tool-btn" type="button" onclick="saveManualExpenseAccrual(\''+b.id+'\',\''+wid+'\',\''+rid+'\')">حفظ</button></div>'
+       '<label>أيام العمل<input id="'+did+'" type="number" min="1" max="31" step="1" value="'+Number(st.working_days_basis||30)+'"></label>'+
+       '<button class="tool-btn" type="button" onclick="saveManualExpenseAccrual(\''+b.id+'\',\''+wid+'\',\''+rid+'\',\''+did+'\')">حفظ</button></div>'
     }).join('')+'</div></section>'
   : ''
  const expBy=new Map()
@@ -1879,17 +1881,17 @@ async function renderExpensesCenter(){
   const s=salesBy.get(b.id)||0
   const st=latestSetting.get(b.id)||{}
   const ex=expBy.get(b.id)||{treasury:0,fuel:0,petro:0}
-  const days=(daysBy.get(b.id)||new Set()).size
-  const basis=Number(st.working_days_basis||30)
+  const elapsedDays=(daysBy.get(b.id)||new Set()).size
+  const basis=Math.max(1,Number(st.working_days_basis||30))
   const wages=Number(st.wages||0)+Number(st.branch_manager||0)+Number(st.sector_manager||0)
   const rent=Number(st.rent||0)
   const accrued=wages+rent
   const carried=Number(st.carried_expenses||0)
-  const toDate=(accrued*(days/Math.max(1,basis)))+carried
+  const toDate=(accrued*(Math.min(elapsedDays,basis)/basis))+carried
   const commission=s*Number(st.commission_rate||0)
   const vehicle=ex.fuel+ex.petro
   const total=toDate+ex.treasury+commission
-  return {branch_name:b.name,sales:s,days,wages,rent,toDate,fuel:ex.fuel,petro:ex.petro,vehicle,treasury:ex.treasury,commission,total,rate:s?total/s:0}
+  return {branch_name:b.name,sales:s,days:basis,wages,rent,toDate,fuel:ex.fuel,petro:ex.petro,vehicle,treasury:ex.treasury,commission,total,rate:s?total/s:0}
  })
  const analyticRows=analyticRaw.map(x=>({
   branch_name:escapeHtml(x.branch_name),
