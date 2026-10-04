@@ -2636,3 +2636,33 @@ body{background:#f5f7fa;color:var(--ui-text)}
 @media(max-width:850px){
   .rep-vehicle-grid{grid-template-columns:1fr}
 }
+
+
+/* Reps directory and daily reps */
+.inline-car-editor{
+  display:flex;
+  align-items:center;
+  gap:6px;
+  min-width:240px;
+}
+.inline-car-editor input{
+  min-width:150px;
+  height:34px;
+  border:1px solid #d7e0e8;
+  border-radius:8px;
+  padding:5px 8px;
+  font:inherit;
+  font-size:12px;
+  background:#fff;
+}
+.inline-car-editor .tool-btn{
+  flex:0 0 auto;
+  height:34px!important;
+}
+#reps-daily-filter .field{
+  min-width:210px;
+}
+@media(max-width:760px){
+  .inline-car-editor{min-width:190px}
+  .inline-car-editor input{min-width:120px}
+}
