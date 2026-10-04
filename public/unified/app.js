@@ -912,33 +912,21 @@ window.setChartMode = mode => {
 
 function renderTimelineChartSection() {
   return `
-    <div class="chart-card">
+    <div class="chart-card modern-line-chart-card">
       <div class="chart-controls">
-        <div style="font-size:12px; font-weight:800; color:#17324d;">المبيعات والمصروفات عبر الزمن</div>
+        <div style="font-size:12px; font-weight:800; color:#17324d;">حركة صافي المبيعات</div>
 
         <div class="chart-series-toggles">
           <label class="series-checkbox">
-            <input type="checkbox" ${chartActiveSeries.sales ? 'checked' : ''} onchange="window.toggleChartSeries('sales')">
+            <input type="radio" name="chart-series" ${chartActiveSeries.sales ? 'checked' : ''} onchange="window.setChartSeries('sales')">
             <span class="series-dot sales"></span>
             <span>المبيعات</span>
           </label>
 
           <label class="series-checkbox">
-            <input type="checkbox" ${chartActiveSeries.expenses ? 'checked' : ''} onchange="window.toggleChartSeries('expenses')">
+            <input type="radio" name="chart-series" ${chartActiveSeries.expenses ? 'checked' : ''} onchange="window.setChartSeries('expenses')">
             <span class="series-dot expenses"></span>
             <span>المصروفات</span>
-          </label>
-
-          <label class="series-checkbox">
-            <input type="checkbox" ${chartActiveSeries.qty ? 'checked' : ''} onchange="window.toggleChartSeries('qty')">
-            <span class="series-dot qty"></span>
-            <span>الكمية المكافئة</span>
-          </label>
-
-          <label class="series-checkbox">
-            <input type="checkbox" ${chartActiveSeries.price ? 'checked' : ''} onchange="window.toggleChartSeries('price')">
-            <span class="series-dot price"></span>
-            <span>متوسط السعر</span>
           </label>
         </div>
 
@@ -949,22 +937,31 @@ function renderTimelineChartSection() {
         </div>
       </div>
 
-      <div class="svg-chart-container" id="chart-container">
-        <svg class="svg-chart" id="timeline-svg" preserveAspectRatio="none" viewBox="0 0 800 240"></svg>
-        <div class="chart-tooltip" id="chart-tooltip"></div>
+      <div class="svg-chart-container modern-chart-wrap" id="chart-container">
+        <svg class="svg-chart" id="timeline-svg" preserveAspectRatio="none" viewBox="0 0 900 300"></svg>
+        <div class="chart-tooltip modern-tooltip" id="chart-tooltip"></div>
       </div>
     </div>
   `
 }
 
+window.setChartSeries = series => {
+  chartActiveSeries.sales = series === 'sales'
+  chartActiveSeries.expenses = series === 'expenses'
+  chartActiveSeries.qty = false
+  chartActiveSeries.price = false
+  window.drawTimelineSVG()
+}
+
 window.cachedPoints = []
+
 window.drawTimelineSVG = () => {
   const svg = document.getElementById('timeline-svg')
   const tooltip = document.getElementById('chart-tooltip')
   if (!svg || !window.cachedPoints || !window.cachedPoints.length) return
 
-  // Grouping by mode
-  let raw = window.cachedPoints
+  let raw = [...window.cachedPoints]
+
   if (chartViewMode === 'week') {
     const weeks = new Map()
     raw.forEach(p => {
@@ -972,7 +969,9 @@ window.drawTimelineSVG = () => {
       const w = `${d.getFullYear()}-W${Math.ceil((d.getDate() + 6) / 7)}`
       if (!weeks.has(w)) weeks.set(w, { date: w, sales: 0, expenses: 0, equivQty: 0 })
       const itm = weeks.get(w)
-      itm.sales += p.sales; itm.expenses += p.expenses; itm.equivQty += p.equivQty
+      itm.sales += p.sales || 0
+      itm.expenses += p.expenses || 0
+      itm.equivQty += p.equivQty || 0
     })
     raw = [...weeks.values()]
   } else if (chartViewMode === 'month') {
@@ -981,77 +980,121 @@ window.drawTimelineSVG = () => {
       const m = p.date.substring(0, 7)
       if (!months.has(m)) months.set(m, { date: m, sales: 0, expenses: 0, equivQty: 0 })
       const itm = months.get(m)
-      itm.sales += p.sales; itm.expenses += p.expenses; itm.equivQty += p.equivQty
+      itm.sales += p.sales || 0
+      itm.expenses += p.expenses || 0
+      itm.equivQty += p.equivQty || 0
     })
     raw = [...months.values()]
   }
 
-  const W = 800, H = 240, padX = 40, padY = 30
-  const plotW = W - (padX * 2), plotH = H - (padY * 2)
+  const W = 900, H = 300
+  const padTop = 25, padBottom = 42, padLeft = 50, padRight = 25
+  const plotW = W - padLeft - padRight
+  const plotH = H - padTop - padBottom
 
-  let maxVal = 1000
-  raw.forEach(p => {
-    if (chartActiveSeries.sales && p.sales > maxVal) maxVal = p.sales
-    if (chartActiveSeries.expenses && p.expenses > maxVal) maxVal = p.expenses
-  })
+  const seriesKey = chartActiveSeries.expenses ? 'expenses' : 'sales'
+  const seriesColor = seriesKey === 'sales' ? '#111827' : '#e11d48'
+  const fillColor = seriesKey === 'sales' ? 'rgba(17,24,39,0.12)' : 'rgba(225,29,72,0.12)'
 
-  const getX = i => padX + (i / Math.max(1, raw.length - 1)) * plotW
-  const getY = val => H - padY - (val / maxVal) * plotH
+  let maxVal = Math.max(1, ...raw.map(p => Number(p[seriesKey] || 0)))
+  const magnitude = Math.pow(10, Math.max(0, String(Math.floor(maxVal)).length - 2))
+  maxVal = Math.ceil(maxVal / magnitude) * magnitude
 
-  // Build grid lines
-  let gridLines = ''
-  for (let i = 0; i <= 4; i++) {
-    const yVal = (maxVal / 4) * i
-    const yPos = getY(yVal)
-    gridLines += `
-      <line x1="${padX}" y1="${yPos}" x2="${W - padX}" y2="${yPos}" stroke="#f1f5f9" stroke-width="1" />
-      <text x="${W - padX + 5}" y="${yPos + 4}" fill="#94a3b8" font-size="9" text-anchor="start">${money(yVal)}</text>
+  const getX = i => padLeft + (i / Math.max(1, raw.length - 1)) * plotW
+  const getY = val => padTop + plotH - ((val || 0) / maxVal) * plotH
+
+  let grid = ''
+  const yTicks = 4
+  for (let i = 0; i <= yTicks; i++) {
+    const v = (maxVal / yTicks) * i
+    const y = getY(v)
+    grid += `
+      <line x1="${padLeft}" y1="${y}" x2="${W - padRight}" y2="${y}" stroke="#eef2f7" stroke-width="1"/>
+      <text x="${padLeft - 8}" y="${y + 4}" text-anchor="end" fill="#94a3b8" font-size="10">${money(v)}</text>
     `
   }
 
-  // Polylines
-  const makeLine = (key, color) => {
-    const pts = raw.map((p, i) => `${getX(i)},${getY(p[key] || 0)}`).join(' ')
-    return `<polyline fill="none" stroke="${color}" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round" points="${pts}" />`
-  }
-
-  let linesHtml = ''
-  if (chartActiveSeries.sales) linesHtml += makeLine('sales', '#2563eb')
-  if (chartActiveSeries.expenses) linesHtml += makeLine('expenses', '#e11d48')
-
-  // Interactive points
-  let pointsHtml = ''
+  let xLabels = ''
   raw.forEach((p, i) => {
     const x = getX(i)
-    if (chartActiveSeries.sales) {
-      const y = getY(p.sales || 0)
-      pointsHtml += `<circle cx="${x}" cy="${y}" r="3.5" fill="#2563eb" stroke="#fff" stroke-width="1.5" class="chart-pt" data-idx="${i}" />`
+    let lbl = p.date
+    if (/^\d{4}-\d{2}-\d{2}$/.test(lbl)) {
+      const d = new Date(lbl + 'T00:00:00')
+      lbl = d.toLocaleDateString('ar-EG', { day: 'numeric', month: 'short' })
     }
-    if (chartActiveSeries.expenses) {
-      const y = getY(p.expenses || 0)
-      pointsHtml += `<circle cx="${x}" cy="${y}" r="3.5" fill="#e11d48" stroke="#fff" stroke-width="1.5" class="chart-pt" data-idx="${i}" />`
+    const showEvery = raw.length > 16 ? Math.ceil(raw.length / 10) : 1
+    if (i % showEvery === 0 || i === raw.length - 1) {
+      xLabels += `<text x="${x}" y="${H - 12}" text-anchor="middle" fill="#94a3b8" font-size="10">${lbl}</text>`
     }
   })
 
-  svg.innerHTML = gridLines + linesHtml + pointsHtml
+  const linePoints = raw.map((p, i) => `${getX(i)},${getY(Number(p[seriesKey] || 0))}`).join(' ')
+  const areaPoints = [
+    `${getX(0)},${padTop + plotH}`,
+    ...raw.map((p, i) => `${getX(i)},${getY(Number(p[seriesKey] || 0))}`),
+    `${getX(raw.length - 1)},${padTop + plotH}`
+  ].join(' ')
 
-  // Attach hover events
+  let markers = ''
+  raw.forEach((p, i) => {
+    const x = getX(i)
+    const y = getY(Number(p[seriesKey] || 0))
+    markers += `<circle cx="${x}" cy="${y}" r="5" fill="#fff" stroke="${seriesColor}" stroke-width="2" class="chart-pt" data-idx="${i}"></circle>`
+  })
+
+  svg.innerHTML = `
+    ${grid}
+    <polygon points="${areaPoints}" fill="${fillColor}"></polygon>
+    <polyline points="${linePoints}" fill="none" stroke="${seriesColor}" stroke-width="3" stroke-linecap="round" stroke-linejoin="round"></polyline>
+    ${xLabels}
+    ${markers}
+  `
+
   svg.querySelectorAll('.chart-pt').forEach(pt => {
     pt.addEventListener('mouseenter', e => {
       const idx = Number(e.target.dataset.idx)
       const item = raw[idx]
-      const rect = svg.getBoundingClientRect()
-      const ptRect = e.target.getBoundingClientRect()
+      const value = Number(item[seriesKey] || 0)
+      const x = getX(idx)
+      const y = getY(value)
+
+      svg.querySelectorAll('.hover-guide,.hover-active-dot').forEach(n => n.remove())
+
+      const guide = document.createElementNS('http://www.w3.org/2000/svg', 'line')
+      guide.setAttribute('class', 'hover-guide')
+      guide.setAttribute('x1', x)
+      guide.setAttribute('x2', x)
+      guide.setAttribute('y1', padTop)
+      guide.setAttribute('y2', padTop + plotH)
+      guide.setAttribute('stroke', '#cbd5e1')
+      guide.setAttribute('stroke-width', '1')
+      guide.setAttribute('stroke-dasharray', '4 4')
+      svg.appendChild(guide)
+
+      const activeDot = document.createElementNS('http://www.w3.org/2000/svg', 'circle')
+      activeDot.setAttribute('class', 'hover-active-dot')
+      activeDot.setAttribute('cx', x)
+      activeDot.setAttribute('cy', y)
+      activeDot.setAttribute('r', '6.5')
+      activeDot.setAttribute('fill', seriesColor)
+      activeDot.setAttribute('stroke', '#fff')
+      activeDot.setAttribute('stroke-width', '2')
+      svg.appendChild(activeDot)
+
       tooltip.style.display = 'block'
-      tooltip.style.left = `${ptRect.left - rect.left - 50}px`
-      tooltip.style.top = `${ptRect.top - rect.top - 50}px`
+      tooltip.style.left = Math.max(10, Math.min(760, x - 60)) + 'px'
+      tooltip.style.top = Math.max(10, y - 85) + 'px'
       tooltip.innerHTML = `
-        <div style="font-weight:bold; color:#cbd5e1; margin-bottom:2px;">${item.date}</div>
-        <div>المبيعات: <b style="color:#60a5fa;">${money(item.sales)} ج.م</b></div>
-        <div>المصروفات: <b style="color:#f87171;">${money(item.expenses)} ج.م</b></div>
+        <div class="tooltip-date">${escapeHtml(item.date)}</div>
+        <div class="tooltip-line">
+          <span>${seriesKey === 'sales' ? 'المبيعات' : 'المصروفات'}</span> :
+          <b>${money(value)} ج.م</b>
+        </div>
       `
     })
+
     pt.addEventListener('mouseleave', () => {
+      svg.querySelectorAll('.hover-guide,.hover-active-dot').forEach(n => n.remove())
       tooltip.style.display = 'none'
     })
   })
