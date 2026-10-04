@@ -860,10 +860,10 @@ Deno.serve(async (req: Request) => {
         source_value_row: row.sourceValueRow,
         raw_payload: {
           ...(row.rawPayload && typeof row.rawPayload === 'object' ? row.rawPayload : {}),
-          total_sales_source: parsed.totalSalesSummary ? 'Total!BB' : null,
-          total_sales_qty: parsed.totalSalesSummary?.totalSalesQty ?? null,
-          double_570_qty: parsed.totalSalesSummary?.double570Qty ?? null,
-          equivalent_cartons_month: parsed.totalSalesSummary?.equivalentSalesQty ?? null,
+          total_sales_source: parsed.totalSalesSummary && row.businessDate === batch.period_end ? 'Total!BB' : null,
+          total_sales_qty: parsed.totalSalesSummary && row.businessDate === batch.period_end ? parsed.totalSalesSummary.totalSalesQty : null,
+          double_570_qty: parsed.totalSalesSummary && row.businessDate === batch.period_end ? parsed.totalSalesSummary.double570Qty : null,
+          equivalent_cartons_month: parsed.totalSalesSummary && row.businessDate === batch.period_end ? parsed.totalSalesSummary.equivalentSalesQty : null,
         },
       }))
 
