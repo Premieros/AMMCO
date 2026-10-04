@@ -4,14 +4,17 @@ import {supabase} from '../lib/supabase'
 import {getAllowedBranchIds,getBranches,getLatestApprovedPeriod,getProfile} from '../data/core'
 import type {Branch,Profile} from '../domain/types'
 import {Dashboard} from '../pages/Dashboard'
+import {Reps} from '../pages/Reps'
+import {Receivables} from '../pages/Receivables'
 import {Login} from '../pages/Login'
 import {LayoutDashboard,FileBarChart2,Users,Receipt,WalletCards,Upload,UserCog,LogOut} from 'lucide-react'
 
-type Route='dashboard'|'reports'|'reps'|'expenses'|'treasury'|'imports'|'users'
+type Route='dashboard'|'reports'|'reps'|'receivables'|'expenses'|'treasury'|'imports'|'users'
 const nav=[
  ['dashboard','لوحة التحكم',LayoutDashboard],
  ['reports','التقارير',FileBarChart2],
  ['reps','المناديب',Users],
+ ['receivables','المديونية والتحصيل',WalletCards],
  ['expenses','المصروفات',Receipt],
  ['treasury','الخزينة',WalletCards],
  ['imports','الاستيراد',Upload],
@@ -92,9 +95,10 @@ export function App(){
     </div>
    </header>
 
-   {route==='dashboard'
-    ? <Dashboard from={period.from} to={period.to} branchId={branchId||undefined}/>
-    : <section className="panel placeholder"><h2>{visibleNav.find(x=>x[0]===route)?.[1]}</h2><p>سيتم نقل هذه الوحدة من النظام القديم إلى طبقة v2 الموحدة.</p></section>}
+   {route==='dashboard' && <Dashboard from={period.from} to={period.to} branchId={branchId||undefined}/>}
+   {route==='reps' && <Reps from={period.from} to={period.to} branchId={branchId||undefined}/>}
+   {route==='receivables' && <Receivables from={period.from} to={period.to} branchId={branchId||undefined}/>}
+   {!['dashboard','reps','receivables'].includes(route) && <section className="panel placeholder"><h2>{visibleNav.find(x=>x[0]===route)?.[1]}</h2><p>سيتم نقل هذه الوحدة من النظام القديم إلى طبقة v2 الموحدة.</p></section>}
   </main>
  </div>
 }
