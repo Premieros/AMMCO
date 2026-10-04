@@ -2242,6 +2242,121 @@ window.approveBatch=async id=>{
  if(msg)msg.innerHTML='<div class="success">تم اعتماد النسخة وتحديث التقارير.</div>'
  setTimeout(renderImports,500)
 }
+
+window.openAddBranchDialog=function(){
+ if(profile?.role!=='admin')return
+ document.getElementById('add-branch-dialog')?.remove()
+ const html='<div class="dialog-backdrop" id="add-branch-dialog"><div class="dialog-card">'+
+  '<div class="dialog-head"><h3>إضافة فرع جديد</h3><button class="tool-btn" type="button" onclick="document.getElementById(\'add-branch-dialog\').remove()">إغلاق</button></div>'+
+  '<form id="quick-add-branch-form" class="dialog-form">'+
+   '<div class="field"><label>اسم الفرع</label><input name="name" required placeholder="مثال: المنصورة"></div>'+
+   '<div class="field"><label>كود الفرع</label><input name="code" required dir="ltr" placeholder="MNS"></div>'+
+   '<button class="btn" type="submit">إنشاء الفرع</button><div id="quick-add-branch-msg"></div>'+
+  '</form></div></div>'
+ document.body.insertAdjacentHTML('beforeend',html)
+ document.getElementById('quick-add-branch-form')?.addEventListener('submit',async e=>{
+  e.preventDefault()
+  const form=e.currentTarget,msg=document.getElementById('quick-add-branch-msg'),btn=form.querySelector('button[type=submit]')
+  const fd=new FormData(form),name=String(fd.get('name')||'').trim(),code=String(fd.get('code')||'').trim()
+  if(!name||!code){msg.innerHTML='<div class="error">اسم الفرع والكود مطلوبان.</div>';return}
+  try{
+   btn.disabled=true;msg.innerHTML='<div class="notice">جاري إنشاء الفرع…</div>'
+   const {error}=await supabase.rpc('create_branch_with_default_treasury',{p_code:code,p_name:name})
+   if(error)throw error
+   msg.innerHTML='<div class="success">تم إنشاء الفرع والخزنة الرئيسية.</div>'
+   clearPageCache()
+   setTimeout(async()=>{
+    document.getElementById('add-branch-dialog')?.remove()
+    await boot(true)
+   },450)
+  }catch(err){msg.innerHTML='<div class="error">'+escapeHtml(err.message||err)+'</div>'}
+  finally{btn.disabled=false}
+ })
+}
+
+async function uploadWorkbookForBranch({branchId,file,month,historyMode='append_only',onProgress}){
+ const [uy,um]=month.split('-').map(Number)
+ const periodStart=month+'-01'
+ const periodEnd=month+'-'+String(new Date(uy,um,0).getDate()).padStart(2,'0')
+ onProgress?.('قراءة الملف')
+ const parsed=await parseWorkbookBrowser(file,{periodStart,periodEnd})
+
+ const {data:{session:active}}=await supabase.auth.getSession()
+ if(!active)throw new Error('انتهت جلسة الدخول. سجل الدخول مرة أخرى.')
+
+ onProgress?.('رفع الملف')
+ const fd=new FormData()
+ fd.set('branch_id',branchId)
+ fd.set('period_start',periodStart)
+ fd.set('period_end',periodEnd)
+ fd.set('file',file)
+
+ const uploadRes=await fetch(SUPABASE_URL+'/functions/v1/ammco-import-upload',{
+  method:'POST',headers:{Authorization:'Bearer '+active.access_token,apikey:SUPABASE_KEY},body:fd
+ })
+ const uploaded=await uploadRes.json()
+ if(!uploadRes.ok)throw new Error(uploaded.error||'تعذر رفع الملف')
+
+ onProgress?.('تحليل البيانات')
+ const processRes=await fetch(SUPABASE_URL+'/functions/v1/ammco-import-process',{
+  method:'POST',
+  headers:{Authorization:'Bearer '+active.access_token,apikey:SUPABASE_KEY,'Content-Type':'application/json'},
+  body:JSON.stringify({batchId:uploaded.batchId,parsed,historyMode})
+ })
+ const processed=await processRes.json()
+ if(!processRes.ok)throw new Error(processed.error||'تعذر تحليل الملف')
+ return {uploaded,processed}
+}
+
+window.submitBulkBranchUploads=async function(ev){
+ ev.preventDefault()
+ const form=ev.currentTarget,msg=document.getElementById('bulk-upload-msg'),btn=form.querySelector('button[type=submit]')
+ const month=form.month.value,historyMode=form.historyMode.value||'append_only'
+ const inputs=[...form.querySelectorAll('input[type=file][data-branch-id]')]
+ const selected=inputs.filter(i=>i.files?.[0])
+ if(!selected.length){msg.innerHTML='<div class="error">اختر ملفًا واحدًا على الأقل لأحد الفروع.</div>';return}
+
+ btn.disabled=true
+ const resultHost=document.getElementById('bulk-upload-results')
+ resultHost.innerHTML=''
+ let ok=0,review=0,failed=0
+ for(let idx=0;idx<selected.length;idx++){
+  const input=selected[idx],branchId=input.dataset.branchId,branchName=input.dataset.branchName||'الفرع',file=input.files[0]
+  const row=document.createElement('div')
+  row.className='bulk-upload-result processing'
+  row.innerHTML='<b>'+escapeHtml(branchName)+'</b><span>جاري البدء…</span>'
+  resultHost.appendChild(row)
+  try{
+   const out=await uploadWorkbookForBranch({
+    branchId,file,month,historyMode,
+    onProgress:step=>{row.querySelector('span').textContent=(idx+1)+'/'+selected.length+' — '+step+'…'}
+   })
+   if(out.processed.status==='validated'){
+    row.className='bulk-upload-result success'
+    row.querySelector('span').textContent='تم الرفع والتحليل — جاهز للاعتماد'
+    ok++
+   }else if(out.processed.noNewDays){
+    row.className='bulk-upload-result notice'
+    row.querySelector('span').textContent='لا توجد أيام جديدة'
+    review++
+   }else{
+    row.className='bulk-upload-result notice'
+    row.querySelector('span').textContent='تم الرفع ويحتاج مراجعة'
+    review++
+   }
+   input.value=''
+  }catch(err){
+   row.className='bulk-upload-result error'
+   row.querySelector('span').textContent=String(err.message||err)
+   failed++
+  }
+ }
+ msg.innerHTML='<div class="'+(failed?'notice':'success')+'"><b>انتهى الرفع الجماعي.</b> ناجح: '+ok+' • مراجعة: '+review+' • فشل: '+failed+'</div>'
+ btn.disabled=false
+ clearPageCache()
+ await loadUploadHistory()
+}
+
 function renderUploads(){
  const branchOpts='<option value="">اختر الفرع</option>'+branches.map(b=>'<option value="'+b.id+'">'+escapeHtml(b.name)+'</option>').join('')
  const month=selectedMonth||today.toISOString().slice(0,7)
@@ -2249,7 +2364,11 @@ function renderUploads(){
  const periodStart=month+'-01'
  const periodEnd=month+'-'+String(new Date(yy,mm,0).getDate()).padStart(2,'0')
 
- shell('رفع الشيتات والسجل','ارفع ملف فرع واحد ثم راجع حالته من السجل أسفل الصفحة',`
+ shell('رفع الشيتات والسجل','ارفع ملف فرع واحد أو عدة فروع ثم راجع الحالة من السجل',`
+  <div class="upload-page-actions">
+   ${profile?.role==='admin'?'<button class="btn secondary" type="button" onclick="openAddBranchDialog()">+ إضافة فرع</button>':''}
+  </div>
+
   <section class="upload-simple-card">
    <div class="upload-step-head"><span class="step-badge">1</span><div><h2>رفع شيت جديد</h2><p>اختر الفرع والفترة ثم ملف Excel.</p></div></div>
    <form id="simple-upload-form" class="upload-simple-form">
@@ -2270,8 +2389,29 @@ function renderUploads(){
    <div id="simple-upload-progress" class="simple-upload-progress" hidden><span></span><b>جاري المعالجة…</b></div>
   </section>
 
+  <section class="upload-simple-card bulk-upload-card">
+   <div class="upload-step-head"><span class="step-badge">2</span><div><h2>رفع جماعي للفروع</h2><p>اختر ملف Excel أمام كل فرع تريد رفعه، ثم ارفع الملفات معًا.</p></div></div>
+   <form id="bulk-upload-form" class="bulk-upload-form" onsubmit="submitBulkBranchUploads(event)">
+    <div class="bulk-upload-settings">
+     <div class="field"><label>الشهر</label><select name="month" required>
+      ${(availableMonths.length?availableMonths:[month]).map(m=>'<option value="'+m+'" '+(m===month?'selected':'')+'>'+monthLabel(m)+'</option>').join('')}
+     </select></div>
+     <div class="field"><label>طريقة التعامل</label><select name="historyMode">
+      <option value="append_only" selected>إضافة الأيام الجديدة فقط</option>
+      <option value="review">مقارنة التغييرات والمراجعة</option>
+     </select></div>
+    </div>
+    <div class="bulk-branch-list">
+     ${branches.map(b=>'<div class="bulk-branch-row"><div class="bulk-branch-name"><b>'+escapeHtml(b.name)+'</b><small>'+escapeHtml(b.code||'')+'</small></div><input type="file" data-branch-id="'+b.id+'" data-branch-name="'+escapeAttr(b.name)+'" accept=".xlsx,application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"></div>').join('')}
+    </div>
+    <div class="bulk-upload-action"><button class="btn" type="submit">رفع شيتات الفروع المحددة</button></div>
+   </form>
+   <div id="bulk-upload-msg"></div>
+   <div id="bulk-upload-results" class="bulk-upload-results"></div>
+  </section>
+
   <section class="upload-history-section">
-   <div class="upload-step-head"><span class="step-badge">2</span><div><h2>سجل الشيتات</h2><p>راجع النسخ السابقة أو أعد رفعها أو احذفها.</p></div></div>
+   <div class="upload-step-head"><span class="step-badge">3</span><div><h2>سجل الشيتات</h2><p>راجع النسخ السابقة أو أعد رفعها أو احذفها.</p></div></div>
    <div id="upload-history"></div>
   </section>
  `)
