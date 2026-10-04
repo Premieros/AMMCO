@@ -7,7 +7,7 @@ export function Imports({month,branchId,branches,isAdmin}:{month:string;branchId
  const [rows,setRows]=useState<any[]>([]),[msg,setMsg]=useState(''),[busy,setBusy]=useState(false)
  const map=useMemo(()=>new Map(branches.map(b=>[b.id,b.name])),[branches])
  const load=()=>getImportHistory(branchId).then(setRows).catch(e=>setMsg(e.message||String(e)))
- useEffect(load,[branchId])
+ useEffect(()=>{void load()},[branchId])
  async function submit(e:FormEvent<HTMLFormElement>){
   e.preventDefault();const f=new FormData(e.currentTarget),file=f.get('file')
   if(!(file instanceof File)||!file.size)return
