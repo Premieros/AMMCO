@@ -638,12 +638,14 @@ async function loadExecutiveIntelligence(f){
  }
  const branchAgg=new Map()
  branches.forEach(b=>{if(!f.branch||b.id===f.branch)branchAgg.set(b.id,{id:b.id,name:b.name,code:b.code,sales:0,qty:0,equivQty:0,expenses:0,collections:0,discounts:0,hasData:false})})
- const timeline=new Map(),latestWh=new Map()
+ const timeline=new Map(),latestWh=new Map(),latestDebtByBranch=new Map()
  let netSales=0,grossSales=0,discounts=0,collections=0,totalExpenses=0
  kpis.forEach(r=>{
   const s=Number(r.net_sales||0),g=Number(r.gross_sales||0),d=Number(r.discounts||0),col=Number(r.collections||0)
   netSales+=s;grossSales+=g;discounts+=d;collections+=col
   const b=branchAgg.get(r.branch_id);if(b){b.sales+=s;b.collections+=col;b.discounts+=d;b.hasData=true}
+  const debtPrev=latestDebtByBranch.get(r.branch_id)
+  if(!debtPrev||String(r.business_date)>=String(debtPrev.business_date))latestDebtByBranch.set(r.branch_id,{business_date:r.business_date,value:Number(r.closing_receivables||0)})
   const day=timeline.get(r.business_date)||{date:r.business_date,sales:0,expenses:0,qty:0,equivQty:0};day.sales+=s;timeline.set(r.business_date,day)
  })
  wh.forEach(r=>{
@@ -699,6 +701,7 @@ async function loadExecutiveIntelligence(f){
  })
  const branchList=[...branchAgg.values()].map(b=>({...b,sharePct:netSales?b.sales/netSales:0,avgPrice:b.equivQty?b.sales/b.equivQty:0,expenseRatio:b.sales?b.expenses/b.sales:0})).sort((a,b)=>b.sales-a.sales)
  const equivSalesQty=branchList.reduce((a,b)=>a+b.equivQty,0),rawSalesQty=branchList.reduce((a,b)=>a+b.qty,0)
+ const totalDebt=[...latestDebtByBranch.values()].reduce((a,x)=>a+Number(x.value||0),0)
  const avgCartonPrice=equivSalesQty?netSales/equivSalesQty:0,expenseRatio=netSales?totalExpenses/netSales:0,discountRate=grossSales?discounts/grossSales:0
  const expensesByCategory={};exp.forEach(r=>{const k=normalizeExecCategory((r.canonical_category||'')+' '+(r.expense_group||''));expensesByCategory[k]=(expensesByCategory[k]||0)+Number(r.amount||0)})
  let prevNetSales=0,prevTotalExpenses=0,prevEquivQty=0,prevAvgPrice=0,prevExpenseRatio=0,prevDiscountRate=0
@@ -731,7 +734,7 @@ async function loadExecutiveIntelligence(f){
   prevExpenseRatio=prevNetSales?prevTotalExpenses/prevNetSales:0
  }
  const points=[...timeline.values()].sort((a,b)=>a.date.localeCompare(b.date));points.forEach(p=>{p.avgPrice=p.equivQty?p.sales/p.equivQty:0})
- return {kpis:{netSales,prevNetSales,equivSalesQty,prevEquivQty,avgCartonPrice,prevAvgPrice,totalExpenses,prevTotalExpenses,netResult:netSales-totalExpenses,prevNetResult:prevNetSales-prevTotalExpenses,expenseRatio,prevExpenseRatio,discountRate,prevDiscountRate,reportingBranches:branchList.filter(b=>b.hasData).length,totalBranchesCount:branchAgg.size,lastUpdate:br.data?.[0]?.created_at?new Date(br.data[0].created_at).toLocaleString('ar-EG'):'—'},timelinePoints:points,branchList,expensesByCategory,discounts,grossSales,collections,rawExpenses:exp,rawInventory:inv,products,productMap,rawSalesQty}
+ return {kpis:{netSales,prevNetSales,equivSalesQty,prevEquivQty,avgCartonPrice,prevAvgPrice,totalExpenses,prevTotalExpenses,netResult:netSales-totalExpenses,prevNetResult:prevNetSales-prevTotalExpenses,expenseRatio,prevExpenseRatio,discountRate,prevDiscountRate,totalCollections:collections,totalDebt,totalDiscountValue:discounts,reportingBranches:branchList.filter(b=>b.hasData).length,totalBranchesCount:branchAgg.size,lastUpdate:br.data?.[0]?.created_at?new Date(br.data[0].created_at).toLocaleString('ar-EG'):'—'},timelinePoints:points,branchList,expensesByCategory,discounts,grossSales,collections,rawExpenses:exp,rawInventory:inv,products,productMap,rawSalesQty}
 }
 
 async function approvedIds(){
@@ -859,6 +862,23 @@ function renderKPICard(title, cur, prev, format = 'currency', invert = false, su
 
 function render8KPIGrid(kpis, compare) {
   return `
+    <div class="dashboard-highlight-kpis">
+      <div class="dashboard-highlight-card deposit-card">
+        <span>التوريد</span>
+        <strong>${money(kpis.totalCollections)} ج.م</strong>
+        <small>إجمالي التحصيل خلال الفترة</small>
+      </div>
+      <div class="dashboard-highlight-card debt-card">
+        <span>المديونية</span>
+        <strong>${money(kpis.totalDebt)} ج.م</strong>
+        <small>آخر رصيد مديونية للفروع</small>
+      </div>
+      <div class="dashboard-highlight-card discount-card">
+        <span>قيمة الخصم</span>
+        <strong>${money(kpis.totalDiscountValue)} ج.م</strong>
+        <small>إجمالي الخصومات خلال الفترة</small>
+      </div>
+    </div>
     <div class="kpis-8-grid">
       ${renderKPICard('إجمالي المبيعات (صافي)', kpis.netSales, compare ? kpis.prevNetSales : null, 'currency', false, 'صافي الإيرادات بعد الخصم')}
       ${renderKPICard('كمية المبيعات (المكافئة)', kpis.equivSalesQty, compare ? kpis.prevEquivQty : null, 'qty', false, 'مع احتساب دبل × 2')}
