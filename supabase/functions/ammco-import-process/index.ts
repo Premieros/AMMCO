@@ -992,6 +992,7 @@ Deno.serve(async (req: Request) => {
         metadata: {
           ...(batch.metadata && typeof batch.metadata === 'object' ? batch.metadata : {}),
           workbook_stats: parsed.stats,
+          total_sales_summary: parsed.totalSalesSummary ?? null,
           history_mode: historyMode,
           imported_new_days: historyMode === 'append_only' ? effectiveDaySnapshots.length : null,
         },
