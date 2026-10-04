@@ -1,11 +1,115 @@
-import type {ReactNode} from 'react'
+import {useMemo,useRef,useState,type ReactNode} from 'react'
+import * as XLSX from 'xlsx'
 
-export type Column<T>={key:keyof T|string;label:string;render?:(row:T)=>ReactNode;numeric?:boolean}
+export type Column<T>={
+ key:keyof T|string
+ label:string
+ render?:(row:T)=>ReactNode
+ numeric?:boolean
+ filter?:boolean
+ total?:boolean
+}
+
+const raw=(row:Record<string,any>,key:string)=>row[key]
+const display=(v:any)=>{
+ if(v===null||v===undefined||v==='')return '—'
+ if(typeof v==='boolean')return v?'نعم':'لا'
+ if(typeof v==='number')return new Intl.NumberFormat('en-US',{maximumFractionDigits:2}).format(v)
+ return String(v)
+}
 
 export function DataTable<T extends Record<string,any>>({title,columns,rows}:{title:string;columns:Column<T>[];rows:T[]}){
+ const [search,setSearch]=useState('')
+ const [sort,setSort]=useState<{key:string;dir:'asc'|'desc'}|null>(null)
+ const [filters,setFilters]=useState<Record<string,string>>({})
+ const wrapRef=useRef<HTMLDivElement>(null)
+
+ const filtered=useMemo(()=>{
+  const q=search.trim().toLowerCase()
+  const out=rows.filter(row=>{
+   if(q&&!columns.some(c=>display(raw(row,String(c.key))).toLowerCase().includes(q)))return false
+   for(const [key,val] of Object.entries(filters)){
+    if(val&&display(raw(row,key))!==val)return false
+   }
+   return true
+  })
+  if(!sort)return out
+  return [...out].sort((a,b)=>{
+   const av=raw(a,sort.key),bv=raw(b,sort.key)
+   const an=Number(av),bn=Number(bv)
+   const cmp=Number.isFinite(an)&&Number.isFinite(bn)?an-bn:String(av??'').localeCompare(String(bv??''),'ar',{numeric:true})
+   return sort.dir==='asc'?cmp:-cmp
+  })
+ },[rows,columns,search,filters,sort])
+
+ const uniqueValues=(key:string)=>[...new Set(rows.map(r=>display(raw(r,key))).filter(v=>v!=='—'))].sort((a,b)=>a.localeCompare(b,'ar',{numeric:true})).slice(0,250)
+
+ const totalFor=(c:Column<T>)=>{
+  if(!(c.total??c.numeric))return null
+  let found=false,sum=0
+  for(const r of filtered){
+   const n=Number(raw(r,String(c.key)))
+   if(Number.isFinite(n)){sum+=n;found=true}
+  }
+  return found?sum:null
+ }
+
+ const toggleSort=(key:string)=>{
+  setSort(s=>!s||s.key!==key?{key,dir:'asc'}:s.dir==='asc'?{key,dir:'desc'}:null)
+ }
+
+ const exportExcel=()=>{
+  const data=filtered.map(r=>Object.fromEntries(columns.map(c=>[c.label,raw(r,String(c.key))??''])))
+  const ws=XLSX.utils.json_to_sheet(data)
+  const wb=XLSX.utils.book_new()
+  XLSX.utils.book_append_sheet(wb,ws,title.slice(0,31)||'Report')
+  XLSX.writeFile(wb,(title||'report')+'.xlsx')
+ }
+
+ const printTable=()=>{
+  const host=wrapRef.current?.querySelector('table')
+  if(!host)return
+  const w=window.open('','_blank','width=1200,height=800')
+  if(!w)return
+  w.document.write('<!doctype html><html lang="ar" dir="rtl"><head><meta charset="utf-8"><title>'+title+'</title><style>body{font-family:Tahoma,Arial;padding:20px;color:#172033}h1{font-size:18px}table{width:100%;border-collapse:collapse;font-size:11px}th,td{border:1px solid #cbd5e1;padding:6px;text-align:right}th{background:#f1f5f9}.num{direction:ltr;text-align:right}tfoot{font-weight:700;background:#eef2f7}</style></head><body><h1>'+title+'</h1>'+host.outerHTML+'</body></html>')
+  w.document.close();w.focus();setTimeout(()=>w.print(),150)
+ }
+
  return <section className="panel table-panel">
-  <div className="table-head"><div><h2>{title}</h2><span>{rows.length} سجل</span></div></div>
-  <div className="table-wrap"><table><thead><tr>{columns.map(c=><th key={String(c.key)}>{c.label}</th>)}</tr></thead>
-  <tbody>{rows.length?rows.map((row,i)=><tr key={i}>{columns.map(c=><td key={String(c.key)} className={c.numeric?'num':''}>{c.render?c.render(row):String(row[c.key as keyof T]??'—')}</td>)}</tr>):<tr><td colSpan={columns.length} className="empty">لا توجد بيانات في الفترة المحددة</td></tr>}</tbody></table></div>
+  <div className="table-head">
+   <div><h2>{title}</h2><span>{filtered.length} من {rows.length} سجل</span></div>
+   <div className="table-tools">
+    <input className="table-search" value={search} onChange={e=>setSearch(e.target.value)} placeholder="بحث…"/>
+    <button className="small-btn" onClick={()=>{setSearch('');setFilters({});setSort(null)}}>مسح الفلاتر</button>
+    <button className="small-btn" onClick={exportExcel}>Excel</button>
+    <button className="small-btn" onClick={printTable}>طباعة</button>
+   </div>
+  </div>
+  <div className="table-wrap" ref={wrapRef}>
+   <table>
+    <thead>
+     <tr>{columns.map(c=>{
+      const key=String(c.key),active=sort?.key===key
+      return <th key={key} className={c.numeric?'num':''}>
+       <button className={'sort-head '+(active?'active':'')} onClick={()=>toggleSort(key)} title="ترتيب">
+        <span>{c.label}</span><b>{active?(sort?.dir==='asc'?'↑':'↓'):'↕'}</b>
+       </button>
+       {c.filter!==false&&<select className="column-filter" value={filters[key]||''} onChange={e=>setFilters(s=>({...s,[key]:e.target.value}))}>
+        <option value="">الكل</option>
+        {uniqueValues(key).map(v=><option key={v} value={v}>{v}</option>)}
+       </select>}
+      </th>
+     })}</tr>
+    </thead>
+    <tbody>
+     {filtered.length?filtered.map((row,i)=><tr key={i}>{columns.map(c=><td key={String(c.key)} className={c.numeric?'num':''}>{c.render?c.render(row):display(raw(row,String(c.key)))}</td>)}</tr>):<tr><td colSpan={columns.length} className="empty">لا توجد بيانات في الفترة المحددة</td></tr>}
+    </tbody>
+    {!!filtered.length&&<tfoot><tr>{columns.map((c,i)=>{
+     if(i===0)return <th key={String(c.key)}>الإجمالي</th>
+     const t=totalFor(c)
+     return <td key={String(c.key)} className={c.numeric?'num':''}>{t===null?'':new Intl.NumberFormat('en-US',{maximumFractionDigits:2}).format(t)}</td>
+    })}</tr></tfoot>}
+   </table>
+  </div>
  </section>
 }
