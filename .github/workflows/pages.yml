@@ -23,21 +23,35 @@ jobs:
       name: github-pages
       url: ${{ steps.deployment.outputs.page_url }}
     runs-on: ubuntu-latest
+    env:
+      VITE_SUPABASE_URL: https://yumeijsyiphzdsulsubf.supabase.co
+      VITE_SUPABASE_PUBLISHABLE_KEY: eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6Inl1bWVpanN5aXBoemRzdWxzdWJmIiwicm9sZSI6ImFub24iLCJpYXQiOjE3OTA2ODk1ODAsImV4cCI6MjEwNjI2NTU4MH0.Hpy2VZpttnQGdrx6_6Y1c9w4iHG2HhopvFdrohk3BBE
     steps:
       - name: Checkout verified main
         uses: actions/checkout@v4
         with:
           ref: ${{ github.event.workflow_run.head_sha }}
 
+      - name: Setup Node
+        uses: actions/setup-node@v4
+        with:
+          node-version: '24'
+
+      - name: Build AMMCO v2
+        working-directory: v2
+        run: |
+          npm install --no-audit --no-fund
+          npm run build
+
       - name: Configure Pages
         uses: actions/configure-pages@v5
         with:
           enablement: true
 
-      - name: Upload static portal
+      - name: Upload AMMCO v2
         uses: actions/upload-pages-artifact@v3
         with:
-          path: pages-static
+          path: v2/dist
 
       - name: Deploy to GitHub Pages
         id: deployment
