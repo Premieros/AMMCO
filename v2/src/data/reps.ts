@@ -27,7 +27,6 @@ export type ReceivableSummary={
  deposits:number
  closingDebt:number
  collectionRate:number
- checkDiff:number
 }
 
 export async function getRepSummaries(params:{from:string;to:string;branchId?:string}){
