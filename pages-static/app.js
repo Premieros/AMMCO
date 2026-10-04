@@ -429,7 +429,7 @@ async function loadExecutiveIntelligence(f){
   const day=timeline.get(r.business_date)||{date:r.business_date,sales:0,expenses:0,qty:0,equivQty:0};day.equivQty+=q*factor;timeline.set(r.business_date,day)
  })
  branchAgg.forEach((b,id)=>{
-  const lw=latestWh.get(id),verified=Number(lw?.raw_payload?.equivalent_cartons_month||0)
+  const lw=latestWh.get(id),verified=lw?.raw_payload?.total_sales_source==='Total!BB'?Number(lw?.raw_payload?.equivalent_cartons_month||0):0
   b.equivQty=verified||Number(detailedEquiv.get(id)||0)
  })
  exp.forEach(r=>{
@@ -1018,7 +1018,7 @@ async function renderExecutive(){
  const raw=[...by.entries()].map(([id,x])=>{
   const wh=whLatest.get(id)||{},verifiedLegacy=wh.raw_payload?.closing_qty_source==='daily_product_closing_verified'
   const inv=verifiedLegacy?{qty:Number(wh.closing_qty||0),value:Number(wh.closing_value||0)}:(inventoryByBranch.get(id)||{qty:0,value:0})
-  const verifiedEquiv=Number(wh.raw_payload?.equivalent_cartons_month||0)
+  const verifiedEquiv=wh.raw_payload?.total_sales_source==='Total!BB'?Number(wh.raw_payload?.equivalent_cartons_month||0):0
   const detailedEquiv=Number(equivCartonsBy.get(id)||0)
   const equivCartons=verifiedEquiv||detailedEquiv
   const car=carExp.get(id)||{fuel:0,petro:0,maintenance:0}
