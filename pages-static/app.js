@@ -26,7 +26,7 @@ let currentRenderedKey=null
 let bootPromise=null
 
 const pageCacheKey=()=>location.hash||'#/dashboard'
-const cacheableRoutes=new Set(['dashboard','reports','sales','expenses','expense-matrix','receivables','reps','inventory','products','monthly','banks','analytics','executive'])
+const cacheableRoutes=new Set(['dashboard','reports','sales','expenses-center','expenses','expense-matrix','receivables','reps','inventory','products','monthly','banks','analytics','executive'])
 const isCacheableRoute=()=>cacheableRoutes.has(route().split('?')[0])
 function clearPageCache(){
  pageViewCache.clear()
@@ -100,6 +100,7 @@ window.changeUnifiedReport=select=>{
 const EXEC_NAV_SECTIONS=[
  {id:'dashboard',label:'لوحة التحكم',icon:'<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="3" y="3" width="7" height="9"></rect><rect x="14" y="3" width="7" height="5"></rect><rect x="14" y="12" width="7" height="9"></rect><rect x="3" y="16" width="7" height="5"></rect></svg>'},
  {id:'reports',label:'التقارير',href:'#/reports?report=executive',icon:'<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"></path><polyline points="14 2 14 8 20 8"></polyline><line x1="8" y1="13" x2="16" y2="13"></line><line x1="8" y1="17" x2="16" y2="17"></line></svg>'},
+ {id:'expenses-center',label:'المصروفات',icon:'<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="3" y="5" width="18" height="14" rx="2"></rect><path d="M7 9h10M7 13h6"></path></svg>'},
  {id:'treasury',label:'الخزينة',icon:'<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="2" y="6" width="20" height="12" rx="2"></rect><circle cx="12" cy="12" r="2"></circle></svg>'},
  {id:'uploads',label:'رفع الشيتات والسجل',icon:'<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"></path><polyline points="17 8 12 3 7 8"></polyline><line x1="12" y1="3" x2="12" y2="15"></line></svg>'}
 ]
@@ -351,6 +352,7 @@ async function renderFresh(){
   if(r==='treasury')return renderTreasury()
   if(r==='accounting-inputs'){location.hash='#/treasury';return}
   if(r==='sales')return renderSales()
+  if(r==='expenses-center')return renderExpensesCenter()
   if(r==='expenses')return renderExpenses()
   if(r==='expense-matrix')return renderExpenseMatrix()
   if(r==='receivables')return renderReceivables()
@@ -1263,6 +1265,131 @@ window.editTreasurySheetRow=function(id){
 
 
 async function renderSales(){const {branch,from,to}=currentFilters();const daily=await loadDaily(branch,from,to);const rows=daily.map(r=>({business_date:r.business_date,branch_name:r.branch_name,gross:money(r.gross_sales),discounts:money(r.discounts),net:money(r.net_sales),collections:money(r.collections),expenses:money(r.expenses)}));shell('تقرير المبيعات','تفاصيل المبيعات اليومية حسب الفرع',filters(from,to,branch)+scope(from,to,branch)+table('المبيعات اليومية',[{key:'business_date',label:'التاريخ'},{key:'branch_name',label:'الفرع'},{key:'gross',label:'قبل الخصم',num:1},{key:'discounts',label:'الخصم',num:1},{key:'net',label:'صافي البيع',num:1},{key:'collections',label:'التحصيل',num:1},{key:'expenses',label:'المصروفات',num:1}],rows));bindFilters('sales')}
+async function renderExpensesCenter(){
+ const {branch,from,to}=currentFilters()
+ let expQ=supabase.from('v_expense_analysis')
+  .select('branch_id,entry_date,canonical_category,expense_group,amount')
+  .gte('entry_date',from).lte('entry_date',to)
+ let salesQ=supabase.from('v_branch_daily_kpis')
+  .select('branch_id,business_date,net_sales')
+  .gte('business_date',from).lte('business_date',to)
+ let setQ=supabase.from('branch_expense_accrual_settings')
+  .select('branch_id,month_start,wages,branch_manager,sector_manager,rent,carried_expenses,commission_rate,working_days_basis')
+  .lte('month_start',to).order('month_start',{ascending:false})
+ if(branch){
+  expQ=expQ.eq('branch_id',branch)
+  salesQ=salesQ.eq('branch_id',branch)
+  setQ=setQ.eq('branch_id',branch)
+ }
+ const [er,sr,tr]=await Promise.all([expQ,salesQ,setQ])
+ if(er.error||sr.error||tr.error)throw er.error||sr.error||tr.error
+ const expenses=er.data||[],sales=sr.data||[],settings=tr.data||[]
+ const bset=branch?branches.filter(b=>b.id===branch):branches
+ const branchMap=new Map(branches.map(b=>[b.id,b.name]))
+
+ const salesBy=new Map(),daysBy=new Map()
+ sales.forEach(r=>{
+  salesBy.set(r.branch_id,(salesBy.get(r.branch_id)||0)+Number(r.net_sales||0))
+  const s=daysBy.get(r.branch_id)||new Set();s.add(r.business_date);daysBy.set(r.branch_id,s)
+ })
+ const totalSales=[...salesBy.values()].reduce((a,b)=>a+b,0)
+ const totalExpenses=expenses.reduce((a,r)=>a+Number(r.amount||0),0)
+ const expenseRate=totalSales?totalExpenses/totalSales:0
+
+ const categoryMap=new Map()
+ expenses.forEach(r=>{
+  const label=(r.canonical_category||r.expense_group||'غير مصنف').trim()||'غير مصنف'
+  const x=categoryMap.get(label)||{label,total:0,branches:new Map()}
+  const v=Number(r.amount||0)
+  x.total+=v
+  x.branches.set(r.branch_id,(x.branches.get(r.branch_id)||0)+v)
+  categoryMap.set(label,x)
+ })
+ const detailRows=[...categoryMap.values()]
+  .sort((a,b)=>b.total-a.total)
+  .map(x=>{
+   const row={label:escapeHtml(x.label)}
+   bset.forEach(b=>row[b.id]=money(x.branches.get(b.id)||0))
+   row.total=money(x.total)
+   row.rate=pct(totalExpenses?x.total/totalExpenses:0)
+   return row
+  })
+ const detailCols=[
+  {key:'label',label:'بند المصروف'},
+  ...bset.map(b=>({key:b.id,label:b.name,num:1})),
+  {key:'total',label:'الإجمالي',num:1},
+  {key:'rate',label:'% من المصروفات'}
+ ]
+
+ const latestSetting=new Map()
+ settings.forEach(r=>{if(!latestSetting.has(r.branch_id))latestSetting.set(r.branch_id,r)})
+ const expBy=new Map()
+ expenses.forEach(r=>{
+  const txt=((r.canonical_category||'')+' '+(r.expense_group||'')).toLowerCase()
+  const x=expBy.get(r.branch_id)||{treasury:0,fuel:0,petro:0}
+  const v=Number(r.amount||0)
+  x.treasury+=v
+  if(/سولار|وقود|fuel/.test(txt))x.fuel+=v
+  if(/بترو|petro/.test(txt))x.petro+=v
+  expBy.set(r.branch_id,x)
+ })
+ const analyticRaw=bset.map(b=>{
+  const s=salesBy.get(b.id)||0
+  const st=latestSetting.get(b.id)||{}
+  const ex=expBy.get(b.id)||{treasury:0,fuel:0,petro:0}
+  const days=(daysBy.get(b.id)||new Set()).size
+  const basis=Number(st.working_days_basis||30)
+  const wages=Number(st.wages||0)+Number(st.branch_manager||0)+Number(st.sector_manager||0)
+  const rent=Number(st.rent||0)
+  const accrued=wages+rent
+  const carried=Number(st.carried_expenses||0)
+  const toDate=(accrued*(days/Math.max(1,basis)))+carried
+  const commission=s*Number(st.commission_rate||0)
+  const vehicle=ex.fuel+ex.petro
+  const total=toDate+ex.treasury+commission
+  return {branch_name:b.name,sales:s,days,wages,rent,toDate,fuel:ex.fuel,petro:ex.petro,vehicle,treasury:ex.treasury,commission,total,rate:s?total/s:0}
+ })
+ const analyticRows=analyticRaw.map(x=>({
+  branch_name:escapeHtml(x.branch_name),
+  sales:money(x.sales),days:x.days,wages:money(x.wages),rent:money(x.rent),
+  to_date:money(x.toDate),fuel:money(x.fuel),petro:money(x.petro),vehicle:money(x.vehicle),
+  treasury:money(x.treasury),commission:money(x.commission),expenses:money(x.total),expense_rate:pct(x.rate)
+ }))
+ const analyticCols=[
+  {key:'branch_name',label:'الفرع'},{key:'sales',label:'المبيعات',num:1},{key:'days',label:'أيام العمل'},
+  {key:'wages',label:'أجور',num:1},{key:'rent',label:'إيجارات',num:1},{key:'to_date',label:'المستحق حتى تاريخه',num:1},
+  {key:'fuel',label:'سولار',num:1},{key:'petro',label:'بترو أب',num:1},{key:'vehicle',label:'إجمالي السيارات',num:1},
+  {key:'treasury',label:'مصروفات الخزينة',num:1},{key:'commission',label:'عمولات',num:1},
+  {key:'expenses',label:'إجمالي المصروفات',num:1},{key:'expense_rate',label:'% المصروفات'}
+ ]
+
+ const cards='<section class="expense-summary-grid">'+
+  '<div class="expense-summary-card"><span>إجمالي المصروفات</span><strong>'+money(totalExpenses)+' ج.م</strong></div>'+
+  '<div class="expense-summary-card"><span>صافي المبيعات</span><strong>'+money(totalSales)+' ج.م</strong></div>'+
+  '<div class="expense-summary-card"><span>نسبة المصروفات للمبيعات</span><strong>'+pct(expenseRate)+'</strong></div>'+
+  '<div class="expense-summary-card"><span>عدد بنود المصروفات</span><strong>'+categoryMap.size+'</strong></div>'+
+ '</section>'
+
+ const tabs='<div class="expense-tabs">'+
+  '<button class="expense-tab active" data-target="expense-details" onclick="switchExpenseTab(this)">المصروفات</button>'+
+  '<button class="expense-tab" data-target="expense-analysis" onclick="switchExpenseTab(this)">تحليلي المصاريف</button>'+
+ '</div>'
+
+ const body=filters(from,to,branch)+scope(from,to,branch)+cards+tabs+
+  '<div id="expense-details" class="expense-tab-panel active">'+table('المصروفات حسب البند والفروع',detailCols,detailRows)+'</div>'+
+  '<div id="expense-analysis" class="expense-tab-panel">'+table('تحليلي المصاريف',analyticCols,analyticRows)+'</div>'
+
+ shell('المصروفات','المصروفات الفعلية وتحليلها في شاشة واحدة',body)
+ bindFilters('expenses-center')
+}
+window.switchExpenseTab=function(btn){
+ const parent=btn.closest('.content')||document
+ document.querySelectorAll('.expense-tab').forEach(x=>x.classList.remove('active'))
+ document.querySelectorAll('.expense-tab-panel').forEach(x=>x.classList.remove('active'))
+ btn.classList.add('active')
+ document.getElementById(btn.dataset.target)?.classList.add('active')
+}
+
 async function renderExpenses(){
  const cfg=currentFilters(),branch=cfg.branch,from=cfg.from,to=cfg.to,ids=await approvedIds()
  let cashQ=supabase.from('cash_entries').select('branch_id,entry_date,category,canonical_category,expense_group,description,amount,is_expense,entry_kind,direction').in('batch_id',ids.length?ids:['00000000-0000-0000-0000-000000000000']).gte('entry_date',from).lte('entry_date',to)
