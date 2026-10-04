@@ -37,6 +37,9 @@ export type RepresentativeBlock = {
   totalDiscount: number
   closingBalance: number
   salesBeforeDiscount: number
+  salesQty: number
+  equivalentSalesQty: number
+  double570Qty: number
   rawPayload: Json
 }
 
@@ -146,6 +149,14 @@ export type TotalSalesSummary = {
   double570Qty: number
   equivalentSalesQty: number
   items: TotalSalesSummaryItem[]
+  reps: Array<{
+    slot: number
+    sourceColumn: string
+    repName: string
+    salesQty: number
+    equivalentSalesQty: number
+    double570Qty: number
+  }>
 }
 
 export type WarehouseDailySummary = {
@@ -382,6 +393,20 @@ function extractTotalSalesSummary(worksheet: ExcelJS.Worksheet): TotalSalesSumma
     items.push({ row, productName, cartonPrice, salesQty, factor, equivalentQty })
   }
 
+  const reps = REPRESENTATIVE_COLUMNS.flatMap((column, index) => {
+    const repName = textCell(worksheet.getCell(`${column}9`)).replace(/\s+/g, ' ').trim()
+    if (!repName) return []
+    const q = representativeSalesQty(worksheet, column)
+    return [{
+      slot: index + 1,
+      sourceColumn: column,
+      repName,
+      salesQty: q.salesQty,
+      equivalentSalesQty: q.equivalentSalesQty,
+      double570Qty: q.double570Qty,
+    }]
+  })
+
   return {
     sourceSheet: 'Total',
     sourceColumn: 'BB',
@@ -391,6 +416,7 @@ function extractTotalSalesSummary(worksheet: ExcelJS.Worksheet): TotalSalesSumma
     double570Qty,
     equivalentSalesQty,
     items,
+    reps,
   }
 }
 
@@ -850,6 +876,29 @@ function extractInventoryDaily(
   return rows
 }
 
+function representativeSalesQty(worksheet: ExcelJS.Worksheet, column: string) {
+  let salesQty = 0
+  let equivalentSalesQty = 0
+  let double570Qty = 0
+
+  for (let row = 15; row <= worksheet.rowCount; row += 1) {
+    const productName = textCell(worksheet.getCell(`D${row}`)).replace(/\s+/g, ' ').trim()
+    if (!productName) continue
+
+    const qty = numberCell(worksheet.getCell(`${column}${row}`))
+    if (!qty) continue
+
+    const cartonPrice = nullableNumber(worksheet.getCell(`E${row}`))
+    const factor = Number(cartonPrice ?? 0) === 570 ? 2 : 1
+
+    salesQty += qty
+    equivalentSalesQty += qty * factor
+    if (factor === 2) double570Qty += qty
+  }
+
+  return { salesQty, equivalentSalesQty, double570Qty }
+}
+
 function extractRepresentativeDay(
   worksheet: ExcelJS.Worksheet,
   businessDate: string,
@@ -887,6 +936,7 @@ function extractRepresentativeDay(
     const totalDiscount = numberCell(worksheet.getCell(`${column}7`))
     const closingBalance = numberCell(worksheet.getCell(`${column}8`))
     const salesBeforeDiscount = netAfterDiscount + totalDiscount
+    const quantities = representativeSalesQty(worksheet, column)
 
     reps.push({
       slot: index + 1,
@@ -901,7 +951,13 @@ function extractRepresentativeDay(
       totalDiscount,
       closingBalance,
       salesBeforeDiscount,
+      salesQty: quantities.salesQty,
+      equivalentSalesQty: quantities.equivalentSalesQty,
+      double570Qty: quantities.double570Qty,
       rawPayload: {
+        sales_qty: quantities.salesQty,
+        equivalent_sales_qty: quantities.equivalentSalesQty,
+        double_570_qty: quantities.double570Qty,
         opening_balance: { cell: `${column}2`, value: openingBalance },
         net_after_discount: { cell: `${column}3`, value: netAfterDiscount },
         deposit_amount: { cell: `${column}4`, value: depositAmount },
