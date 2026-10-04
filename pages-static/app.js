@@ -1519,6 +1519,37 @@ window.saveExpenseOperationalType=async function(encodedIds,selectId,label){
  }catch(e){if(msg)msg.innerHTML='<div class="error">'+escapeHtml(e.message||e)+'</div>'}
 }
 
+window.saveManualExpenseAccrual=async function(branchId,wagesId,rentId){
+ if(profile?.role!=='admin')return
+ const wagesInput=document.getElementById(wagesId),rentInput=document.getElementById(rentId),msg=document.getElementById('manual-accrual-msg')
+ const wages=Number(wagesInput?.value||0),rent=Number(rentInput?.value||0)
+ if(!Number.isFinite(wages)||wages<0||!Number.isFinite(rent)||rent<0){
+  if(msg)msg.innerHTML='<div class="error">الأجور والإيجار يجب أن يكونا أرقامًا صحيحة غير سالبة.</div>'
+  return
+ }
+ try{
+  if(msg)msg.innerHTML='<div class="notice">جاري حفظ الأجور والإيجار…</div>'
+  const {data:{session:active}}=await supabase.auth.getSession()
+  if(!active)throw new Error('انتهت جلسة الدخول')
+  const res=await fetch(SUPABASE_URL+'/functions/v1/ammco-admin-cash',{
+   method:'POST',
+   headers:{Authorization:'Bearer '+active.access_token,apikey:SUPABASE_KEY,'Content-Type':'application/json'},
+   body:JSON.stringify({
+    action:'set_accrual_settings',
+    branch_id:branchId,
+    month_start:selectedMonth+'-01',
+    wages,
+    rent
+   })
+  })
+  const out=await res.json()
+  if(!res.ok)throw new Error(out.error||'تعذر حفظ الأجور والإيجار')
+  if(msg)msg.innerHTML='<div class="success">تم حفظ الأجور والإيجار للشهر الحالي.</div>'
+  clearPageCache()
+  setTimeout(()=>render({force:true}),250)
+ }catch(e){if(msg)msg.innerHTML='<div class="error">'+escapeHtml(e.message||e)+'</div>'}
+}
+
 async function renderExpensesCenter(){
  const {branch,from,to}=currentFilters()
  let expQ=supabase.from('cash_entries')
@@ -1530,7 +1561,7 @@ async function renderExpensesCenter(){
   .gte('business_date',from).lte('business_date',to)
  let setQ=supabase.from('branch_expense_accrual_settings')
   .select('branch_id,month_start,wages,branch_manager,sector_manager,rent,carried_expenses,commission_rate,working_days_basis')
-  .lte('month_start',to).order('month_start',{ascending:false})
+  .eq('month_start',selectedMonth+'-01').order('month_start',{ascending:false})
  let petroQ=supabase.from('vehicle_daily')
   .select('id,branch_id,business_date,fuel_expense,other_expense,raw_payload')
   .gte('business_date',from).lte('business_date',to)
@@ -1604,6 +1635,17 @@ async function renderExpensesCenter(){
 
  const latestSetting=new Map()
  settings.forEach(r=>{if(!latestSetting.has(r.branch_id))latestSetting.set(r.branch_id,r)})
+ const manualAccrualEditor=profile?.role==='admin'
+  ? '<section class="manual-accrual-card"><div class="manual-accrual-head"><div><h3>الأجور والإيجارات اليدوية</h3><p>القيم شهرية وتُحفظ لكل فرع في '+escapeHtml(monthLabel(selectedMonth))+'</p></div></div>'+
+    '<div id="manual-accrual-msg"></div><div class="manual-accrual-grid">'+
+    bset.map((b,i)=>{
+      const st=latestSetting.get(b.id)||{},wid='manual-wages-'+i,rid='manual-rent-'+i
+      return '<div class="manual-accrual-row"><strong>'+escapeHtml(b.name)+'</strong>'+
+       '<label>الأجور<input id="'+wid+'" type="number" min="0" step="0.01" value="'+Number(st.wages||0)+'"></label>'+
+       '<label>الإيجار<input id="'+rid+'" type="number" min="0" step="0.01" value="'+Number(st.rent||0)+'"></label>'+
+       '<button class="tool-btn" type="button" onclick="saveManualExpenseAccrual(\''+b.id+'\',\''+wid+'\',\''+rid+'\')">حفظ</button></div>'
+    }).join('')+'</div></section>'
+  : ''
  const expBy=new Map()
  expenses.forEach(r=>{
   const txt=((r.canonical_category||'')+' '+(r.expense_group||'')).toLowerCase()
@@ -1658,7 +1700,7 @@ async function renderExpensesCenter(){
 
  const body=filters(from,to,branch)+scope(from,to,branch)+cards+'<div id="expense-type-msg"></div>'+tabs+
   '<div id="expense-details" class="expense-tab-panel active">'+table('المصروفات حسب البند والفروع',detailCols,detailRows)+'</div>'+
-  '<div id="expense-analysis" class="expense-tab-panel">'+table('تحليلي المصاريف',analyticCols,analyticRows)+'</div>'
+  '<div id="expense-analysis" class="expense-tab-panel">'+manualAccrualEditor+table('تحليلي المصاريف',analyticCols,analyticRows)+'</div>'
 
  shell('المصروفات','المصروفات الفعلية وتحليلها في شاشة واحدة',body)
  bindFilters('expenses-center')
