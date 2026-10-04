@@ -262,6 +262,21 @@ function table(title,cols,rows,totalRow=''){
   const encoded=encodeURIComponent(JSON.stringify(values))
   return '<th><div class="th-filter-wrap"><span>'+col.label+'</span><button class="excel-filter-btn" type="button" data-col="'+index+'" data-values="'+encoded+'" onclick="openExcelFilter(this)" title="فلتر العمود">⌄</button></div></th>'
  }).join('')
+ const parseNumericValue=v=>{
+  const s=String(v??'').replace(/<[^>]*>/g,'').replace(/,/g,'').replace(/ج\.م/g,'').trim()
+  if(!s||s==='—'||s==='-')return null
+  if(/%$/.test(s))return null
+  const n=Number(s)
+  return Number.isFinite(n)?n:null
+ }
+ const autoTotal=!totalRow&&cols.some(col=>col.num)&&rows.length
+  ? '<tr class="total auto-total">'+cols.map((col,index)=>{
+      if(index===0)return '<th>الإجمالي</th>'
+      if(!col.num)return '<td></td>'
+      const sum=rows.reduce((a,r)=>{const n=parseNumericValue(r[col.key]);return a+(n===null?0:n)},0)
+      return '<td class="num">'+money(sum)+'</td>'
+    }).join('')+'</tr>'
+  : ''
  return '<section class="table-card" data-report-title="'+escapeAttr(title)+'">'+
   '<div class="table-head"><div><h2>'+title+'</h2><small>'+rows.length+' صف</small></div>'+
   '<div class="table-tools"><input class="search" placeholder="بحث…" oninput="applyTableFilters(this)">'+
@@ -270,7 +285,7 @@ function table(title,cols,rows,totalRow=''){
   '<button class="tool-btn" type="button" onclick="printReportOnly(this)">طباعة</button></div></div>'+
   '<div class="table-wrap"><table><thead><tr>'+headers+'</tr></thead><tbody>'+
   rows.map(r=>'<tr>'+cols.map(col=>'<td class="'+(col.num?'num ':'')+(col.key==='branch_name'?'row-label':'')+'">'+(r[col.key]??'-')+'</td>').join('')+'</tr>').join('')+
-  totalRow+'</tbody></table></div></section>'
+  (totalRow||autoTotal)+'</tbody></table></div></section>'
 }
 window.__tableFilters=new WeakMap()
 window.openExcelFilter=button=>{
