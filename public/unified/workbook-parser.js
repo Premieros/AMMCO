@@ -74,14 +74,16 @@ const classifyTreasury=(sourceCode,sourceCategory,description)=>{
   if(!category&&/تحويل نقدي.*مصنع/.test(nd))return {entryKind:'hq_transfer',canonicalCategory:'تحويل للمصنع',expenseGroup:null,isExpense:false,classificationConfidence:'inferred'}
   return {entryKind:'other',canonicalCategory:category||null,expenseGroup:null,isExpense:false,classificationConfidence:'unclassified'}
 }
-const dailyDate=(sheetName,periodStart)=>{
+const inSelectedPeriod=(date,periodStart,periodEnd)=>!date||(!periodStart||date>=periodStart)&&(!periodEnd||date<=periodEnd)
+const dailyDate=(sheetName,periodStart,periodEnd)=>{
   if(!periodStart)return null
   const m=sheetName.trim().match(/^(\d{1,2})(-?)$/);if(!m)return null
   const day=Number(m[1]);if(day<1||day>31)return null
   const base=new Date(`${periodStart}T00:00:00Z`);if(Number.isNaN(base.getTime()))return null
   const month=m[2]?base.getUTCMonth()-1:base.getUTCMonth()
   const d=new Date(Date.UTC(base.getUTCFullYear(),month,day))
-  return d.getUTCDate()===day?d.toISOString().slice(0,10):null
+  const iso=d.getUTCDate()===day?d.toISOString().slice(0,10):null
+  return iso&&inSelectedPeriod(iso,periodStart,periodEnd)?iso:null
 }
 
 function extractProducts(sheet){
@@ -256,9 +258,12 @@ export async function parseWorkbookBrowser(file,{periodStart,periodEnd}={}){
     if(t==='حركة المخزن')warehouseDaily=extractWarehouse(sheet)
     if(t==='الجرد')inventoryCounts=extractCounts(sheet,periodEnd)
     if(t==='الخزنة')treasuryEntries=extractTreasury(sheet,issues)
-    const businessDate=dailyDate(name,periodStart)
+    const businessDate=dailyDate(name,periodStart,periodEnd)
     if(businessDate){representativeDays.push(extractRepDay(sheet,name,businessDate,issues));inventoryDaily.push(...extractInventoryDaily(sheet,name,businessDate))}
   })
+  remittances=remittances.filter(r=>inSelectedPeriod(r.businessDate,periodStart,periodEnd))
+  warehouseDaily=warehouseDaily.filter(r=>inSelectedPeriod(r.businessDate,periodStart,periodEnd))
+  treasuryEntries=treasuryEntries.filter(r=>inSelectedPeriod(r.entryDate,periodStart,periodEnd))
   return {
     sheets,issues,representativeDays,inventoryDaily,products,remittances,warehouseDaily,inventoryCounts,treasuryEntries,totalSalesSummary,
     schemaVersion:'ammco-browser-v1',
