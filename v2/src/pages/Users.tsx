@@ -1,0 +1,11 @@
+import {FormEvent,useEffect,useState} from 'react'
+import {createUser,getUsers,updateUser} from '../data/users'
+import {DataTable} from '../components/DataTable'
+export function UsersPage(){
+ const [data,setData]=useState<any>({users:[],branches:[]}),[error,setError]=useState(''),[msg,setMsg]=useState('')
+ const load=()=>getUsers().then(setData).catch(e=>setError(e.message||String(e)))
+ useEffect(load,[])
+ async function add(e:FormEvent<HTMLFormElement>){e.preventDefault();const f=new FormData(e.currentTarget);try{setMsg('جاري الإنشاء…');await createUser({full_name:f.get('full_name'),email:f.get('email'),password:f.get('password'),role:f.get('role'),branch_ids:f.getAll('branch_ids')});setMsg('تم إنشاء المستخدم');(e.currentTarget as HTMLFormElement).reset();load()}catch(x:any){setMsg(x.message)}}
+ async function toggle(u:any){try{await updateUser({user_id:u.user_id,full_name:u.full_name,role:u.role,is_active:!u.is_active,branch_ids:u.branch_ids||[]});load()}catch(x:any){setError(x.message)}}
+ return <div>{error&&<div className="error-box">{error}</div>}<section className="panel"><h2>إضافة مستخدم</h2><form className="user-form" onSubmit={add}><input name="full_name" placeholder="الاسم" required/><input name="email" type="email" placeholder="البريد الإلكتروني" required/><input name="password" type="password" minLength={8} placeholder="كلمة مرور مؤقتة" required/><select name="role" defaultValue="branch_user"><option value="branch_user">مستخدم فرع</option><option value="analyst">محلل</option><option value="admin">مدير</option></select><div className="checks">{data.branches?.map((b:any)=><label key={b.id}><input type="checkbox" name="branch_ids" value={b.id}/>{b.name}</label>)}</div><button className="primary">إضافة</button></form>{msg&&<p className="muted">{msg}</p>}</section><DataTable title="المستخدمون" rows={data.users||[]} columns={[{key:'full_name',label:'الاسم'},{key:'email',label:'البريد'},{key:'role',label:'الدور'},{key:'is_active',label:'الحالة',render:r=>r.is_active?'نشط':'موقوف'},{key:'branch_ids',label:'الفروع',render:r=>r.role==='admin'?'كل الفروع':(r.branch_ids||[]).map((id:string)=>data.branches.find((b:any)=>b.id===id)?.name||'—').join('، ')},{key:'action',label:'إجراء',render:r=><button className="small-btn" onClick={()=>toggle(r)}>{r.is_active?'إيقاف':'تفعيل'}</button>}]}/></div>
+}
