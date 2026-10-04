@@ -18,7 +18,6 @@ export function Receivables({from,to,branchId}:{from:string;to:string;branchId?:
   {key:'netSales',label:'صافي المبيعات',numeric:true,render:r=>money(r.netSales)},
   {key:'deposits',label:'التحصيل / التوريد',numeric:true,render:r=>money(r.deposits)},
   {key:'closingDebt',label:'مديونية آخر',numeric:true,render:r=>money(r.closingDebt)},
-  {key:'collectionRate',label:'% التحصيل',render:r=>pct(r.collectionRate)},
-  {key:'checkDiff',label:'فحص المعادلة',render:r=>Math.abs(r.checkDiff)<.02?'مطابق':'فرق '+money(r.checkDiff)}
+  {key:'collectionRate',label:'% التحصيل',render:r=>pct(r.collectionRate)}
  ]}/>
 }
