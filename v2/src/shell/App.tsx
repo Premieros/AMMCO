@@ -4,12 +4,18 @@ import {supabase} from '../lib/supabase'
 import {getAllowedBranchIds,getBranches,getLatestApprovedPeriod,getProfile} from '../data/core'
 import type {Branch,Profile} from '../domain/types'
 import {Dashboard} from '../pages/Dashboard'
+import {Reports} from '../pages/Reports'
 import {Reps} from '../pages/Reps'
 import {Receivables} from '../pages/Receivables'
+import {Expenses} from '../pages/Expenses'
+import {Treasury} from '../pages/Treasury'
+import {Imports} from '../pages/Imports'
+import {Inventory} from '../pages/Inventory'
+import {UsersPage} from '../pages/Users'
 import {Login} from '../pages/Login'
-import {LayoutDashboard,FileBarChart2,Users,Receipt,WalletCards,Upload,UserCog,LogOut} from 'lucide-react'
+import {LayoutDashboard,FileBarChart2,Users,Receipt,WalletCards,Upload,UserCog,LogOut,Boxes} from 'lucide-react'
 
-type Route='dashboard'|'reports'|'reps'|'receivables'|'expenses'|'treasury'|'imports'|'users'
+type Route='dashboard'|'reports'|'reps'|'receivables'|'expenses'|'treasury'|'inventory'|'imports'|'users'
 const nav=[
  ['dashboard','لوحة التحكم',LayoutDashboard],
  ['reports','التقارير',FileBarChart2],
@@ -17,6 +23,7 @@ const nav=[
  ['receivables','المديونية والتحصيل',WalletCards],
  ['expenses','المصروفات',Receipt],
  ['treasury','الخزينة',WalletCards],
+ ['inventory','المخزون',Boxes],
  ['imports','الاستيراد',Upload],
  ['users','إدارة المستخدمين',UserCog],
 ] as const
@@ -96,9 +103,14 @@ export function App(){
    </header>
 
    {route==='dashboard' && <Dashboard from={period.from} to={period.to} branchId={branchId||undefined}/>}
+   {route==='reports' && <Reports from={period.from} to={period.to} branchId={branchId||undefined}/>}
    {route==='reps' && <Reps from={period.from} to={period.to} branchId={branchId||undefined}/>}
    {route==='receivables' && <Receivables from={period.from} to={period.to} branchId={branchId||undefined}/>}
-   {!['dashboard','reps','receivables'].includes(route) && <section className="panel placeholder"><h2>{visibleNav.find(x=>x[0]===route)?.[1]}</h2><p>سيتم نقل هذه الوحدة من النظام القديم إلى طبقة v2 الموحدة.</p></section>}
+   {route==='expenses' && <Expenses from={period.from} to={period.to} month={month} branchId={branchId||undefined} branches={branches} isAdmin={profile.role==='admin'}/>}
+   {route==='treasury' && <Treasury from={period.from} to={period.to} branchId={branchId||undefined} branches={branches}/>}
+   {route==='inventory' && <Inventory from={period.from} to={period.to} branchId={branchId||undefined}/>}
+   {route==='imports' && <Imports month={month} branchId={branchId||undefined} branches={branches} isAdmin={profile.role==='admin'}/>}
+   {route==='users' && profile.role==='admin' && <UsersPage/>}
   </main>
  </div>
 }
