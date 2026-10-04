@@ -9,7 +9,8 @@ export async function uploadBranchWorkbook(input:{branchId:string;month:string;f
  const [y,m]=input.month.split('-').map(Number)
  const periodStart=input.month+'-01',periodEnd=input.month+'-'+String(new Date(y,m,0).getDate()).padStart(2,'0')
  input.onProgress?.('قراءة الملف')
- const parser:any=await import(/* @vite-ignore */ '/AMMCO/workbook-parser.js')
+ const parserUrl='/AMMCO/workbook-parser.js'
+ const parser:any=await import(/* @vite-ignore */ parserUrl)
  const parsed=await parser.parseWorkbookBrowser(input.file,{periodStart,periodEnd})
  const {data:{session}}=await supabase.auth.getSession()
  if(!session)throw new Error('انتهت جلسة الدخول')
