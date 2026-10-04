@@ -25,13 +25,36 @@ export function LoginView({ error, signupError, signupSuccess, returnTo }: Props
 
     try {
       const supabase = createClient()
-      const { error: signInError } = await supabase.auth.signInWithPassword({
+      const { data: signInData, error: signInError } = await supabase.auth.signInWithPassword({
         email: email.trim(),
         password,
       })
 
-      if (signInError) {
-        setClientError('بيانات الدخول غير صحيحة')
+      if (signInError || !signInData.session) {
+        const message = signInError?.message?.toLowerCase() || ''
+        if (message.includes('rate limit')) {
+          setClientError('تم تجاوز عدد محاولات تسجيل الدخول مؤقتًا. حاول بعد قليل.')
+        } else {
+          setClientError('تعذر تسجيل الدخول. تحقق من البيانات وحاول مرة أخرى.')
+        }
+        setIsLoggingIn(false)
+        return
+      }
+
+      const syncResponse = await fetch('/api/auth/sync', {
+        method: 'POST',
+        headers: {
+          'content-type': 'application/json',
+          authorization: `Bearer ${signInData.session.access_token}`,
+        },
+        body: JSON.stringify({
+          refreshToken: signInData.session.refresh_token,
+        }),
+      })
+
+      if (!syncResponse.ok) {
+        await supabase.auth.signOut()
+        setClientError('تم التحقق من الحساب لكن تعذر إنشاء جلسة الدخول. حاول مرة أخرى.')
         setIsLoggingIn(false)
         return
       }
