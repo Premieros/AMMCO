@@ -62,6 +62,36 @@ Deno.serve(async(req)=>{
   try{
     const body=await req.json()
 
+    if(body?.action==='set_accrual_settings'){
+      const branchId=String(body?.branch_id||'').trim()
+      const monthStart=String(body?.month_start||'').trim()
+      const wages=money(body?.wages??0,'الأجور')
+      const rent=money(body?.rent??0,'الإيجار')
+      if(!branchId)return json({error:'الفرع مطلوب'},400)
+      if(!/^\d{4}-\d{2}-01$/.test(monthStart))return json({error:'شهر الإعداد غير صالح'},400)
+
+      const {data:branch,error:bErr}=await admin.from('branches')
+        .select('id,organization_id')
+        .eq('id',branchId).maybeSingle()
+      if(bErr)return json({error:bErr.message},500)
+      if(!branch||branch.organization_id!==me.organization_id)return json({error:'الفرع لا يتبع المؤسسة الحالية'},403)
+
+      const {data:row,error:uErr}=await admin.from('branch_expense_accrual_settings')
+        .upsert({
+          branch_id:branchId,
+          organization_id:me.organization_id,
+          month_start:monthStart,
+          wages,
+          rent,
+          updated_by:uid,
+          updated_at:new Date().toISOString()
+        },{onConflict:'branch_id,month_start'})
+        .select('branch_id,month_start,wages,rent,branch_manager,sector_manager,carried_expenses,commission_rate,working_days_basis,updated_at')
+        .single()
+      if(uErr)return json({error:uErr.message},500)
+      return json({ok:true,setting:row})
+    }
+
     if(body?.action==='set_expense_type'){
       const ids=Array.isArray(body?.ids)?body.ids.map((x:any)=>Number(x)).filter((x:number)=>Number.isInteger(x)&&x>0):[]
       const expenseType=String(body?.expense_type||'').trim()
