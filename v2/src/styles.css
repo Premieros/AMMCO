@@ -46,3 +46,14 @@ th{background:#f8fafc;color:#475569;font-weight:700;position:sticky;top:0}
 td.num{direction:ltr;text-align:right;font-variant-numeric:tabular-nums}
 tbody tr:hover{background:#fbfdff}
 .empty{text-align:center!important;color:#64748b;padding:24px!important}
+
+.manual-grid{display:grid;gap:8px;margin-top:12px}
+.manual-row{display:grid;grid-template-columns:minmax(120px,1fr) repeat(3,minmax(110px,.7fr)) auto;gap:8px;align-items:end;padding:10px;border:1px solid #e5ebf1;border-radius:10px;background:#fbfdff}
+.manual-row label,.upload-form label{display:flex;flex-direction:column;gap:4px;font-size:11px;color:#64748b}
+.manual-row input,.upload-form input,.upload-form select,.user-form input,.user-form select{min-height:36px;border:1px solid #d7dee8;border-radius:8px;background:#fff;padding:0 9px}
+.small-btn{border:1px solid #d7dee8;background:#fff;border-radius:8px;min-height:34px;padding:0 10px;cursor:pointer}.small-btn:hover{background:#f1f5f9}
+.upload-form{display:grid;grid-template-columns:1fr 1fr 1.4fr 1.2fr auto;gap:10px;align-items:end;margin-top:12px}
+.user-form{display:grid;grid-template-columns:repeat(4,minmax(0,1fr));gap:10px;align-items:end}
+.checks{grid-column:1/-1;display:flex;flex-wrap:wrap;gap:8px}.checks label{display:flex;align-items:center;gap:5px;font-size:11px;color:#475569}
+@media(max-width:1000px){.manual-row,.upload-form,.user-form{grid-template-columns:1fr 1fr}}
+@media(max-width:620px){.manual-row,.upload-form,.user-form{grid-template-columns:1fr}}
