@@ -11,11 +11,12 @@ import {Expenses} from '../pages/Expenses'
 import {Treasury} from '../pages/Treasury'
 import {Imports} from '../pages/Imports'
 import {Inventory} from '../pages/Inventory'
+import {Vehicles} from '../pages/Vehicles'
 import {UsersPage} from '../pages/Users'
 import {Login} from '../pages/Login'
-import {LayoutDashboard,FileBarChart2,Users,Receipt,WalletCards,Upload,UserCog,LogOut,Boxes} from 'lucide-react'
+import {LayoutDashboard,FileBarChart2,Users,Receipt,WalletCards,Upload,UserCog,LogOut,Boxes,Truck} from 'lucide-react'
 
-type Route='dashboard'|'reports'|'reps'|'receivables'|'expenses'|'treasury'|'inventory'|'imports'|'users'
+type Route='dashboard'|'reports'|'reps'|'receivables'|'expenses'|'treasury'|'inventory'|'vehicles'|'imports'|'users'
 const nav=[
  ['dashboard','لوحة التحكم',LayoutDashboard],
  ['reports','التقارير',FileBarChart2],
@@ -24,6 +25,7 @@ const nav=[
  ['expenses','المصروفات',Receipt],
  ['treasury','الخزينة',WalletCards],
  ['inventory','المخزون',Boxes],
+ ['vehicles','السيارات وبترو اب',Truck],
  ['imports','الاستيراد',Upload],
  ['users','إدارة المستخدمين',UserCog],
 ] as const
@@ -109,6 +111,7 @@ export function App(){
    {route==='expenses' && <Expenses from={period.from} to={period.to} month={month} branchId={branchId||undefined} branches={branches} isAdmin={profile.role==='admin'}/>}
    {route==='treasury' && <Treasury from={period.from} to={period.to} branchId={branchId||undefined} branches={branches}/>}
    {route==='inventory' && <Inventory from={period.from} to={period.to} branchId={branchId||undefined}/>}
+   {route==='vehicles' && <Vehicles from={period.from} to={period.to} month={month} branchId={branchId||undefined} branches={branches} isAdmin={profile.role==='admin'}/>}
    {route==='imports' && <Imports month={month} branchId={branchId||undefined} branches={branches} isAdmin={profile.role==='admin'}/>}
    {route==='users' && profile.role==='admin' && <UsersPage/>}
   </main>
