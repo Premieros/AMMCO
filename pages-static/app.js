@@ -148,11 +148,55 @@ window.refreshAllData=async btn=>{
  }
 }
 
+function formatDateRangeLabel(from,to){
+ const fmtDate=v=>{const p=String(v||'').split('-');return p.length===3?p[2]+'/'+p[1]+'/'+p[0]:v}
+ return fmtDate(from)+' ← '+fmtDate(to)
+}
+function dateRangeField(formId,from,to){
+ return '<div class="field date-range-field"><label>الفترة</label>'+
+  '<input type="hidden" name="from" value="'+escapeAttr(from)+'">'+
+  '<input type="hidden" name="to" value="'+escapeAttr(to)+'">'+
+  '<button class="date-range-button" type="button" onclick="openDateRangePicker(\''+formId+'\')">'+
+   '<span class="date-range-icon">▣</span><span class="date-range-text">'+escapeHtml(formatDateRangeLabel(from,to))+'</span>'+
+  '</button></div>'
+}
+window.openDateRangePicker=function(formId){
+ const form=document.getElementById(formId)
+ if(!form)return
+ const from=form.querySelector('[name="from"]')?.value||defaultFrom
+ const to=form.querySelector('[name="to"]')?.value||defaultTo
+ document.getElementById('date-range-dialog')?.remove()
+ const html='<div class="dialog-backdrop" id="date-range-dialog"><div class="dialog-card date-range-dialog-card">'+
+  '<div class="dialog-head"><h3>تحديد الفترة</h3><button class="tool-btn" type="button" onclick="document.getElementById(\'date-range-dialog\').remove()">إغلاق</button></div>'+
+  '<form id="date-range-picker-form" class="date-range-picker-form">'+
+   '<div class="date-range-picker-grid">'+
+    '<div class="field"><label>أول الفترة</label><input name="picker_from" type="date" value="'+escapeAttr(from)+'" required></div>'+
+    '<div class="date-range-arrow">←</div>'+
+    '<div class="field"><label>آخر الفترة</label><input name="picker_to" type="date" value="'+escapeAttr(to)+'" required></div>'+
+   '</div>'+
+   '<div id="date-range-msg"></div>'+
+   '<div class="date-range-actions"><button class="btn secondary" type="button" onclick="document.getElementById(\'date-range-dialog\').remove()">إلغاء</button><button class="btn" type="submit">تطبيق الفترة</button></div>'+
+  '</form></div></div>'
+ document.body.insertAdjacentHTML('beforeend',html)
+ const picker=document.getElementById('date-range-picker-form')
+ picker.addEventListener('submit',e=>{
+  e.preventDefault()
+  const f=picker.picker_from.value,t=picker.picker_to.value
+  const msg=document.getElementById('date-range-msg')
+  if(!f||!t){msg.innerHTML='<div class="error">حدد أول وآخر الفترة.</div>';return}
+  if(t<f){msg.innerHTML='<div class="error">آخر الفترة يجب ألا يسبق أول الفترة.</div>';return}
+  form.querySelector('[name="from"]').value=f
+  form.querySelector('[name="to"]').value=t
+  const label=form.querySelector('.date-range-text')
+  if(label)label.textContent=formatDateRangeLabel(f,t)
+  document.getElementById('date-range-dialog')?.remove()
+ })
+}
+
 function branchOptions(selected=''){return `<option value="">كل الفروع</option>${branches.map(b=>`<option value="${b.id}" ${selected===b.id?'selected':''}>${b.name}</option>`).join('')}`}
 function filters(from,to,branch){return `<form id="filters" class="filters compact-filters">
  <div class="field filter-branch"><label>الفرع</label><select name="branch">${branchOptions(branch)}</select></div>
- <div class="field"><label>من</label><input type="date" name="from" value="${from}"></div>
- <div class="field"><label>إلى</label><input type="date" name="to" value="${to}"></div>
+ ${dateRangeField('filters',from,to)}
  <div class="filter-buttons"><button class="btn" type="submit">تطبيق</button><button class="btn secondary" type="button" onclick="resetReportFilters()">مسح</button></div>
 </form>`}
 function bindFilters(path){document.getElementById('filters')?.addEventListener('submit',e=>{e.preventDefault();const f=new FormData(e.currentTarget);const current=route().split('?')[0];if(current==='reports'){location.hash=`#/reports?report=${selectedReport()}&branch=${f.get('branch')||''}&from=${f.get('from')}&to=${f.get('to')}`;return}location.hash=`#/${path}?branch=${f.get('branch')||''}&from=${f.get('from')}&to=${f.get('to')}`})}
@@ -355,8 +399,7 @@ function renderUnifiedFilterBar(f){
  return '<div class="unified-bar"><div class="unified-bar-row">'+
  '<div class="presets-wrap"><button class="preset-btn" onclick="applyExecPreset(\'this_month\')">هذا الشهر</button><button class="preset-btn" onclick="applyExecPreset(\'prev_month\')">الشهر السابق</button><button class="preset-btn" onclick="applyExecPreset(\'ytd\')">السنة الحالية</button><button class="preset-btn" onclick="applyExecPreset(\'last_7\')">آخر 7 أيام</button></div>'+
  '<form id="exec-filter-form" style="display:flex;align-items:end;gap:8px;flex-wrap:wrap;margin-right:auto">'+
- '<div class="field"><label>من</label><input type="date" name="from" value="'+f.from+'"></div>'+
- '<div class="field"><label>إلى</label><input type="date" name="to" value="'+f.to+'"></div>'+
+ dateRangeField('exec-filter-form',f.from,f.to)+
  '<div class="field"><label>الفرع</label><select name="branch">'+branchOptions(f.branch)+'</select></div>'+
  '<label class="compare-toggle"><input type="checkbox" name="compare" '+(f.compare?'checked':'')+'><span>مقارنة بالفترة السابقة</span></label>'+
  '<button class="btn" type="submit">تطبيق</button><button class="btn secondary" type="button" onclick="resetExecFilters()">إعادة ضبط</button></form>'+
