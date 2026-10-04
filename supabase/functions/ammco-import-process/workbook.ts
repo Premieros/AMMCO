@@ -1131,9 +1131,9 @@ export async function parseWorkbook(
       inventoryCountRowCount: inventoryCounts.length,
       treasuryEntryCount: treasuryEntries.length,
       expenseEntryCount: treasuryEntries.filter((entry) => entry.isExpense).length,
-      totalSalesQty: totalSalesSummary?.totalSalesQty ?? 0,
-      double570Qty: totalSalesSummary?.double570Qty ?? 0,
-      equivalentSalesQty: totalSalesSummary?.equivalentSalesQty ?? 0,
+      totalSalesQty: (totalSalesSummary as TotalSalesSummary | null)?.totalSalesQty ?? 0,
+      double570Qty: (totalSalesSummary as TotalSalesSummary | null)?.double570Qty ?? 0,
+      equivalentSalesQty: (totalSalesSummary as TotalSalesSummary | null)?.equivalentSalesQty ?? 0,
     },
   }
 }
