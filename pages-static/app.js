@@ -108,6 +108,8 @@ window.changeUnifiedReport=select=>{
 const EXEC_NAV_SECTIONS=[
  {id:'dashboard',label:'لوحة التحكم',icon:'<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="3" y="3" width="7" height="9"></rect><rect x="14" y="3" width="7" height="5"></rect><rect x="14" y="12" width="7" height="9"></rect><rect x="3" y="16" width="7" height="5"></rect></svg>'},
  {id:'reports',label:'التقارير',href:'#/reports?report=executive',icon:'<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"></path><polyline points="14 2 14 8 20 8"></polyline><line x1="8" y1="13" x2="16" y2="13"></line><line x1="8" y1="17" x2="16" y2="17"></line></svg>'},
+ {id:'reps-center',label:'المناديب',icon:'<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="9" cy="8" r="3"></circle><path d="M3 20c0-4 2.5-6 6-6s6 2 6 6"></path><path d="M17 11h4M19 9v4"></path></svg>'},
+ {id:'reps-daily',label:'يوميات المناديب',icon:'<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="3" y="4" width="18" height="17" rx="2"></rect><path d="M8 2v4M16 2v4M3 9h18"></path><path d="M8 13h3M13 13h3M8 17h3M13 17h3"></path></svg>'},
  {id:'expenses-center',label:'المصروفات',icon:'<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="3" y="5" width="18" height="14" rx="2"></rect><path d="M7 9h10M7 13h6"></path></svg>'},
  {id:'treasury',label:'الخزينة',icon:'<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="2" y="6" width="20" height="12" rx="2"></rect><circle cx="12" cy="12" r="2"></circle></svg>'},
  {id:'uploads',label:'رفع الشيتات والسجل',icon:'<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"></path><polyline points="17 8 12 3 7 8"></polyline><line x1="12" y1="3" x2="12" y2="15"></line></svg>'}
@@ -410,6 +412,8 @@ async function renderFresh(){
   if(r==='expenses')return renderExpenses()
   if(r==='expense-matrix')return renderExpenseMatrix()
   if(r==='receivables')return renderReceivables()
+  if(r==='reps-center')return renderRepDirectory()
+  if(r==='reps-daily')return renderRepDaily()
   if(r==='reps')return renderReps()
   if(r==='inventory')return renderInventory()
   if(r==='products')return renderProducts()
@@ -1748,6 +1752,158 @@ async function renderReps(){
   ],rows))
  bindFilters('reps')
  syncVehicleRepOptions()
+}
+
+window.saveInlineVehicleAssignment=async function(branchId,repName,inputId){
+ const input=document.getElementById(inputId),msg=document.getElementById('rep-directory-msg')
+ const vehicle=String(input?.value||'').trim()
+ if(!vehicle){if(msg)msg.innerHTML='<div class="error">اكتب السيارة أولًا.</div>';return}
+ try{
+  if(msg)msg.innerHTML='<div class="notice">جاري حفظ ربط السيارة…</div>'
+  await vehicleAdminCall({action:'assign',branch_id:branchId,month:selectedMonth,vehicle_label:vehicle,rep_name:repName})
+  if(msg)msg.innerHTML='<div class="success">تم حفظ السيارة للمندوب.</div>'
+  await renderRepDirectory()
+ }catch(e){if(msg)msg.innerHTML='<div class="error">'+escapeHtml(e.message||e)+'</div>'}
+}
+
+async function renderRepDirectory(){
+ const {branch,from,to}=currentFilters()
+ const ids=await approvedIds(),safeIds=ids.length?ids:['00000000-0000-0000-0000-000000000000']
+ let allQ=supabase.from('sales_rep_daily')
+  .select('branch_id,rep_name').in('batch_id',safeIds)
+ let monthQ=supabase.from('sales_rep_daily')
+  .select('branch_id,business_date,rep_name,sales_before_discount,net_after_discount,discounts,deposit_amount,closing_balance,expense_amount,raw_payload')
+  .in('batch_id',safeIds).gte('business_date',from).lte('business_date',to)
+ let vehicleQ=supabase.from('vehicle_daily')
+  .select('branch_id,business_date,vehicle_label,rep_name,sales,fuel_expense,maintenance_expense,other_expense,total_expense,raw_payload')
+  .in('batch_id',safeIds)
+ if(branch){allQ=allQ.eq('branch_id',branch);monthQ=monthQ.eq('branch_id',branch);vehicleQ=vehicleQ.eq('branch_id',branch)}
+ const [ar,mr,vr]=await Promise.all([allQ,monthQ,vehicleQ])
+ if(ar.error||mr.error||vr.error)throw ar.error||mr.error||vr.error
+ const branchMap=new Map(branches.map(b=>[b.id,b.name]))
+ const reps=new Map()
+ ;(ar.data||[]).forEach(r=>{
+  if(!r.rep_name)return
+  const k=r.branch_id+'|'+r.rep_name
+  if(!reps.has(k))reps.set(k,{branch_id:r.branch_id,branch_name:branchMap.get(r.branch_id)||'—',rep_name:r.rep_name,gross:0,disc:0,net:0,deposit:0,closing:0,expense:0,rawQty:0,equivQty:0,fuel:0,maintenance:0,vehicleOther:0,vehicleExpense:0,vehicle:''})
+ })
+ ;(mr.data||[]).forEach(r=>{
+  const k=r.branch_id+'|'+r.rep_name,x=reps.get(k)
+  if(!x)return
+  x.gross+=Number(r.sales_before_discount||0);x.disc+=Number(r.discounts||0);x.net+=Number(r.net_after_discount||0)
+  x.deposit+=Number(r.deposit_amount||0);x.closing=Number(r.closing_balance||x.closing);x.expense+=Number(r.expense_amount||0)
+  x.rawQty+=Number(r.raw_payload?.sales_qty||0);x.equivQty+=Number(r.raw_payload?.equivalent_sales_qty||0)
+ })
+ const latestAssignment=new Map()
+ ;(vr.data||[]).forEach(v=>{
+  if(v.raw_payload?.manual_assignment&&v.rep_name&&v.vehicle_label){
+   const k=v.branch_id+'|'+v.rep_name
+   const prev=latestAssignment.get(k)
+   if(!prev||Number(v.id||0)>Number(prev.id||0))latestAssignment.set(k,v)
+   return
+  }
+  if(!v.rep_name||String(v.business_date)<from||String(v.business_date)>to)return
+  const k=v.branch_id+'|'+v.rep_name,x=reps.get(k)
+  if(!x)return
+  if(v.vehicle_label&&!x.vehicle)x.vehicle=v.vehicle_label
+  x.fuel+=Number(v.fuel_expense||0);x.maintenance+=Number(v.maintenance_expense||0);x.vehicleOther+=Number(v.other_expense||0);x.vehicleExpense+=Number(v.total_expense||0)
+ })
+ const rows=[...reps.values()].sort((a,b)=>a.branch_name.localeCompare(b.branch_name,'ar')||a.rep_name.localeCompare(b.rep_name,'ar')).map((x,i)=>{
+  const assigned=latestAssignment.get(x.branch_id+'|'+x.rep_name)
+  const vehicle=assigned?.vehicle_label||x.vehicle||''
+  const inputId='rep-car-'+i
+  const carCell=profile?.role==='admin'
+   ? '<div class="inline-car-editor"><input id="'+inputId+'" value="'+escapeAttr(vehicle)+'" placeholder="اكتب السيارة"><button class="tool-btn" type="button" onclick="saveInlineVehicleAssignment(\''+x.branch_id+'\',\''+escapeAttr(x.rep_name).replace(/&#39;/g,"\\'")+'\',\''+inputId+'\')">حفظ</button></div>'
+   : escapeHtml(vehicle||'—')
+  return {
+   branch_name:x.branch_name,rep_name:x.rep_name,vehicle:carCell,
+   gross:money(x.gross),disc:money(x.disc),discount_rate:pct(x.gross?x.disc/x.gross:0),net:money(x.net),
+   sales_qty:qty(x.rawQty),equiv_qty:qty(x.equivQty),avg_price:money(x.equivQty?x.net/x.equivQty:0),
+   deposit:money(x.deposit),rep_expense:money(x.expense),closing:money(x.closing),
+   fuel:money(x.fuel),maintenance:money(x.maintenance),vehicle_other:money(x.vehicleOther),vehicle_expense:money(x.vehicleExpense)
+  }
+ })
+ shell('المناديب','كل المناديب وربط السيارات وملخص أداء الشهر',
+  filters(from,to,branch)+scope(from,to,branch)+'<div id="rep-directory-msg"></div>'+
+  table('سجل المناديب',[
+   {key:'branch_name',label:'الفرع'},{key:'rep_name',label:'المندوب'},{key:'vehicle',label:'السيارة',filter:false},
+   {key:'gross',label:'قبل الخصم',num:1},{key:'disc',label:'الخصم',num:1},{key:'discount_rate',label:'% الخصم'},
+   {key:'net',label:'صافي البيع',num:1},{key:'sales_qty',label:'كمية البيع',num:1},{key:'equiv_qty',label:'الكمية المكافئة',num:1},
+   {key:'avg_price',label:'متوسط السعر',num:1},{key:'deposit',label:'التوريد',num:1},{key:'rep_expense',label:'مصروف المندوب',num:1},
+   {key:'closing',label:'الرصيد',num:1},{key:'fuel',label:'السولار',num:1},{key:'maintenance',label:'الصيانة',num:1},
+   {key:'vehicle_other',label:'مصروف سيارة آخر',num:1},{key:'vehicle_expense',label:'إجمالي مصروف السيارة',num:1}
+  ],rows))
+ bindFilters('reps-center')
+}
+
+function repsDailyFilter(branch,rep,names){
+ const branchOpts=branchOptions(branch)
+ const reps=[...new Set(names.filter(Boolean))].sort((a,b)=>a.localeCompare(b,'ar'))
+ return '<form id="reps-daily-filter" class="filters compact-filters">'+
+  '<div class="field filter-branch"><label>الفرع</label><select name="branch">'+branchOpts+'</select></div>'+
+  '<div class="field"><label>المندوب</label><select name="rep"><option value="">كل المناديب</option>'+reps.map(n=>'<option value="'+escapeAttr(n)+'" '+(n===rep?'selected':'')+'>'+escapeHtml(n)+'</option>').join('')+'</select></div>'+
+  '<div class="filter-month-note"><span>الشهر</span><b>'+escapeHtml(monthLabel(selectedMonth))+'</b></div>'+
+  '<div class="filter-buttons"><button class="btn" type="submit">تطبيق</button><button class="btn secondary" type="button" onclick="location.hash=\'#/reps-daily\'">مسح</button></div>'+
+ '</form>'
+}
+
+async function renderRepDaily(){
+ const p=qs(),{from,to}=currentFilters(),branch=p.get('branch')||'',rep=p.get('rep')||''
+ const ids=await approvedIds(),safeIds=ids.length?ids:['00000000-0000-0000-0000-000000000000']
+ let namesQ=supabase.from('sales_rep_daily').select('branch_id,rep_name').in('batch_id',safeIds).gte('business_date',from).lte('business_date',to)
+ let rq=supabase.from('sales_rep_daily')
+  .select('branch_id,business_date,rep_name,opening_balance,sales_before_discount,net_after_discount,discounts,deposit_amount,expense_amount,closing_balance,raw_payload')
+  .in('batch_id',safeIds).gte('business_date',from).lte('business_date',to).order('business_date',{ascending:true})
+ let vq=supabase.from('vehicle_daily')
+  .select('branch_id,business_date,vehicle_label,rep_name,sales,fuel_expense,maintenance_expense,other_expense,total_expense,opening_odometer,closing_odometer,raw_payload')
+  .in('batch_id',safeIds).gte('business_date',from).lte('business_date',to)
+ if(branch){namesQ=namesQ.eq('branch_id',branch);rq=rq.eq('branch_id',branch);vq=vq.eq('branch_id',branch)}
+ if(rep)rq=rq.eq('rep_name',rep)
+ const [nr,rr,vr]=await Promise.all([namesQ,rq,vq])
+ if(nr.error||rr.error||vr.error)throw nr.error||rr.error||vr.error
+ const branchMap=new Map(branches.map(b=>[b.id,b.name]))
+ const vehicles=new Map()
+ ;(vr.data||[]).forEach(v=>{
+  if(v.raw_payload?.manual_assignment||!v.rep_name)return
+  const k=v.branch_id+'|'+v.business_date+'|'+v.rep_name
+  const x=vehicles.get(k)||{labels:new Set(),fuel:0,maintenance:0,other:0,total:0,vehicleSales:0,openingOdo:null,closingOdo:null}
+  if(v.vehicle_label)x.labels.add(v.vehicle_label)
+  x.fuel+=Number(v.fuel_expense||0);x.maintenance+=Number(v.maintenance_expense||0);x.other+=Number(v.other_expense||0);x.total+=Number(v.total_expense||0);x.vehicleSales+=Number(v.sales||0)
+  if(v.opening_odometer!=null&&(x.openingOdo==null||Number(v.opening_odometer)<x.openingOdo))x.openingOdo=Number(v.opening_odometer)
+  if(v.closing_odometer!=null&&(x.closingOdo==null||Number(v.closing_odometer)>x.closingOdo))x.closingOdo=Number(v.closing_odometer)
+  vehicles.set(k,x)
+ })
+ const rows=(rr.data||[]).map(r=>{
+  const v=vehicles.get(r.branch_id+'|'+r.business_date+'|'+r.rep_name)||{labels:new Set(),fuel:0,maintenance:0,other:0,total:0,vehicleSales:0,openingOdo:null,closingOdo:null}
+  const gross=Number(r.sales_before_discount||0),disc=Number(r.discounts||0),net=Number(r.net_after_discount||0)
+  const rawQty=Number(r.raw_payload?.sales_qty||0),equivQty=Number(r.raw_payload?.equivalent_sales_qty||0)
+  return {
+   business_date:r.business_date,branch_name:branchMap.get(r.branch_id)||'—',rep_name:r.rep_name,vehicle:v.labels.size?[...v.labels].join('، '):'—',
+   opening:money(r.opening_balance),gross:money(gross),disc:money(disc),discount_rate:pct(gross?disc/gross:0),net:money(net),
+   sales_qty:qty(rawQty),equiv_qty:qty(equivQty),avg_price:money(equivQty?net/equivQty:0),
+   deposit:money(r.deposit_amount),rep_expense:money(r.expense_amount),closing:money(r.closing_balance),
+   fuel:money(v.fuel),maintenance:money(v.maintenance),vehicle_other:money(v.other),vehicle_expense:money(v.total),
+   vehicle_sales:money(v.vehicleSales),opening_odometer:v.openingOdo==null?'—':qty(v.openingOdo),closing_odometer:v.closingOdo==null?'—':qty(v.closingOdo)
+  }
+ })
+ shell('يوميات المناديب','كل يوم تم رفع بيانات له حسب الفرع أو المندوب',
+  repsDailyFilter(branch,rep,(nr.data||[]).map(x=>x.rep_name))+
+  scope(from,to,branch)+
+  table('البيانات اليومية للمناديب',[
+   {key:'business_date',label:'التاريخ'},{key:'branch_name',label:'الفرع'},{key:'rep_name',label:'المندوب'},{key:'vehicle',label:'السيارة'},
+   {key:'opening',label:'رصيد أول',num:1},{key:'gross',label:'قبل الخصم',num:1},{key:'disc',label:'الخصم',num:1},{key:'discount_rate',label:'% الخصم'},
+   {key:'net',label:'صافي البيع',num:1},{key:'sales_qty',label:'كمية البيع',num:1},{key:'equiv_qty',label:'الكمية المكافئة',num:1},
+   {key:'avg_price',label:'متوسط السعر',num:1},{key:'deposit',label:'التوريد',num:1},{key:'rep_expense',label:'مصروف المندوب',num:1},
+   {key:'closing',label:'رصيد آخر',num:1},{key:'fuel',label:'السولار',num:1},{key:'maintenance',label:'الصيانة',num:1},
+   {key:'vehicle_other',label:'مصروف سيارة آخر',num:1},{key:'vehicle_expense',label:'إجمالي مصروف السيارة',num:1},{key:'vehicle_sales',label:'مبيعات تقرير السيارة',num:1},
+   {key:'opening_odometer',label:'عداد أول',num:1},{key:'closing_odometer',label:'عداد آخر',num:1}
+  ],rows))
+ document.getElementById('reps-daily-filter')?.addEventListener('submit',e=>{
+  e.preventDefault();const fd=new FormData(e.currentTarget),params=new URLSearchParams()
+  if(fd.get('branch'))params.set('branch',fd.get('branch'))
+  if(fd.get('rep'))params.set('rep',fd.get('rep'))
+  location.hash='#/reps-daily?'+params.toString()
+ })
 }
 async function renderInventory(){
  const cfg=currentFilters(),branch=cfg.branch,from=cfg.from,to=cfg.to,ids=await approvedIds()
