@@ -1189,9 +1189,10 @@ async function renderExecutive(){
  let invQ=supabase.from('inventory_daily').select('id,branch_id,business_date,product_id,product_name,sales_qty,closing_qty,closing_value').in('batch_id',ids.length?ids:['00000000-0000-0000-0000-000000000000']).gte('business_date',from).lte('business_date',to)
  let prodQ=supabase.from('products').select('id,box_count').eq('is_active',true)
  let expQ=supabase.from('v_expense_analysis').select('branch_id,canonical_category,expense_group,amount').gte('entry_date',from).lte('entry_date',to)
- if(branch){whQ=whQ.eq('branch_id',branch);invQ=invQ.eq('branch_id',branch);expQ=expQ.eq('branch_id',branch)}
- const pair=await Promise.all([whQ,invQ,prodQ,expQ]),warehouse=pair[0].data||[],inventoryRows=pair[1].data||[],productRows=pair[2].data||[],expenseRows=pair[3].data||[]
- if(pair[0].error||pair[1].error||pair[2].error||pair[3].error)throw pair[0].error||pair[1].error||pair[2].error||pair[3].error
+ let remQ=supabase.from('rep_remittance_daily').select('branch_id,business_date,rep_name,opening_debt').in('batch_id',ids.length?ids:['00000000-0000-0000-0000-000000000000']).gte('business_date',from).lte('business_date',to).order('business_date')
+ if(branch){whQ=whQ.eq('branch_id',branch);invQ=invQ.eq('branch_id',branch);expQ=expQ.eq('branch_id',branch);remQ=remQ.eq('branch_id',branch)}
+ const pair=await Promise.all([whQ,invQ,prodQ,expQ,remQ]),warehouse=pair[0].data||[],inventoryRows=pair[1].data||[],productRows=pair[2].data||[],expenseRows=pair[3].data||[],remittanceRows=pair[4].data||[]
+ if(pair[0].error||pair[1].error||pair[2].error||pair[3].error||pair[4].error)throw pair[0].error||pair[1].error||pair[2].error||pair[3].error||pair[4].error
 
  const by=new Map()
  daily.forEach(function(r){
@@ -1213,6 +1214,13 @@ async function renderExecutive(){
   if(!last7Set.has(r.business_date))return
   const x=by.get(r.branch_id);if(!x)return
   x.last7Sales+=Number(r.net_sales||0);x.last7Collections+=Number(r.collections||0);x.last7Returns+=Number(r.returns_value||0);x.last7Discount+=Number(r.discounts||0)
+ })
+ const openingDebtByBranch=new Map(),openingSeen=new Set()
+ remittanceRows.forEach(r=>{
+  const repKey=r.branch_id+'|'+String(r.rep_name||'').trim()
+  if(openingSeen.has(repKey))return
+  openingSeen.add(repKey)
+  openingDebtByBranch.set(r.branch_id,(openingDebtByBranch.get(r.branch_id)||0)+Number(r.opening_debt||0))
  })
  const whLatest=new Map()
  warehouse.forEach(function(r){
@@ -1245,17 +1253,12 @@ async function renderExecutive(){
   const detailedEquiv=Number(equivCartonsBy.get(id)||0)
   const equivCartons=verifiedEquiv||detailedEquiv
   const car=carExp.get(id)||{fuel:0,petro:0,maintenance:0}
-  return {id,...x,inventoryQty:inv.qty,inventoryValue:inv.value,equivCartons,fuel:car.fuel,petro:car.petro,maintenance:car.maintenance}
+  return {id,...x,openingDebt:Number(openingDebtByBranch.get(id)||0),inventoryQty:inv.qty,inventoryValue:inv.value,equivCartons,fuel:car.fuel,petro:car.petro,maintenance:car.maintenance}
  }).sort((a,b)=>b.net-a.net)
 
  const rows=raw.map(x=>({
   branch_name:x.branch_name,
-  opening:money(x.opening),
-  last7_sales:money(x.last7Sales),
-  last7_collections:money(x.last7Collections),
-  last7_returns:money(x.last7Returns),
-  legal:'—',
-  previous_debt:money(x.opening),
+  opening:money(x.openingDebt),
   sales:money(x.net),
   collections:money(x.coll),
   month_debt:money(x.net-x.coll),
@@ -1275,25 +1278,19 @@ async function renderExecutive(){
   treasury_variance:'—'
  }))
  const totals=raw.reduce((a,x)=>{
-  a.opening+=x.opening;a.last7Sales+=x.last7Sales;a.last7Collections+=x.last7Collections;a.last7Returns+=x.last7Returns;a.net+=x.net;a.coll+=x.coll
+  a.opening+=x.openingDebt;a.last7Sales+=x.last7Sales;a.last7Collections+=x.last7Collections;a.last7Returns+=x.last7Returns;a.net+=x.net;a.coll+=x.coll
   a.closingDebt+=x.closingDebt;a.last7Discount+=x.last7Discount;a.disc+=x.disc;a.gross+=x.gross;a.equivCartons+=x.equivCartons;a.fuel+=x.fuel;a.petro+=x.petro;a.maintenance+=x.maintenance
   a.inventoryQty+=x.inventoryQty;a.inventoryValue+=x.inventoryValue;a.closingCash+=x.closingCash;a.expenses+=x.expenses;return a
  },{opening:0,last7Sales:0,last7Collections:0,last7Returns:0,net:0,coll:0,closingDebt:0,last7Discount:0,disc:0,gross:0,equivCartons:0,fuel:0,petro:0,maintenance:0,inventoryQty:0,inventoryValue:0,closingCash:0,expenses:0})
  const totalRow='<tr class="total">'+
-  '<th>الإجمالي</th><th class="num">'+money(totals.opening)+'</th><th class="num">'+money(totals.last7Sales)+'</th><th class="num">'+money(totals.last7Collections)+'</th><th class="num">'+money(totals.last7Returns)+'</th>'+
-  '<th>—</th><th class="num">'+money(totals.opening)+'</th><th class="num">'+money(totals.net)+'</th><th class="num">'+money(totals.coll)+'</th><th class="num">'+money(totals.net-totals.coll)+'</th><th class="num">'+money(totals.closingDebt)+'</th>'+
+  '<th>الإجمالي</th><th class="num">'+money(totals.opening)+'</th><th class="num">'+money(totals.net)+'</th><th class="num">'+money(totals.coll)+'</th><th class="num">'+money(totals.net-totals.coll)+'</th><th class="num">'+money(totals.closingDebt)+'</th>'+
   '<th class="num">'+money(totals.last7Discount)+'</th><th class="num">'+money(totals.disc)+'</th><th>'+pct(totals.gross?totals.disc/totals.gross:0)+'</th><th class="num">'+qty(totals.equivCartons)+'</th><th class="num">'+money(totals.equivCartons?totals.net/totals.equivCartons:0)+'</th>'+
   '<th class="num">'+money(totals.fuel)+'</th><th class="num">'+money(totals.petro)+'</th><th class="num">'+money(totals.maintenance)+'</th>'+
   '<th class="num">'+qty(totals.inventoryQty)+'</th><th class="num">'+money(totals.inventoryValue)+'</th><th class="num">'+money(totals.closingCash)+'</th><th>'+pct(totals.net?totals.expenses/totals.net:0)+'</th><th>—</th></tr>'
 
  shell('التقرير المجمع','مطابقة ورقة الإدارة بالأعمدة المتاحة من البيانات المعتمدة',filters(from,to,branch)+scope(from,to,branch)+table('التقرير المجمع',[
   {key:'branch_name',label:'الفرع'},
-  {key:'opening',label:'افتتاحي مديونية'},
-  {key:'last7_sales',label:'مبيعات آخر 7'},
-  {key:'last7_collections',label:'تحصيل آخر 7'},
-  {key:'last7_returns',label:'مرتجع'},
-  {key:'legal',label:'شؤون قانونية'},
-  {key:'previous_debt',label:'مديونية سابقة'},
+  {key:'opening',label:'افتتاحي مديونية',num:1},
   {key:'sales',label:'المبيعات',num:1},
   {key:'collections',label:'التحصيل',num:1},
   {key:'month_debt',label:'مديونية الشهر',num:1},
