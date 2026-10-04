@@ -2466,3 +2466,64 @@ body{background:#f5f7fa;color:var(--ui-text)}
   .date-range-picker-grid{grid-template-columns:1fr}
   .date-range-arrow{height:auto;transform:rotate(-90deg)}
 }
+
+
+/* Unified expenses screen */
+.expense-summary-grid{
+  display:grid;
+  grid-template-columns:repeat(4,minmax(0,1fr));
+  gap:12px;
+  margin:12px 0;
+}
+.expense-summary-card{
+  padding:15px 16px;
+  border:1px solid #dfe6ed;
+  border-radius:12px;
+  background:#fff;
+}
+.expense-summary-card span{
+  display:block;
+  margin-bottom:8px;
+  color:#617386;
+  font-size:11.5px;
+  font-weight:700;
+}
+.expense-summary-card strong{
+  display:block;
+  color:#17283a;
+  font-size:22px;
+  font-weight:800;
+}
+.expense-tabs{
+  display:flex;
+  gap:8px;
+  margin:12px 0;
+  padding:5px;
+  border:1px solid #dfe6ed;
+  border-radius:11px;
+  background:#fff;
+}
+.expense-tab{
+  min-height:38px;
+  padding:7px 14px;
+  border:0;
+  border-radius:8px;
+  background:transparent;
+  color:#54677b;
+  font:inherit;
+  font-size:12.5px;
+  font-weight:800;
+  cursor:pointer;
+}
+.expense-tab:hover{background:#f3f6f9}
+.expense-tab.active{background:#e6f0f7;color:#155b86}
+.expense-tab-panel{display:none}
+.expense-tab-panel.active{display:block}
+@media(max-width:1000px){
+  .expense-summary-grid{grid-template-columns:repeat(2,minmax(0,1fr))}
+}
+@media(max-width:600px){
+  .expense-summary-grid{grid-template-columns:1fr}
+  .expense-tabs{flex-direction:column}
+  .expense-tab{width:100%}
+}
