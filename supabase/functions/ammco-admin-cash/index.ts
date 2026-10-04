@@ -67,8 +67,10 @@ Deno.serve(async(req)=>{
       const monthStart=String(body?.month_start||'').trim()
       const wages=money(body?.wages??0,'الأجور')
       const rent=money(body?.rent??0,'الإيجار')
+      const workingDays=Number(body?.working_days_basis??0)
       if(!branchId)return json({error:'الفرع مطلوب'},400)
       if(!/^\d{4}-\d{2}-01$/.test(monthStart))return json({error:'شهر الإعداد غير صالح'},400)
+      if(!Number.isInteger(workingDays)||workingDays<1||workingDays>31)return json({error:'أيام العمل يجب أن تكون بين 1 و31'},400)
 
       const {data:branch,error:bErr}=await admin.from('branches')
         .select('id,organization_id')
@@ -83,6 +85,7 @@ Deno.serve(async(req)=>{
           month_start:monthStart,
           wages,
           rent,
+          working_days_basis:workingDays,
           updated_by:uid,
           updated_at:new Date().toISOString()
         },{onConflict:'branch_id,month_start'})
