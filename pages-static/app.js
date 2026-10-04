@@ -18,6 +18,8 @@ const defaultTo=`${today.getFullYear()}-${String(today.getMonth()+1).padStart(2,
 const defaultFrom=`${today.getFullYear()}-${String(today.getMonth()+1).padStart(2,'0')}-01`
 
 let branches=[]
+let availableMonths=[]
+let selectedMonth=''
 let session=null
 let profile=null
 let bootstrappedUserId=null
@@ -37,11 +39,17 @@ async function boot(forceMeta=false){
  bootPromise=(async()=>{
   if(!session){const {data}=await supabase.auth.getSession();session=data.session}
   if(session&&(forceMeta||bootstrappedUserId!==session.user.id||!profile)){
-   const [{data:p},{data:b}]=await Promise.all([
+   const [{data:p},{data:b},{data:m}]=await Promise.all([
     supabase.from('profiles').select('full_name,role,is_active,organization_id').eq('user_id',session.user.id).maybeSingle(),
-    supabase.from('branches').select('id,name,code,is_active').eq('is_active',true).order('name')
+    supabase.from('branches').select('id,name,code,is_active').eq('is_active',true).order('name'),
+    supabase.from('import_batches').select('period_start,period_end').eq('status','approved').order('period_start',{ascending:false})
    ])
-   profile=p;branches=b||[];bootstrappedUserId=session.user.id
+   profile=p;branches=b||[]
+   availableMonths=[...new Set((m||[]).map(x=>String(x.period_start||'').slice(0,7)).filter(Boolean))].sort().reverse()
+   const savedMonth=localStorage.getItem('ammco.selectedMonth')||''
+   selectedMonth=availableMonths.includes(savedMonth)?savedMonth:(availableMonths[0]||today.toISOString().slice(0,7))
+   localStorage.setItem('ammco.selectedMonth',selectedMonth)
+   bootstrappedUserId=session.user.id
   }
   await render({force:forceMeta})
  })()
@@ -86,13 +94,13 @@ const REPORT_GROUPS=[
 ]
 const selectedReport=()=>qs().get('report')||'executive'
 function reportsHubNav(){
- const selected=selectedReport(),p=qs(),branch=p.get('branch')||'',from=p.get('from')||defaultFrom,to=p.get('to')||defaultTo
+ const selected=selectedReport(),p=qs(),branch=p.get('branch')||''
  const options=REPORT_GROUPS.map(g=>'<optgroup label="'+g.label+'">'+g.items.map(item=>'<option value="'+item[0]+'" '+(selected===item[0]?'selected':'')+'>'+item[1]+'</option>').join('')+'</optgroup>').join('')
  return '<section class="reports-list-bar"><div class="field reports-select-field"><label>التقرير</label><select id="report-picker">'+options+'</select></div></section>'
 }
 window.changeUnifiedReport=select=>{
- const p=qs(),branch=p.get('branch')||'',from=p.get('from')||defaultFrom,to=p.get('to')||defaultTo
- location.hash='#/reports?report='+encodeURIComponent(select.value)+'&branch='+encodeURIComponent(branch)+'&from='+encodeURIComponent(from)+'&to='+encodeURIComponent(to)
+ const p=qs(),branch=p.get('branch')||''
+ location.hash='#/reports?report='+encodeURIComponent(select.value)+'&branch='+encodeURIComponent(branch)
 }
 
 
@@ -104,6 +112,36 @@ const EXEC_NAV_SECTIONS=[
  {id:'treasury',label:'الخزينة',icon:'<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="2" y="6" width="20" height="12" rx="2"></rect><circle cx="12" cy="12" r="2"></circle></svg>'},
  {id:'uploads',label:'رفع الشيتات والسجل',icon:'<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"></path><polyline points="17 8 12 3 7 8"></polyline><line x1="12" y1="3" x2="12" y2="15"></line></svg>'}
 ]
+function globalMonthRange(month=selectedMonth){
+ const m=month||today.toISOString().slice(0,7)
+ const [y,mo]=m.split('-').map(Number)
+ const last=new Date(y,mo,0).getDate()
+ return {from:m+'-01',to:m+'-'+String(last).padStart(2,'0')}
+}
+function monthLabel(month){
+ const [y,m]=String(month||'').split('-').map(Number)
+ if(!y||!m)return month||''
+ const names=['يناير','فبراير','مارس','أبريل','مايو','يونيو','يوليو','أغسطس','سبتمبر','أكتوبر','نوفمبر','ديسمبر']
+ return names[m-1]+' '+y
+}
+function monthHeaderSelect(){
+ const months=availableMonths.length?availableMonths:[selectedMonth]
+ return '<div class="global-month-filter"><label>الشهر</label><select id="global-month-select">'+
+  months.map(m=>'<option value="'+m+'" '+(m===selectedMonth?'selected':'')+'>'+monthLabel(m)+'</option>').join('')+
+ '</select></div>'
+}
+window.changeGlobalMonth=function(month){
+ if(!month||month===selectedMonth)return
+ selectedMonth=month
+ localStorage.setItem('ammco.selectedMonth',month)
+ const r=route().split('?')[0],p=qs()
+ p.delete('from');p.delete('to');p.delete('year')
+ const query=p.toString()
+ location.hash='#/'+r+(query?'?'+query:'')
+ clearPageCache()
+ render({force:true})
+}
+
 function shell(title,subtitle,body){
  const r=route().split('?')[0],collapsed=localStorage.getItem('ammco.sidebar.collapsed')==='1'
  const nav=EXEC_NAV_SECTIONS.filter(x=>x.id!=='users').map(x=>{
@@ -123,7 +161,7 @@ function shell(title,subtitle,body){
      <button class="btn secondary" type="button" onclick="toggleSidebar()" title="إخفاء أو إظهار القائمة"><svg viewBox="0 0 24 24" width="16" height="16" fill="none" stroke="currentColor" stroke-width="2"><line x1="3" y1="6" x2="21" y2="6"></line><line x1="3" y1="12" x2="21" y2="12"></line><line x1="3" y1="18" x2="21" y2="18"></line></svg><span>القائمة</span></button>
      <div class="topbar-context"><b>${title}</b><span>${subtitle||''}</span></div>
     </div>
-    <div class="actions"><span class="chip">${profile?.full_name||session?.user?.email||'مدير النظام'}</span><button class="btn secondary data-refresh-btn" type="button" onclick="refreshAllData(this)" title="جلب أحدث البيانات من قاعدة البيانات">↻ تحديث البيانات</button><button class="btn secondary" id="logout">خروج</button></div>
+    <div class="actions">${monthHeaderSelect()}<span class="chip">${profile?.full_name||session?.user?.email||'مدير النظام'}</span><button class="btn secondary data-refresh-btn" type="button" onclick="refreshAllData(this)" title="جلب أحدث البيانات من قاعدة البيانات">↻ تحديث البيانات</button><button class="btn secondary" id="logout">خروج</button></div>
    </header>
    <section class="content executive-content">
     ${r==='reports'?reportsHubNav():''}
@@ -133,6 +171,7 @@ function shell(title,subtitle,body){
  </div>`
  document.getElementById('logout')?.addEventListener('click',async()=>{await supabase.auth.signOut();location.hash='';location.reload()})
  document.getElementById('report-picker')?.addEventListener('change',e=>changeUnifiedReport(e.currentTarget))
+ document.getElementById('global-month-select')?.addEventListener('change',e=>changeGlobalMonth(e.currentTarget.value))
 }
 window.toggleSidebar=()=>{
  const el=document.querySelector('.shell');if(!el)return
@@ -197,10 +236,10 @@ window.openDateRangePicker=function(formId){
 function branchOptions(selected=''){return `<option value="">كل الفروع</option>${branches.map(b=>`<option value="${b.id}" ${selected===b.id?'selected':''}>${b.name}</option>`).join('')}`}
 function filters(from,to,branch){return `<form id="filters" class="filters compact-filters">
  <div class="field filter-branch"><label>الفرع</label><select name="branch">${branchOptions(branch)}</select></div>
- ${dateRangeField('filters',from,to)}
- <div class="filter-buttons"><button class="btn" type="submit">تطبيق</button><button class="btn secondary" type="button" onclick="resetReportFilters()">مسح</button></div>
+ <div class="filter-month-note"><span>الشهر المطبق</span><b>${monthLabel(selectedMonth)}</b></div>
+ <div class="filter-buttons"><button class="btn" type="submit">تطبيق الفرع</button><button class="btn secondary" type="button" onclick="resetReportFilters()">كل الفروع</button></div>
 </form>`}
-function bindFilters(path){document.getElementById('filters')?.addEventListener('submit',e=>{e.preventDefault();const f=new FormData(e.currentTarget);const current=route().split('?')[0];if(current==='reports'){location.hash=`#/reports?report=${selectedReport()}&branch=${f.get('branch')||''}&from=${f.get('from')}&to=${f.get('to')}`;return}location.hash=`#/${path}?branch=${f.get('branch')||''}&from=${f.get('from')}&to=${f.get('to')}`})}
+function bindFilters(path){document.getElementById('filters')?.addEventListener('submit',e=>{e.preventDefault();const f=new FormData(e.currentTarget);const current=route().split('?')[0];if(current==='reports'){location.hash=`#/reports?report=${selectedReport()}&branch=${f.get('branch')||''}`;return}location.hash=`#/${path}?branch=${f.get('branch')||''}`})}
 function scope(from,to,branch){return `<div class="scope report-meta"><span><b>${branches.find(b=>b.id===branch)?.name||'كل الفروع'}</b></span><span>${from} → ${to}</span><span>Approved</span></div>`}
 const escapeHtml=v=>String(v??'').replace(/[&<>"']/g,m=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[m]))
 const escapeAttr=v=>escapeHtml(v)
@@ -397,17 +436,16 @@ function renderLogin(){
 
 function renderUnifiedFilterBar(f){
  return '<div class="unified-bar"><div class="unified-bar-row">'+
- '<div class="presets-wrap"><button class="preset-btn" onclick="applyExecPreset(\'this_month\')">هذا الشهر</button><button class="preset-btn" onclick="applyExecPreset(\'prev_month\')">الشهر السابق</button><button class="preset-btn" onclick="applyExecPreset(\'ytd\')">السنة الحالية</button><button class="preset-btn" onclick="applyExecPreset(\'last_7\')">آخر 7 أيام</button></div>'+
+ '<div class="global-filter-status"><span>الشهر المطبق على كل الصفحات</span><b>'+monthLabel(selectedMonth)+'</b></div>'+
  '<form id="exec-filter-form" style="display:flex;align-items:end;gap:8px;flex-wrap:wrap;margin-right:auto">'+
- dateRangeField('exec-filter-form',f.from,f.to)+
  '<div class="field"><label>الفرع</label><select name="branch">'+branchOptions(f.branch)+'</select></div>'+
  '<label class="compare-toggle"><input type="checkbox" name="compare" '+(f.compare?'checked':'')+'><span>مقارنة بالفترة السابقة</span></label>'+
- '<button class="btn" type="submit">تطبيق</button><button class="btn secondary" type="button" onclick="resetExecFilters()">إعادة ضبط</button></form>'+
+ '<button class="btn" type="submit">تطبيق الفرع</button><button class="btn secondary" type="button" onclick="resetExecFilters()">كل الفروع</button></form>'+
  '<button class="btn secondary" type="button" onclick="exportFirstSmartTable()">تصدير Excel</button></div></div>'
 }
 window.bindExecFilters=()=>{
  const form=document.getElementById('exec-filter-form');if(!form)return
- form.addEventListener('submit',e=>{e.preventDefault();const fd=new FormData(form),p=new URLSearchParams();if(fd.get('branch'))p.set('branch',fd.get('branch'));p.set('from',fd.get('from'));p.set('to',fd.get('to'));if(fd.get('compare'))p.set('compare','1');location.hash='#/'+route().split('?')[0]+'?'+p.toString()})
+ form.addEventListener('submit',e=>{e.preventDefault();const fd=new FormData(form),p=new URLSearchParams();if(fd.get('branch'))p.set('branch',fd.get('branch'));if(fd.get('compare'))p.set('compare','1');location.hash='#/'+route().split('?')[0]+'?'+p.toString()})
 }
 window.applyExecPreset=type=>{
  const now=new Date();let f,t
@@ -524,7 +562,7 @@ async function loadExecutiveIntelligence(f){
 async function approvedIds(){
  const {data,error}=await supabase.from('import_batches').select('id').eq('status','approved');if(error)throw error;return (data||[]).map(x=>x.id)
 }
-function currentFilters(){const p=qs();return {branch:p.get('branch')||'',from:p.get('from')||defaultFrom,to:p.get('to')||defaultTo,compare:p.get('compare')==='1'}}
+function currentFilters(){const p=qs(),r=globalMonthRange();return {branch:p.get('branch')||'',from:r.from,to:r.to,compare:p.get('compare')==='1'}}
 
 async function loadDaily(branch,from,to){
  let q=supabase.from('v_branch_daily_kpis').select('*').gte('business_date',from).lte('business_date',to).order('business_date');if(branch)q=q.eq('branch_id',branch);const {data,error}=await q;if(error)throw error;return data||[]
