@@ -1430,37 +1430,64 @@ window.editTreasurySheetRow=function(id){
 
 async function renderSales(){const {branch,from,to}=currentFilters();const daily=await loadDaily(branch,from,to);const rows=daily.map(r=>{const gross=Number(r.gross_sales||0),disc=Number(r.discounts||0);return{business_date:r.business_date,branch_name:r.branch_name,gross:money(gross),discounts:money(disc),discount_rate:pct(gross?disc/gross:0),net:money(r.net_sales),collections:money(r.collections),expenses:money(r.expenses)}});shell('تقرير المبيعات','تفاصيل المبيعات اليومية حسب الفرع',filters(from,to,branch)+scope(from,to,branch)+table('المبيعات اليومية',[{key:'business_date',label:'التاريخ'},{key:'branch_name',label:'الفرع'},{key:'gross',label:'قبل الخصم',num:1},{key:'discounts',label:'الخصم',num:1},{key:'discount_rate',label:'% الخصم'},{key:'net',label:'صافي البيع',num:1},{key:'collections',label:'التحصيل',num:1},{key:'expenses',label:'المصروفات',num:1}],rows));bindFilters('sales')}
 const EXPENSE_CLASSIFICATION_CATALOG=[
- {label:'عمولات',group:'اجور وحوافز وعمولات'},
- {label:'إيجارات',group:'تشغيل ومرافق'},
- {label:'صيانة السيارات',group:'مصروفات السيارات'},
- {label:'م. سولار',group:'مصروفات السيارات'},
- {label:'بترو أب',group:'مصروفات السيارات'},
- {label:'زيوت',group:'مصروفات السيارات'},
- {label:'غسيل وتشحيم',group:'مصروفات السيارات'},
- {label:'كارتات طريق',group:'مصروفات السيارات'},
- {label:'اطارات السيارات',group:'مصروفات السيارات'},
- {label:'قطع غيار السيارات',group:'مصروفات السيارات'},
- {label:'جراج سيارات',group:'مصروفات السيارات'},
- {label:'غرامات سيارات',group:'مصروفات السيارات'},
- {label:'تراخيص سيارات',group:'مصروفات السيارات'},
- {label:'حوافز بيع',group:'اجور وحوافز وعمولات'},
- {label:'انتقالات',group:'انتقالات وسفر'},
- {label:'بدل سفر',group:'انتقالات وسفر'},
- {label:'تأمينات إجتماعية',group:'اجور وحوافز وعمولات'},
- {label:'أكراميات',group:'اداري ومالي'},
- {label:'م. تعتيق',group:'اداري ومالي'},
- {label:'نت وتليفون',group:'اداري ومالي'},
- {label:'نظافة',group:'تشغيل ومرافق'},
- {label:'ادوات كتابية',group:'اداري ومالي'},
- {label:'مصاريف مياه',group:'تشغيل ومرافق'},
- {label:'م.كهرباء',group:'تشغيل ومرافق'},
- {label:'منح ومكافأت',group:'اجور وحوافز وعمولات'},
- {label:'حوافز إداريين',group:'اجور وحوافز وعمولات'},
- {label:'مصاريف تحويل',group:'اداري ومالي'},
- {label:'أجور ومرتبات',group:'اجور وحوافز وعمولات'},
- {label:'مصروفات اخرى',group:'مصروفات اخرى'}
+ {label:'عمولات',group:'اجور وحوافز وعمولات',kind:'expense'},
+ {label:'إيجارات',group:'تشغيل ومرافق',kind:'expense'},
+ {label:'صيانة السيارات',group:'مصروفات السيارات',kind:'expense'},
+ {label:'م. سولار',group:'مصروفات السيارات',kind:'expense'},
+ {label:'زيوت',group:'مصروفات السيارات',kind:'expense'},
+ {label:'غسيل وتشحيم',group:'مصروفات السيارات',kind:'expense'},
+ {label:'كارتات طريق',group:'مصروفات السيارات',kind:'expense'},
+ {label:'اطارات السيارات',group:'مصروفات السيارات',kind:'expense'},
+ {label:'قطع غيار السيارات',group:'مصروفات السيارات',kind:'expense'},
+ {label:'جراج سيارات',group:'مصروفات السيارات',kind:'expense'},
+ {label:'غرامات سيارات',group:'مصروفات السيارات',kind:'expense'},
+ {label:'تراخيص سيارات',group:'مصروفات السيارات',kind:'expense'},
+ {label:'حوافز بيع',group:'اجور وحوافز وعمولات',kind:'expense'},
+ {label:'انتقالات',group:'انتقالات وسفر',kind:'expense'},
+ {label:'بدل سفر',group:'انتقالات وسفر',kind:'expense'},
+ {label:'تأمينات إجتماعية',group:'اجور وحوافز وعمولات',kind:'expense'},
+ {label:'أكراميات',group:'اداري ومالي',kind:'expense'},
+ {label:'م. تعتيق',group:'اداري ومالي',kind:'expense'},
+ {label:'نت وتليفون',group:'اداري ومالي',kind:'expense'},
+ {label:'نظافة',group:'تشغيل ومرافق',kind:'expense'},
+ {label:'ادوات كتابية',group:'اداري ومالي',kind:'expense'},
+ {label:'مصاريف مياه',group:'تشغيل ومرافق',kind:'expense'},
+ {label:'م.كهرباء',group:'تشغيل ومرافق',kind:'expense'},
+ {label:'مستحقه فروع',group:'حركات غير مصروفية',kind:'non_expense'},
+ {label:'منح ومكافأت',group:'اجور وحوافز وعمولات',kind:'expense'},
+ {label:'بترو اب',group:'مصروفات السيارات',kind:'expense'},
+ {label:'حوافز إداريين',group:'اجور وحوافز وعمولات',kind:'expense'},
+ {label:'مصاريف تحويل',group:'اداري ومالي',kind:'expense'},
+ {label:'أجور ومرتبات',group:'اجور وحوافز وعمولات',kind:'expense'},
+ {label:'توريد',group:'حركات غير مصروفية',kind:'non_expense'},
+ {label:'عهدة',group:'حركات غير مصروفية',kind:'non_expense'},
+ {label:'سلفة',group:'حركات غير مصروفية',kind:'non_expense'},
+ {label:'ايداع البنك الأهلى 14',group:'إيداعات بنكية',kind:'non_expense'},
+ {label:'ايداع البنك الأهلى 28',group:'إيداعات بنكية',kind:'non_expense'},
+ {label:'ايداع البنك الأهلى 91',group:'إيداعات بنكية',kind:'non_expense'},
+ {label:'ايداع البنك الأهلى 16 المدين',group:'إيداعات بنكية',kind:'non_expense'},
+ {label:'QNB',group:'إيداعات بنكية',kind:'non_expense'},
+ {label:'القاهرة',group:'إيداعات بنكية',kind:'non_expense'},
+ {label:'ايداع بنك مصر',group:'إيداعات بنكية',kind:'non_expense'},
+ {label:'ايداع CIB',group:'إيداعات بنكية',kind:'non_expense'},
+ {label:'تحويل نقدى للمصنع',group:'تحويلات مصنع',kind:'non_expense'},
+ {label:'تحويلات وسيطة للمصنع',group:'تحويلات مصنع',kind:'non_expense'},
+ {label:'دائنون',group:'تحويلات مصنع',kind:'non_expense'},
+ {label:'بخزنة الفرع',group:'حركات غير مصروفية',kind:'non_expense'}
 ]
-function expenseOperationalType(row){
+function normalizeExpenseCatalogLabel(v){
+ const s=String(v||'').replace(/\s+/g,' ').replace(/أ|إ|آ/g,'ا').replace(/ة/g,'ه').trim().toLowerCase()
+ const aliases={
+  'بترو اب':'بترو اب','بترو أب':'بترو اب',
+  'سولار':'م. سولار','م سولار':'م. سولار','م. سولار':'م. سولار',
+  'صيانه السيارات':'صيانة السيارات','صيانة السيارات':'صيانة السيارات',
+  'اطارات السيارات':'اطارات السيارات','إطارات السيارات':'اطارات السيارات',
+  'اجور ومرتبات':'أجور ومرتبات',
+  'مستحقه فروع':'مستحقه فروع','مستحقات فروع':'مستحقه فروع'
+ }
+ return aliases[s]||String(v||'').replace(/\s+/g,' ').trim()
+}
+function expenseOperationalTypefunction expenseOperationalType(row){
  const manual=String(row?.raw_payload?.manual_expense_type||'').trim()
  if(['تشغيلي','غير تشغيلي'].includes(manual))return manual
  const group=String(row?.expense_group||'').trim()
@@ -1538,8 +1565,9 @@ async function renderExpensesCenter(){
  EXPENSE_CLASSIFICATION_CATALOG.forEach(x=>categoryMap.set(x.label,{label:x.label,total:0,branches:new Map(),expenseType:expenseOperationalType({expense_group:x.group}),ids:[],mixed:false}))
  expenses.forEach(r=>{
   const label=(r.canonical_category||r.expense_group||'غير مصنف').trim()||'غير مصنف'
-  const currentType=expenseOperationalType(r)
-  const x=categoryMap.get(label)||{label,total:0,branches:new Map(),expenseType:currentType,ids:[],mixed:false}
+  const catalogItem=EXPENSE_CLASSIFICATION_CATALOG.find(x=>x.label===label)
+  const currentType=catalogItem?.kind==='non_expense'?'غير مصروف':expenseOperationalType(r)
+  const x=categoryMap.get(label)||{label,total:0,branches:new Map(),expenseType:currentType,kind:catalogItem?.kind||'expense',ids:[],mixed:false}
   if(x.expenseType!==currentType)x.mixed=true
   const v=Number(r.amount||0)
   x.total+=v
@@ -1553,9 +1581,11 @@ async function renderExpensesCenter(){
    const type=x.mixed?'مختلط':x.expenseType
    const selectId='expense-type-'+Math.random().toString(36).slice(2,9)
    const encodedIds=encodeURIComponent(JSON.stringify(x.ids))
-   const editor=profile?.role==='admin'
-    ? '<div class="expense-type-editor"><select id="'+selectId+'"><option value="تشغيلي" '+(x.expenseType==='تشغيلي'?'selected':'')+'>تشغيلي</option><option value="غير تشغيلي" '+(x.expenseType==='غير تشغيلي'?'selected':'')+'>غير تشغيلي</option></select><button class="tool-btn" type="button" '+(!x.ids.length?'disabled title="لا توجد حركات في الفترة الحالية"':'onclick="saveExpenseOperationalType(\''+encodedIds+'\',\''+selectId+'\',\''+escapeAttr(x.label).replace(/&#39;/g,"\\'")+'\')"')+'>حفظ</button></div>'
-    : '—'
+   const editor=x.kind==='non_expense'
+    ? '<span class="chip">غير مصروف</span>'
+    : (profile?.role==='admin'
+      ? '<div class="expense-type-editor"><select id="'+selectId+'"><option value="تشغيلي" '+(x.expenseType==='تشغيلي'?'selected':'')+'>تشغيلي</option><option value="غير تشغيلي" '+(x.expenseType==='غير تشغيلي'?'selected':'')+'>غير تشغيلي</option></select><button class="tool-btn" type="button" '+(!x.ids.length?'disabled title="لا توجد حركات في الفترة الحالية"':'onclick="saveExpenseOperationalType(\''+encodedIds+'\',\''+selectId+'\',\''+escapeAttr(x.label).replace(/&#39;/g,"\\'")+'\')"')+'>حفظ</button></div>'
+      : '—')
    const row={label:escapeHtml(x.label),expense_type:type,expense_type_edit:editor}
    bset.forEach(b=>row[b.id]=money(x.branches.get(b.id)||0))
    row.total=money(x.total)
