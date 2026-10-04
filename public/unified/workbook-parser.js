@@ -104,6 +104,30 @@ function extractProducts(sheet){
   }
   return out
 }
+function extractTotalSalesSummary(sheet){
+  const {rows}=dims(sheet)
+  let headerRow=0
+  for(let row=1;row<=Math.min(rows,40);row++){
+    if(normalizeCategory(text(sheet,`BB${row}`)).includes('اجمالي مبيعات اليوم')){headerRow=row;break}
+  }
+  const startRow=headerRow?headerRow+1:15
+  const items=[]
+  let totalSalesQty=0,double570Qty=0,equivalentSalesQty=0
+  for(let row=startRow;row<=rows;row++){
+    const productName=text(sheet,`D${row}`).replace(/\s+/g,' ').trim()
+    if(!productName)continue
+    const salesQty=nullableNum(sheet,`BB${row}`)
+    if(salesQty===null)continue
+    const cartonPrice=nullableNum(sheet,`E${row}`)
+    const factor=Number(cartonPrice||0)===570?2:1
+    const equivalentQty=salesQty*factor
+    totalSalesQty+=salesQty
+    if(factor===2)double570Qty+=salesQty
+    equivalentSalesQty+=equivalentQty
+    items.push({row,productName,cartonPrice,salesQty,factor,equivalentQty})
+  }
+  return {sourceSheet:'Total',sourceColumn:'BB',headerRow,startRow,totalSalesQty,double570Qty,equivalentSalesQty,items}
+}
 function extractRemittances(sheet){
   const out=[],{rows}=dims(sheet)
   REMIT_STARTS.forEach((start,index)=>{
@@ -194,7 +218,7 @@ export async function parseWorkbookBrowser(file,{periodStart,periodEnd}={}){
   const buffer=await file.arrayBuffer()
   const wb=XLSX.read(buffer,{type:'array',cellDates:true,cellFormula:true,cellNF:false,cellText:false,dense:false})
   const sheets=[],issues=[],representativeDays=[],inventoryDaily=[]
-  let products=[],remittances=[],warehouseDaily=[],inventoryCounts=[],treasuryEntries=[]
+  let products=[],remittances=[],warehouseDaily=[],inventoryCounts=[],treasuryEntries=[],totalSalesSummary=null
   const trimmed=new Set(wb.SheetNames.map(n=>n.trim()))
   for(const required of REQUIRED_SHEETS)if(!trimmed.has(required))issues.push({sheetName:required,code:'MISSING_REQUIRED_SHEET',severity:'error',message:`الصفحة الأساسية "${required}" غير موجودة`})
   const dailyNames=wb.SheetNames.filter(n=>/^\d{1,2}-?$/.test(n.trim()))
@@ -204,6 +228,7 @@ export async function parseWorkbookBrowser(file,{periodStart,periodEnd}={}){
     sheets.push({name,index,rowCount:d.rows,columnCount:d.cols,rows:[]})
     const t=name.trim()
     if(t==='DATA')products=extractProducts(sheet)
+    if(t==='Total')totalSalesSummary=extractTotalSalesSummary(sheet)
     if(t==='توريدات')remittances=extractRemittances(sheet)
     if(t==='حركة المخزن')warehouseDaily=extractWarehouse(sheet)
     if(t==='الجرد')inventoryCounts=extractCounts(sheet,periodEnd)
@@ -212,14 +237,15 @@ export async function parseWorkbookBrowser(file,{periodStart,periodEnd}={}){
     if(businessDate){representativeDays.push(extractRepDay(sheet,name,businessDate,issues));inventoryDaily.push(...extractInventoryDaily(sheet,name,businessDate))}
   })
   return {
-    sheets,issues,representativeDays,inventoryDaily,products,remittances,warehouseDaily,inventoryCounts,treasuryEntries,
+    sheets,issues,representativeDays,inventoryDaily,products,remittances,warehouseDaily,inventoryCounts,treasuryEntries,totalSalesSummary,
     schemaVersion:'ammco-browser-v1',
     stats:{
       sheetCount:sheets.length,rawRowCount:0,dailySheetCount:dailyNames.length,
       representativeDayCount:representativeDays.length,representativeRowCount:representativeDays.reduce((s,d)=>s+d.reps.length,0),
       representativeTemplateSlots:REP_COLUMNS.length,inventoryDailyRowCount:inventoryDaily.length,productCount:products.length,
       remittanceRowCount:remittances.length,warehouseDayCount:warehouseDaily.length,inventoryCountRowCount:inventoryCounts.length,
-      treasuryEntryCount:treasuryEntries.length,expenseEntryCount:treasuryEntries.filter(e=>e.isExpense).length
+      treasuryEntryCount:treasuryEntries.length,expenseEntryCount:treasuryEntries.filter(e=>e.isExpense).length,
+      totalSalesQty:totalSalesSummary?.totalSalesQty??0,double570Qty:totalSalesSummary?.double570Qty??0,equivalentSalesQty:totalSalesSummary?.equivalentSalesQty??0
     }
   }
 }
