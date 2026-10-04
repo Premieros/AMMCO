@@ -1634,6 +1634,37 @@ window.editTreasurySheetRow=function(id){
 
 
 async function renderSales(){const {branch,from,to}=currentFilters();const daily=await loadDaily(branch,from,to);const rows=daily.map(r=>{const gross=Number(r.gross_sales||0),disc=Number(r.discounts||0);return{business_date:r.business_date,branch_name:r.branch_name,gross:money(gross),discounts:money(disc),discount_rate:pct(gross?disc/gross:0),net:money(r.net_sales),collections:money(r.collections),expenses:money(r.expenses)}});shell('تقرير المبيعات','تفاصيل المبيعات اليومية حسب الفرع',filters(from,to,branch)+scope(from,to,branch)+table('المبيعات اليومية',[{key:'business_date',label:'التاريخ'},{key:'branch_name',label:'الفرع'},{key:'gross',label:'قبل الخصم',num:1},{key:'discounts',label:'الخصم',num:1},{key:'discount_rate',label:'% الخصم'},{key:'net',label:'صافي البيع',num:1},{key:'collections',label:'التحصيل',num:1},{key:'expenses',label:'المصروفات',num:1}],rows));bindFilters('sales')}
+const EXPENSE_CLASSIFICATION_CATALOG=[
+ {label:'عمولات',group:'اجور وحوافز وعمولات'},
+ {label:'إيجارات',group:'تشغيل ومرافق'},
+ {label:'صيانة السيارات',group:'مصروفات السيارات'},
+ {label:'م. سولار',group:'مصروفات السيارات'},
+ {label:'بترو أب',group:'مصروفات السيارات'},
+ {label:'زيوت',group:'مصروفات السيارات'},
+ {label:'غسيل وتشحيم',group:'مصروفات السيارات'},
+ {label:'كارتات طريق',group:'مصروفات السيارات'},
+ {label:'اطارات السيارات',group:'مصروفات السيارات'},
+ {label:'قطع غيار السيارات',group:'مصروفات السيارات'},
+ {label:'جراج سيارات',group:'مصروفات السيارات'},
+ {label:'غرامات سيارات',group:'مصروفات السيارات'},
+ {label:'تراخيص سيارات',group:'مصروفات السيارات'},
+ {label:'حوافز بيع',group:'اجور وحوافز وعمولات'},
+ {label:'انتقالات',group:'انتقالات وسفر'},
+ {label:'بدل سفر',group:'انتقالات وسفر'},
+ {label:'تأمينات إجتماعية',group:'اجور وحوافز وعمولات'},
+ {label:'أكراميات',group:'اداري ومالي'},
+ {label:'م. تعتيق',group:'اداري ومالي'},
+ {label:'نت وتليفون',group:'اداري ومالي'},
+ {label:'نظافة',group:'تشغيل ومرافق'},
+ {label:'ادوات كتابية',group:'اداري ومالي'},
+ {label:'مصاريف مياه',group:'تشغيل ومرافق'},
+ {label:'م.كهرباء',group:'تشغيل ومرافق'},
+ {label:'منح ومكافأت',group:'اجور وحوافز وعمولات'},
+ {label:'حوافز إداريين',group:'اجور وحوافز وعمولات'},
+ {label:'مصاريف تحويل',group:'اداري ومالي'},
+ {label:'أجور ومرتبات',group:'اجور وحوافز وعمولات'},
+ {label:'مصروفات اخرى',group:'مصروفات اخرى'}
+]
 function expenseOperationalType(row){
  const manual=String(row?.raw_payload?.manual_expense_type||'').trim()
  if(['تشغيلي','غير تشغيلي'].includes(manual))return manual
@@ -1709,6 +1740,7 @@ async function renderExpensesCenter(){
  const expenseRate=totalSales?totalExpenses/totalSales:0
 
  const categoryMap=new Map()
+ EXPENSE_CLASSIFICATION_CATALOG.forEach(x=>categoryMap.set(x.label,{label:x.label,total:0,branches:new Map(),expenseType:expenseOperationalType({expense_group:x.group}),ids:[],mixed:false}))
  expenses.forEach(r=>{
   const label=(r.canonical_category||r.expense_group||'غير مصنف').trim()||'غير مصنف'
   const currentType=expenseOperationalType(r)
@@ -1727,7 +1759,7 @@ async function renderExpensesCenter(){
    const selectId='expense-type-'+Math.random().toString(36).slice(2,9)
    const encodedIds=encodeURIComponent(JSON.stringify(x.ids))
    const editor=profile?.role==='admin'
-    ? '<div class="expense-type-editor"><select id="'+selectId+'"><option value="تشغيلي" '+(x.expenseType==='تشغيلي'?'selected':'')+'>تشغيلي</option><option value="غير تشغيلي" '+(x.expenseType==='غير تشغيلي'?'selected':'')+'>غير تشغيلي</option></select><button class="tool-btn" type="button" onclick="saveExpenseOperationalType(\''+encodedIds+'\',\''+selectId+'\',\''+escapeAttr(x.label).replace(/&#39;/g,"\\'")+'\')">حفظ</button></div>'
+    ? '<div class="expense-type-editor"><select id="'+selectId+'"><option value="تشغيلي" '+(x.expenseType==='تشغيلي'?'selected':'')+'>تشغيلي</option><option value="غير تشغيلي" '+(x.expenseType==='غير تشغيلي'?'selected':'')+'>غير تشغيلي</option></select><button class="tool-btn" type="button" '+(!x.ids.length?'disabled title="لا توجد حركات في الفترة الحالية"':'onclick="saveExpenseOperationalType(\''+encodedIds+'\',\''+selectId+'\',\''+escapeAttr(x.label).replace(/&#39;/g,"\\'")+'\')"')+'>حفظ</button></div>'
     : '—'
    const row={label:escapeHtml(x.label),expense_type:type,expense_type_edit:editor}
    bset.forEach(b=>row[b.id]=money(x.branches.get(b.id)||0))
@@ -2141,9 +2173,11 @@ window.uploadPetroUpReport=async function(ev){
   const rows=await parseVehicleReportFile(file)
   if(!rows.length)throw new Error('لم أتعرف على التقرير. يجب أن يحتوي على المركبة والتاريخ والتكلفة.')
   msg.innerHTML='<div class="notice">تم العثور على '+rows.length+' حركة. جاري الحفظ…</div>'
-  const out=await vehicleAdminCall({action:'import',report_type:'petro_up_non_cash',branch_id:fd.get('branch_id'),month:fd.get('month')||selectedMonth,rows})
+  const out=await vehicleAdminCall({action:'import_global',report_type:'petro_up_non_cash',month:fd.get('month')||selectedMonth,rows})
   let note='تم استيراد '+out.inserted+' حركة بترو أب غير نقدية.'
-  if(out.unassigned?.length)note+=' سيارات بدون مندوب: '+out.unassigned.join('، ')
+  if(out.distribution?.length)note+=' التوزيع: '+out.distribution.map(x=>x.branch_name+' ('+x.rows+')').join('، ')
+  if(out.unassigned?.length)note+=' • سيارات غير موزعة: '+out.unassigned.join('، ')
+  if(out.missing_batch_branches?.length)note+=' • فروع بدون دفعة معتمدة للشهر: '+out.missing_batch_branches.length
   msg.innerHTML='<div class="success">'+escapeHtml(note)+' لن يتم خصم هذه الحركات من رصيد الخزينة.</div>'
   form.file.value=''
   clearPageCache()
@@ -2788,8 +2822,8 @@ function renderUploads(){
 
   <section class="upload-simple-card petro-up-upload-card">
    <div class="upload-step-head"><span class="step-badge">2</span><div><h2>رفع تقرير بترو أب – غير نقدي</h2><p>هذا التقرير يُسجل كمصروف سيارات غير نقدي ولا يؤثر على رصيد الخزينة.</p></div></div>
-   <form id="petro-up-upload-form" class="upload-simple-form" onsubmit="uploadPetroUpReport(event)">
-    <div class="field"><label>الفرع</label><select name="branch_id" required>${branchOpts}</select></div>
+   <form id="petro-up-upload-form" class="upload-simple-form petro-up-global-form" onsubmit="uploadPetroUpReport(event)">
+    <div class="field"><label>النطاق</label><div class="locked-source"><strong>كل الفروع</strong><span>يتم توزيع الحركات تلقائيًا حسب السيارة المسجلة</span></div></div>
     <div class="field"><label>الشهر</label><select name="month" required>
       ${(availableMonths.length?availableMonths:[month]).map(m=>'<option value="'+m+'" '+(m===month?'selected':'')+'>'+monthLabel(m)+'</option>').join('')}
     </select></div>
