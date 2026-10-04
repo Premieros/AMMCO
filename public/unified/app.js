@@ -525,9 +525,40 @@ async function loadExecutiveIntelligence(f){
   detailedEquiv.set(r.branch_id,(detailedEquiv.get(r.branch_id)||0)+q*factor)
   const day=timeline.get(r.business_date)||{date:r.business_date,sales:0,expenses:0,qty:0,equivQty:0};day.equivQty+=q*factor;timeline.set(r.business_date,day)
  })
+ const repRowsByBatch=new Map()
+ repDaily.forEach(r=>{
+  if(!repRowsByBatch.has(r.batch_id))repRowsByBatch.set(r.batch_id,[])
+  repRowsByBatch.get(r.batch_id).push(r)
+ })
+ const qtyByBranch=new Map()
+ approvedBatches.forEach(batch=>{
+  const current=qtyByBranch.get(batch.branch_id)||{raw:0,equiv:0}
+  const fullPeriod=f.from<=batch.period_start&&f.to>=batch.period_end
+  const summary=batch.metadata?.total_sales_summary
+  if(fullPeriod&&summary&&Number.isFinite(Number(summary.equivalentSalesQty))){
+   current.raw+=Number(summary.totalSalesQty||0)
+   current.equiv+=Number(summary.equivalentSalesQty||0)
+  }else{
+   const rows=repRowsByBatch.get(batch.id)||[]
+   let raw=0,equiv=0,hasRepQty=false
+   rows.forEach(r=>{
+    const p=r.raw_payload||{}
+    if(p.sales_qty!==undefined||p.equivalent_sales_qty!==undefined)hasRepQty=true
+    raw+=Number(p.sales_qty||0)
+    equiv+=Number(p.equivalent_sales_qty||0)
+   })
+   if(hasRepQty){current.raw+=raw;current.equiv+=equiv}
+  }
+  qtyByBranch.set(batch.branch_id,current)
+ })
  branchAgg.forEach((b,id)=>{
-  const lw=latestWh.get(id),verified=lw?.raw_payload?.total_sales_source==='Total!BB'?Number(lw?.raw_payload?.equivalent_cartons_month||0):0
-  b.equivQty=verified||Number(detailedEquiv.get(id)||0)
+  const verified=qtyByBranch.get(id)
+  if(verified&&verified.equiv){
+   b.qty=verified.raw
+   b.equivQty=verified.equiv
+  }else{
+   b.equivQty=Number(detailedEquiv.get(id)||0)
+  }
  })
  exp.forEach(r=>{
   const amt=Number(r.amount||0);totalExpenses+=amt
