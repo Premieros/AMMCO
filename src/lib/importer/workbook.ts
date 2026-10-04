@@ -128,6 +128,26 @@ export type TreasuryEntry = {
   rawPayload: Json
 }
 
+export type TotalSalesSummaryItem = {
+  row: number
+  productName: string
+  cartonPrice: number | null
+  salesQty: number
+  factor: number
+  equivalentQty: number
+}
+
+export type TotalSalesSummary = {
+  sourceSheet: 'Total'
+  sourceColumn: 'BB'
+  headerRow: number
+  startRow: number
+  totalSalesQty: number
+  double570Qty: number
+  equivalentSalesQty: number
+  items: TotalSalesSummaryItem[]
+}
+
 export type WarehouseDailySummary = {
   businessDate: string
   sourceQtyRow: number
@@ -328,6 +348,50 @@ function extractProducts(worksheet: ExcelJS.Worksheet) {
   }
 
   return products
+}
+
+function extractTotalSalesSummary(worksheet: ExcelJS.Worksheet): TotalSalesSummary {
+  let headerRow = 0
+  for (let row = 1; row <= Math.min(worksheet.rowCount, 40); row += 1) {
+    if (normalizeCategory(textCell(worksheet.getCell(`BB${row}`))).includes('اجمالي مبيعات اليوم')) {
+      headerRow = row
+      break
+    }
+  }
+
+  const startRow = headerRow ? headerRow + 1 : 15
+  const items: TotalSalesSummaryItem[] = []
+  let totalSalesQty = 0
+  let double570Qty = 0
+  let equivalentSalesQty = 0
+
+  for (let row = startRow; row <= worksheet.rowCount; row += 1) {
+    const productName = textCell(worksheet.getCell(`D${row}`)).replace(/\s+/g, ' ').trim()
+    if (!productName) continue
+
+    const salesQty = nullableNumber(worksheet.getCell(`BB${row}`))
+    if (salesQty === null) continue
+
+    const cartonPrice = nullableNumber(worksheet.getCell(`E${row}`))
+    const factor = Number(cartonPrice ?? 0) === 570 ? 2 : 1
+    const equivalentQty = salesQty * factor
+
+    totalSalesQty += salesQty
+    if (factor === 2) double570Qty += salesQty
+    equivalentSalesQty += equivalentQty
+    items.push({ row, productName, cartonPrice, salesQty, factor, equivalentQty })
+  }
+
+  return {
+    sourceSheet: 'Total',
+    sourceColumn: 'BB',
+    headerRow,
+    startRow,
+    totalSalesQty,
+    double570Qty,
+    equivalentSalesQty,
+    items,
+  }
 }
 
 function extractRemittances(worksheet: ExcelJS.Worksheet) {
@@ -873,6 +937,7 @@ export async function parseWorkbook(
   let warehouseDaily: WarehouseDailySummary[] = []
   let inventoryCounts: InventoryCountRow[] = []
   let treasuryEntries: TreasuryEntry[] = []
+  let totalSalesSummary: TotalSalesSummary | null = null
 
   if (workbook.worksheets.length === 0) {
     issues.push({
@@ -933,6 +998,10 @@ export async function parseWorkbook(
       products = extractProducts(worksheet)
     }
 
+    if (worksheet.name.trim() === 'Total') {
+      totalSalesSummary = extractTotalSalesSummary(worksheet)
+    }
+
     if (worksheet.name.trim() === 'توريدات') {
       remittances = extractRemittances(worksheet)
     }
@@ -966,6 +1035,7 @@ export async function parseWorkbook(
     warehouseDaily,
     inventoryCounts,
     treasuryEntries,
+    totalSalesSummary,
     schemaVersion: 'ammco-reference-v7-product-inventory-daily',
     stats: {
       sheetCount: sheets.length,
@@ -981,6 +1051,9 @@ export async function parseWorkbook(
       inventoryCountRowCount: inventoryCounts.length,
       treasuryEntryCount: treasuryEntries.length,
       expenseEntryCount: treasuryEntries.filter((entry) => entry.isExpense).length,
+      totalSalesQty: totalSalesSummary?.totalSalesQty ?? 0,
+      double570Qty: totalSalesSummary?.double570Qty ?? 0,
+      equivalentSalesQty: totalSalesSummary?.equivalentSalesQty ?? 0,
     },
   }
 }
