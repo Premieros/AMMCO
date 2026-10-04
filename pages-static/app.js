@@ -393,11 +393,13 @@ async function loadExecutiveIntelligence(f){
  let kq=supabase.from('v_branch_daily_kpis').select('*').gte('business_date',f.from).lte('business_date',f.to).order('business_date')
  let iq=supabase.from('inventory_daily').select('id,branch_id,business_date,product_id,product_name,sales_qty,closing_qty,closing_value,batch_id').in('batch_id',ids.length?ids:['00000000-0000-0000-0000-000000000000']).gte('business_date',f.from).lte('business_date',f.to)
  let wq=supabase.from('warehouse_daily_summary').select('id,branch_id,business_date,sales_qty,closing_qty,closing_value,raw_payload,batch_id').in('batch_id',ids.length?ids:['00000000-0000-0000-0000-000000000000']).gte('business_date',f.from).lte('business_date',f.to).order('business_date')
+ let rq=supabase.from('sales_rep_daily').select('batch_id,branch_id,business_date,rep_name,raw_payload').in('batch_id',ids.length?ids:['00000000-0000-0000-0000-000000000000']).gte('business_date',f.from).lte('business_date',f.to)
+ let bq=supabase.from('import_batches').select('id,branch_id,period_start,period_end,metadata').eq('status','approved').lte('period_start',f.to).gte('period_end',f.from)
  let eq=supabase.from('v_expense_analysis').select('branch_id,entry_date,canonical_category,expense_group,amount').gte('entry_date',f.from).lte('entry_date',f.to)
- if(f.branch){kq=kq.eq('branch_id',f.branch);iq=iq.eq('branch_id',f.branch);wq=wq.eq('branch_id',f.branch);eq=eq.eq('branch_id',f.branch)}
- const [kr,ir,wr,er,pr,br]=await Promise.all([kq,iq,wq,eq,supabase.from('products').select('id,name,wholesale_carton_price,box_count').eq('is_active',true),supabase.from('import_batches').select('created_at').eq('status','approved').order('created_at',{ascending:false}).limit(1)])
- for(const x of [kr,ir,wr,er,pr])if(x.error)throw x.error
- const kpis=kr.data||[],inv=ir.data||[],wh=wr.data||[],exp=er.data||[],products=pr.data||[],productMap=new Map(products.map(p=>[p.id,p]))
+ if(f.branch){kq=kq.eq('branch_id',f.branch);iq=iq.eq('branch_id',f.branch);wq=wq.eq('branch_id',f.branch);rq=rq.eq('branch_id',f.branch);bq=bq.eq('branch_id',f.branch);eq=eq.eq('branch_id',f.branch)}
+ const [kr,ir,wr,rr,ibr,er,pr,br]=await Promise.all([kq,iq,wq,rq,bq,eq,supabase.from('products').select('id,name,wholesale_carton_price,box_count').eq('is_active',true),supabase.from('import_batches').select('created_at').eq('status','approved').order('created_at',{ascending:false}).limit(1)])
+ for(const x of [kr,ir,wr,rr,ibr,er,pr])if(x.error)throw x.error
+ const kpis=kr.data||[],inv=ir.data||[],wh=wr.data||[],repDaily=rr.data||[],approvedBatches=ibr.data||[],exp=er.data||[],products=pr.data||[],productMap=new Map(products.map(p=>[p.id,p]))
  const branchAgg=new Map()
  branches.forEach(b=>{if(!f.branch||b.id===f.branch)branchAgg.set(b.id,{id:b.id,name:b.name,code:b.code,sales:0,qty:0,equivQty:0,expenses:0,collections:0,discounts:0,hasData:false})})
  const timeline=new Map(),latestWh=new Map()
@@ -419,9 +421,40 @@ async function loadExecutiveIntelligence(f){
   detailedEquiv.set(r.branch_id,(detailedEquiv.get(r.branch_id)||0)+q*factor)
   const day=timeline.get(r.business_date)||{date:r.business_date,sales:0,expenses:0,qty:0,equivQty:0};day.equivQty+=q*factor;timeline.set(r.business_date,day)
  })
+ const repRowsByBatch=new Map()
+ repDaily.forEach(r=>{
+  if(!repRowsByBatch.has(r.batch_id))repRowsByBatch.set(r.batch_id,[])
+  repRowsByBatch.get(r.batch_id).push(r)
+ })
+ const qtyByBranch=new Map()
+ approvedBatches.forEach(batch=>{
+  const current=qtyByBranch.get(batch.branch_id)||{raw:0,equiv:0}
+  const fullPeriod=f.from<=batch.period_start&&f.to>=batch.period_end
+  const summary=batch.metadata?.total_sales_summary
+  if(fullPeriod&&summary&&Number.isFinite(Number(summary.equivalentSalesQty))){
+   current.raw+=Number(summary.totalSalesQty||0)
+   current.equiv+=Number(summary.equivalentSalesQty||0)
+  }else{
+   const rows=repRowsByBatch.get(batch.id)||[]
+   let raw=0,equiv=0,hasRepQty=false
+   rows.forEach(r=>{
+    const p=r.raw_payload||{}
+    if(p.sales_qty!==undefined||p.equivalent_sales_qty!==undefined)hasRepQty=true
+    raw+=Number(p.sales_qty||0)
+    equiv+=Number(p.equivalent_sales_qty||0)
+   })
+   if(hasRepQty){current.raw+=raw;current.equiv+=equiv}
+  }
+  qtyByBranch.set(batch.branch_id,current)
+ })
  branchAgg.forEach((b,id)=>{
-  const lw=latestWh.get(id),verified=lw?.raw_payload?.total_sales_source==='Total!BB'?Number(lw?.raw_payload?.equivalent_cartons_month||0):0
-  b.equivQty=verified||Number(detailedEquiv.get(id)||0)
+  const verified=qtyByBranch.get(id)
+  if(verified&&verified.equiv){
+   b.qty=verified.raw
+   b.equivQty=verified.equiv
+  }else{
+   b.equivQty=Number(detailedEquiv.get(id)||0)
+  }
  })
  exp.forEach(r=>{
   const amt=Number(r.amount||0);totalExpenses+=amt
