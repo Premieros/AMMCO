@@ -866,7 +866,14 @@ function extractWarehouseDaily(worksheet: WorksheetLike) {
   return rows
 }
 
-function dateForDailySheet(sheetName: string, periodStart?: string) {
+function inSelectedPeriod(date: string | null | undefined, periodStart?: string, periodEnd?: string) {
+  if (!date) return true
+  if (periodStart && date < periodStart) return false
+  if (periodEnd && date > periodEnd) return false
+  return true
+}
+
+function dateForDailySheet(sheetName: string, periodStart?: string, periodEnd?: string) {
   if (!periodStart) return null
   const match = sheetName.trim().match(/^(\d{1,2})(-?)$/)
   if (!match) return null
@@ -882,7 +889,8 @@ function dateForDailySheet(sheetName: string, periodStart?: string) {
   const date = new Date(Date.UTC(year, month, day))
 
   if (date.getUTCDate() !== day) return null
-  return date.toISOString().slice(0, 10)
+  const iso = date.toISOString().slice(0, 10)
+  return inSelectedPeriod(iso, periodStart, periodEnd) ? iso : null
 }
 
 function extractInventoryDaily(
@@ -1154,12 +1162,16 @@ export async function parseWorkbook(
       treasuryEntries = extractTreasuryEntries(worksheet, issues)
     }
 
-    const businessDate = dateForDailySheet(worksheet.name, options.periodStart)
+    const businessDate = dateForDailySheet(worksheet.name, options.periodStart, options.periodEnd)
     if (businessDate) {
       representativeDays.push(extractRepresentativeDay(worksheet, businessDate, issues))
       inventoryDaily.push(...extractInventoryDaily(worksheet, businessDate))
     }
   })
+
+  remittances = remittances.filter((row) => inSelectedPeriod(row.businessDate, options.periodStart, options.periodEnd))
+  warehouseDaily = warehouseDaily.filter((row) => inSelectedPeriod(row.businessDate, options.periodStart, options.periodEnd))
+  treasuryEntries = treasuryEntries.filter((row) => inSelectedPeriod(row.entryDate, options.periodStart, options.periodEnd))
 
   return {
     sheets,
