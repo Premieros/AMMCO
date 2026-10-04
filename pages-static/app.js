@@ -615,6 +615,19 @@ async function loadExecutiveIntelligence(f){
  return {kpis:{netSales,prevNetSales,equivSalesQty,prevEquivQty,avgCartonPrice,prevAvgPrice,totalExpenses,prevTotalExpenses,netResult:netSales-totalExpenses,prevNetResult:prevNetSales-prevTotalExpenses,expenseRatio,prevExpenseRatio,discountRate,prevDiscountRate,totalCollections:collections,totalDebt,totalDiscountValue:discounts,reportingBranches:branchList.filter(b=>b.hasData).length,totalBranchesCount:branchAgg.size,lastUpdate:br.data?.[0]?.created_at?new Date(br.data[0].created_at).toLocaleString('ar-EG'):'—'},timelinePoints:points,branchList,expensesByCategory,discounts,grossSales,collections,rawExpenses:exp,rawInventory:inv,products,productMap,rawSalesQty}
 }
 
+async function fetchAllPaged(makeQuery,pageSize=1000){
+ const out=[]
+ for(let from=0;;from+=pageSize){
+  const q=makeQuery().range(from,from+pageSize-1)
+  const {data,error}=await q
+  if(error)throw error
+  const rows=data||[]
+  out.push(...rows)
+  if(rows.length<pageSize)break
+ }
+ return out
+}
+
 async function approvedIds(){
  const {data,error}=await supabase.from('import_batches').select('id').eq('status','approved');if(error)throw error;return (data||[]).map(x=>x.id)
 }
@@ -1928,17 +1941,23 @@ async function renderReps(){
   .select('id,branch_id,business_date,vehicle_label,rep_name,sales,fuel_expense,maintenance_expense,other_expense,total_expense,raw_payload')
   .in('batch_id',safeIds).gte('business_date',from).lte('business_date',to)
  if(branch){rq=rq.eq('branch_id',branch);vq=vq.eq('branch_id',branch)}
- const [rr,vr]=await Promise.all([rq,vq])
- if(rr.error||vr.error)throw rr.error||vr.error
+ const [repRows,vehicleRows]=await Promise.all([
+  fetchAllPaged(()=>{let q=supabase.from('sales_rep_daily')
+   .select('branch_id,business_date,rep_name,sales_before_discount,net_after_discount,discounts,deposit_amount,closing_balance,raw_payload')
+   .in('batch_id',safeIds).gte('business_date',from).lte('business_date',to).order('business_date',{ascending:true});if(branch)q=q.eq('branch_id',branch);return q}),
+  fetchAllPaged(()=>{let q=supabase.from('vehicle_daily')
+   .select('id,branch_id,business_date,vehicle_label,rep_name,sales,fuel_expense,maintenance_expense,other_expense,total_expense,raw_payload')
+   .in('batch_id',safeIds).gte('business_date',from).lte('business_date',to);if(branch)q=q.eq('branch_id',branch);return q})
+ ])
  const names=new Map(branches.map(b=>[b.id,b.name])),by=new Map()
- ;(rr.data||[]).forEach(r=>{
+ ;(repRows||[]).forEach(r=>{
   const k=r.branch_id+':'+r.rep_name
   const x=by.get(k)||{branch_id:r.branch_id,branch_name:names.get(r.branch_id)||'—',rep_name:r.rep_name,gross:0,net:0,disc:0,deposit:0,closing:0,rawQty:0,equivQty:0,vehicles:new Set(),fuel:0,maintenance:0,vehicleOther:0,vehicleExpense:0,vehicleSales:0}
   x.gross+=Number(r.sales_before_discount||0);x.net+=Number(r.net_after_discount||0);x.disc+=Number(r.discounts||0);x.deposit+=Number(r.deposit_amount||0);x.closing=Number(r.closing_balance||x.closing)
   x.rawQty+=Number(r.raw_payload?.sales_qty||0);x.equivQty+=Number(r.raw_payload?.equivalent_sales_qty||0)
   by.set(k,x)
  })
- ;(vr.data||[]).forEach(v=>{
+ ;(vehicleRows||[]).forEach(v=>{
   if(v.raw_payload?.manual_assignment)return
   if(!v.rep_name)return
   const k=v.branch_id+':'+v.rep_name
@@ -2005,16 +2024,23 @@ async function renderRepDirectory(){
   .select('branch_id,business_date,vehicle_label,rep_name,sales,fuel_expense,maintenance_expense,other_expense,total_expense,raw_payload')
   .in('batch_id',safeIds)
  if(branch){allQ=allQ.eq('branch_id',branch);monthQ=monthQ.eq('branch_id',branch);vehicleQ=vehicleQ.eq('branch_id',branch)}
- const [ar,mr,vr]=await Promise.all([allQ,monthQ,vehicleQ])
- if(ar.error||mr.error||vr.error)throw ar.error||mr.error||vr.error
+ const [allRows,monthRows,vehicleRows]=await Promise.all([
+  fetchAllPaged(()=>{let q=supabase.from('sales_rep_daily').select('branch_id,rep_name').in('batch_id',safeIds);if(branch)q=q.eq('branch_id',branch);return q}),
+  fetchAllPaged(()=>{let q=supabase.from('sales_rep_daily')
+   .select('branch_id,business_date,rep_name,sales_before_discount,net_after_discount,discounts,deposit_amount,closing_balance,expense_amount,raw_payload')
+   .in('batch_id',safeIds).gte('business_date',from).lte('business_date',to);if(branch)q=q.eq('branch_id',branch);return q}),
+  fetchAllPaged(()=>{let q=supabase.from('vehicle_daily')
+   .select('id,branch_id,business_date,vehicle_label,rep_name,sales,fuel_expense,maintenance_expense,other_expense,total_expense,raw_payload')
+   .in('batch_id',safeIds);if(branch)q=q.eq('branch_id',branch);return q})
+ ])
  const branchMap=new Map(branches.map(b=>[b.id,b.name]))
  const reps=new Map()
- ;(ar.data||[]).forEach(r=>{
+ ;(allRows||[]).forEach(r=>{
   if(!r.rep_name)return
   const k=r.branch_id+'|'+r.rep_name
   if(!reps.has(k))reps.set(k,{branch_id:r.branch_id,branch_name:branchMap.get(r.branch_id)||'—',rep_name:r.rep_name,gross:0,disc:0,net:0,deposit:0,closing:0,expense:0,rawQty:0,equivQty:0,fuel:0,maintenance:0,vehicleOther:0,vehicleExpense:0,vehicle:''})
  })
- ;(mr.data||[]).forEach(r=>{
+ ;(monthRows||[]).forEach(r=>{
   const k=r.branch_id+'|'+r.rep_name,x=reps.get(k)
   if(!x)return
   x.gross+=Number(r.sales_before_discount||0);x.disc+=Number(r.discounts||0);x.net+=Number(r.net_after_discount||0)
@@ -2022,7 +2048,7 @@ async function renderRepDirectory(){
   x.rawQty+=Number(r.raw_payload?.sales_qty||0);x.equivQty+=Number(r.raw_payload?.equivalent_sales_qty||0)
  })
  const latestAssignment=new Map()
- ;(vr.data||[]).forEach(v=>{
+ ;(vehicleRows||[]).forEach(v=>{
   if(v.raw_payload?.manual_assignment&&v.rep_name&&v.vehicle_label){
    const k=v.branch_id+'|'+v.rep_name
    const prev=latestAssignment.get(k)
