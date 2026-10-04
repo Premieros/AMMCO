@@ -108,7 +108,7 @@ export async function getRepSummaries(params:{from:string;to:string;branchId?:st
  const branchAgg=new Map<string,ReceivableSummary>()
  for(const r of reps){
   const x=branchAgg.get(r.branchId)??{
-   branchId:r.branchId,branchName:r.branchName,openingDebt:0,netSales:0,deposits:0,closingDebt:0,collectionRate:0,checkDiff:0
+   branchId:r.branchId,branchName:r.branchName,openingDebt:0,netSales:0,deposits:0,closingDebt:0,collectionRate:0
   }
   x.openingDebt+=r.openingDebt
   x.netSales+=r.netSales
@@ -116,10 +116,7 @@ export async function getRepSummaries(params:{from:string;to:string;branchId?:st
   x.closingDebt+=r.closingDebt
   branchAgg.set(r.branchId,x)
  }
- const receivables=[...branchAgg.values()].map(x=>{
-  const expected=x.openingDebt+x.netSales-x.deposits
-  return {...x,collectionRate:x.netSales?x.deposits/x.netSales:0,checkDiff:expected-x.closingDebt}
- }).sort((a,b)=>a.branchName.localeCompare(b.branchName,'ar'))
+ const receivables=[...branchAgg.values()].map(x=>({...x,collectionRate:x.netSales?x.deposits/x.netSales:0})).sort((a,b)=>a.branchName.localeCompare(b.branchName,'ar'))
 
  return {reps,receivables}
 }
