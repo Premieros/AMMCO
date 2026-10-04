@@ -1488,7 +1488,7 @@ function normalizeExpenseCatalogLabel(v){
  }
  return aliases[s]||String(v||'').replace(/\s+/g,' ').trim()
 }
-function expenseOperationalTypefunction expenseOperationalType(row){
+function expenseOperationalType(row){
  const manual=String(row?.raw_payload?.manual_expense_type||'').trim()
  if(['تشغيلي','غير تشغيلي'].includes(manual))return manual
  const group=String(row?.expense_group||'').trim()
