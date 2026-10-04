@@ -2527,3 +2527,63 @@ body{background:#f5f7fa;color:var(--ui-text)}
   .expense-tabs{flex-direction:column}
   .expense-tab{width:100%}
 }
+
+
+/* Global month selector */
+.global-month-filter{
+  display:flex;
+  align-items:center;
+  gap:7px;
+  padding:4px 6px 4px 9px;
+  border:1px solid #d9e2ea;
+  border-radius:10px;
+  background:#fff;
+}
+.global-month-filter label{
+  color:#6c7d8f;
+  font-size:10.5px;
+  font-weight:800;
+  white-space:nowrap;
+}
+.global-month-filter select{
+  min-width:145px;
+  height:32px;
+  border:0;
+  outline:0;
+  background:transparent;
+  color:#17324a;
+  font-size:12px;
+  font-weight:800;
+  cursor:pointer;
+}
+.filter-month-note,.global-filter-status{
+  display:flex;
+  flex-direction:column;
+  justify-content:center;
+  min-height:40px;
+  padding:6px 11px;
+  border:1px solid #dfe6ed;
+  border-radius:9px;
+  background:#f7fafc;
+}
+.filter-month-note span,.global-filter-status span{
+  color:#7a8998;
+  font-size:9.5px;
+  font-weight:700;
+}
+.filter-month-note b,.global-filter-status b{
+  margin-top:2px;
+  color:#184f73;
+  font-size:12px;
+  font-weight:800;
+}
+@media(max-width:820px){
+  .global-month-filter{
+    position:absolute;
+    left:12px;
+    top:74px;
+    z-index:20;
+    box-shadow:0 4px 16px rgba(15,23,42,.08);
+  }
+  .content{padding-top:60px!important}
+}
