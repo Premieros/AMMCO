@@ -147,7 +147,8 @@ window.changeUnifiedReport=select=>{
 const EXEC_NAV_SECTIONS=[
  {id:'dashboard',label:'لوحة التحكم',icon:'<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="3" y="3" width="7" height="9"></rect><rect x="14" y="3" width="7" height="5"></rect><rect x="14" y="12" width="7" height="9"></rect><rect x="3" y="16" width="7" height="5"></rect></svg>'},
  {id:'reports',label:'التقارير',href:'#/reports?report=executive',icon:'<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"></path><polyline points="14 2 14 8 20 8"></polyline><line x1="8" y1="13" x2="16" y2="13"></line><line x1="8" y1="17" x2="16" y2="17"></line></svg>'},
- {id:'treasury',label:'الخزينة',icon:'<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="2" y="6" width="20" height="12" rx="2"></rect><circle cx="12" cy="12" r="2"></circle></svg>'}
+ {id:'treasury',label:'الخزينة',icon:'<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="2" y="6" width="20" height="12" rx="2"></rect><circle cx="12" cy="12" r="2"></circle></svg>'},
+ {id:'uploads',label:'رفع الشيتات والسجل',icon:'<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"></path><polyline points="17 8 12 3 7 8"></polyline><line x1="12" y1="3" x2="12" y2="15"></line></svg>'}
 ]
 function shell(title,subtitle,body){
  const r=route().split('?')[0],collapsed=localStorage.getItem('ammco.sidebar.collapsed')==='1'
@@ -1987,6 +1988,7 @@ function renderUploads(){
      <div class="lane-result" id="lane-result-${l.index}"></div>
     </article>`).join('')}
   </section>
+  <section id="upload-history" class="section-gap"></section>
   <div class="bulk-upload-footer">
    <span>الفروع الموجودة حاليًا: <b>${branches.length}</b></span>
    <span>المسارات المتاحة: <b>12</b></span>
@@ -2131,6 +2133,119 @@ function renderUploads(){
   msg.innerHTML=`<div class="${failed?'notice':'success'}">انتهت الدفعة: ${ok} نجح • ${review} يحتاج مراجعة • ${failed} فشل.</div>`
   button.disabled=false
   button.textContent='رفع وتحليل الملفات المحددة'
+  await loadUploadHistory()
+ })
+ loadUploadHistory()
+}
+
+async function loadUploadHistory(){
+ const host=document.getElementById('upload-history')
+ if(!host)return
+ host.innerHTML='<div class="notice">جاري تحميل سجل الشيتات…</div>'
+ const {data,error}=await supabase.from('import_batches')
+  .select('id,branch_id,original_file_name,period_start,period_end,version,status,uploaded_at,approved_at,failure_message,branches(name)')
+  .order('uploaded_at',{ascending:false}).limit(300)
+ if(error){host.innerHTML='<div class="error">'+escapeHtml(error.message)+'</div>';return}
+ const labels={uploaded:'مرفوع',processing:'قيد التحليل',validated:'جاهز للاعتماد',approved:'معتمد',rejected:'يحتاج مراجعة',failed:'فشل',superseded:'نسخة سابقة'}
+ const rows=(data||[]).map(r=>{
+  const branchName=Array.isArray(r.branches)?r.branches[0]?.name:r.branches?.name
+  const actions=[]
+  if(r.status==='validated'&&profile?.role==='admin')actions.push('<button class="inline-action" onclick="approveBatch(\''+r.id+'\')">اعتماد</button>')
+  if(['uploaded','failed'].includes(r.status))actions.push('<button class="inline-action" onclick="processBatch(\''+r.id+'\')">إعادة التحليل</button>')
+  if(r.status==='rejected')actions.push('<button class="inline-action" onclick="viewBatchIssues(\''+r.id+'\')">مراجعة</button>')
+  if(profile?.role==='admin'){
+   actions.push('<button class="inline-action" onclick="reuploadBatch(\''+r.id+'\',\''+r.branch_id+'\',\''+r.period_start+'\',\''+r.period_end+'\')">إعادة رفع</button>')
+   actions.push('<button class="inline-action danger" onclick="deleteUploadBatch(\''+r.id+'\',\''+escapeAttr(r.original_file_name||'')+'\')">حذف</button>')
+  }
+  return {
+   branch_name:escapeHtml(branchName||'—'),
+   period:escapeHtml(r.period_start+' — '+r.period_end),
+   file:escapeHtml(r.original_file_name||'—'),
+   version:r.version,
+   status:labels[r.status]||r.status,
+   uploaded_at:r.uploaded_at?new Date(r.uploaded_at).toLocaleString('en-GB'):'—',
+   approved_at:r.approved_at?new Date(r.approved_at).toLocaleString('en-GB'):'—',
+   action:actions.join(' ')||escapeHtml(r.failure_message||'—')
+  }
+ })
+ host.innerHTML='<div id="imports-msg"></div>'+table('سجل الشيتات',[
+  {key:'branch_name',label:'الفرع'},{key:'period',label:'الفترة'},{key:'file',label:'الملف'},
+  {key:'version',label:'الإصدار',num:1},{key:'status',label:'الحالة'},
+  {key:'uploaded_at',label:'وقت الرفع'},{key:'approved_at',label:'وقت الاعتماد'},
+  {key:'action',label:'الإجراءات',filter:false}
+ ],rows)
+}
+
+window.deleteUploadBatch=async function(id,fileName){
+ if(profile?.role!=='admin')return
+ if(!confirm('سيتم حذف الشيت «'+fileName+'» وبياناته المرتبطة. هل تريد المتابعة؟'))return
+ const msg=document.getElementById('imports-msg')
+ try{
+  if(msg)msg.innerHTML='<div class="notice">جاري حذف الشيت…</div>'
+  const {data:{session:active}}=await supabase.auth.getSession()
+  if(!active)throw new Error('انتهت جلسة الدخول')
+  const res=await fetch(SUPABASE_URL+'/functions/v1/ammco-import-delete',{
+   method:'POST',
+   headers:{Authorization:'Bearer '+active.access_token,apikey:SUPABASE_KEY,'Content-Type':'application/json'},
+   body:JSON.stringify({batchId:id})
+  })
+  const out=await res.json()
+  if(!res.ok)throw new Error(out.error||'تعذر حذف الشيت')
+  clearPageCache()
+  if(msg)msg.innerHTML='<div class="success">تم حذف الشيت بنجاح.</div>'
+  await loadUploadHistory()
+ }catch(err){if(msg)msg.innerHTML='<div class="error">'+escapeHtml(err.message||err)+'</div>'}
+}
+
+window.reuploadBatch=function(id,branchId,periodStart,periodEnd){
+ if(profile?.role!=='admin')return
+ document.getElementById('reupload-dialog')?.remove()
+ const html='<div class="dialog-backdrop" id="reupload-dialog"><div class="dialog-card">'+
+  '<div class="dialog-head"><h3>إعادة رفع الشيت</h3><button class="tool-btn" type="button" onclick="document.getElementById(\'reupload-dialog\').remove()">إغلاق</button></div>'+
+  '<form id="reupload-form" class="dialog-form">'+
+   '<div class="locked-source"><span>الفترة</span><strong>'+escapeHtml(periodStart+' — '+periodEnd)+'</strong></div>'+
+   '<div class="field"><label>ملف Excel الجديد</label><input name="file" type="file" accept=".xlsx,application/vnd.openxmlformats-officedocument.spreadsheetml.sheet" required></div>'+
+   '<button class="btn">رفع وتحليل النسخة الجديدة</button><div id="reupload-msg"></div>'+
+  '</form></div></div>'
+ document.body.insertAdjacentHTML('beforeend',html)
+ const form=document.getElementById('reupload-form')
+ form.addEventListener('submit',async ev=>{
+  ev.preventDefault()
+  const msg=document.getElementById('reupload-msg'),file=form.file.files?.[0]
+  if(!file){msg.innerHTML='<div class="error">اختر ملف Excel.</div>';return}
+  try{
+   msg.innerHTML='<div class="notice">جاري قراءة الملف…</div>'
+   const parsed=await parseWorkbookBrowser(file,{periodStart,periodEnd})
+   const {data:{session:active}}=await supabase.auth.getSession()
+   if(!active)throw new Error('انتهت جلسة الدخول')
+   const fd=new FormData()
+   fd.set('branch_id',branchId);fd.set('period_start',periodStart);fd.set('period_end',periodEnd);fd.set('file',file)
+   fd.set('parsed_cache',new File([JSON.stringify(parsed)],'parsed-cache.json',{type:'application/json'}))
+   const uploadRes=await fetch(SUPABASE_URL+'/functions/v1/ammco-import-upload',{
+    method:'POST',headers:{Authorization:'Bearer '+active.access_token,apikey:SUPABASE_KEY},body:fd
+   })
+   const uploaded=await uploadRes.json()
+   if(!uploadRes.ok)throw new Error(uploaded.error||'تعذر رفع الملف')
+   msg.innerHTML='<div class="notice">تم الرفع، جاري التحليل…</div>'
+   const processRes=await fetch(SUPABASE_URL+'/functions/v1/ammco-import-process',{
+    method:'POST',
+    headers:{Authorization:'Bearer '+active.access_token,apikey:SUPABASE_KEY,'Content-Type':'application/json'},
+    body:JSON.stringify({batchId:uploaded.batchId,parsed,historyMode:'review'})
+   })
+   const processed=await processRes.json()
+   if(!processRes.ok)throw new Error(processed.error||'تعذر تحليل الملف')
+   if(processed.status==='validated'){
+    const {error:approveError}=await supabase.rpc('approve_import_batch',{p_batch_id:uploaded.batchId})
+    if(approveError)throw approveError
+    msg.innerHTML='<div class="success">تم رفع النسخة الجديدة وتحليلها واعتمادها.</div>'
+    clearPageCache()
+    setTimeout(async()=>{document.getElementById('reupload-dialog')?.remove();await loadUploadHistory()},500)
+   }else{
+    msg.innerHTML='<div class="notice">تم رفع النسخة الجديدة لكنها تحتاج مراجعة قبل الاعتماد. ستظهر في السجل.</div>'
+    clearPageCache()
+    setTimeout(async()=>{document.getElementById('reupload-dialog')?.remove();await loadUploadHistory()},700)
+   }
+  }catch(err){msg.innerHTML='<div class="error">'+escapeHtml(err.message||err)+'</div>'}
  })
 }
 
