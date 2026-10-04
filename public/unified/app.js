@@ -2146,17 +2146,19 @@ window.approveBatch=async id=>{
 }
 function renderUploads(){
  const branchOpts='<option value="">اختر الفرع</option>'+branches.map(b=>'<option value="'+b.id+'">'+escapeHtml(b.name)+'</option>').join('')
- const now=new Date(),month=now.toISOString().slice(0,7)
+ const month=selectedMonth||today.toISOString().slice(0,7)
+ const [yy,mm]=month.split('-').map(Number)
  const periodStart=month+'-01'
- const periodEnd=new Date(now.getFullYear(),now.getMonth()+1,0).toISOString().slice(0,10)
+ const periodEnd=month+'-'+String(new Date(yy,mm,0).getDate()).padStart(2,'0')
 
  shell('رفع الشيتات والسجل','ارفع ملف فرع واحد ثم راجع حالته من السجل أسفل الصفحة',`
   <section class="upload-simple-card">
    <div class="upload-step-head"><span class="step-badge">1</span><div><h2>رفع شيت جديد</h2><p>اختر الفرع والفترة ثم ملف Excel.</p></div></div>
    <form id="simple-upload-form" class="upload-simple-form">
     <div class="field"><label>الفرع</label><select name="branch" required>${branchOpts}</select></div>
-    <div class="field"><label>من</label><input name="from" type="date" value="${periodStart}" required></div>
-    <div class="field"><label>إلى</label><input name="to" type="date" value="${periodEnd}" required></div>
+    <div class="field"><label>الشهر</label><select name="month" required>
+      ${(availableMonths.length?availableMonths:[month]).map(m=>'<option value="'+m+'" '+(m===month?'selected':'')+'>'+monthLabel(m)+'</option>').join('')}
+    </select></div>
     <div class="field upload-file-wide"><label>ملف Excel</label><input name="file" type="file" accept=".xlsx,application/vnd.openxmlformats-officedocument.spreadsheetml.sheet" required></div>
     <div class="field upload-mode-wide"><label>طريقة التعامل مع البيانات السابقة</label>
      <select name="historyMode">
@@ -2183,16 +2185,17 @@ function renderUploads(){
   const msg=document.getElementById('upload-msg')
   const button=form.querySelector('button[type=submit]')
   const branchId=form.branch.value
-  const start=form.from.value
-  const end=form.to.value
+  const selectedUploadMonth=form.month.value
+  const [uy,um]=selectedUploadMonth.split('-').map(Number)
+  const start=selectedUploadMonth+'-01'
+  const end=selectedUploadMonth+'-'+String(new Date(uy,um,0).getDate()).padStart(2,'0')
   const file=form.file.files?.[0]
   const historyMode=form.historyMode.value||'append_only'
-  if(!branchId||!start||!end||!file){msg.innerHTML='<div class="error">أكمل بيانات الفرع والفترة والملف.</div>';return}
-  if(end<start){msg.innerHTML='<div class="error">تاريخ النهاية يجب ألا يسبق البداية.</div>';return}
+  if(!branchId||!selectedUploadMonth||!file){msg.innerHTML='<div class="error">اختر الفرع والشهر والملف.</div>';return}
   try{
    button.disabled=true
    progress.hidden=false
-   progress.querySelector('b').textContent='1/3 قراءة ملف Excel…'
+   progress.querySelector('b').textContent='1/3 قراءة ملف '+monthLabel(selectedUploadMonth)+'…'
    progress.querySelector('span').style.width='20%'
    msg.innerHTML=''
 
