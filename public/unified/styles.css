@@ -2898,3 +2898,27 @@ body{background:#f5f7fa;color:var(--ui-text)}
   .upload-page-actions{justify-content:stretch}
   .upload-page-actions .btn{width:100%}
 }
+
+
+/* Editable expense operating type */
+.expense-type-editor{
+  display:flex;
+  align-items:center;
+  gap:6px;
+  min-width:190px;
+}
+.expense-type-editor select{
+  min-width:110px;
+  height:34px;
+  border:1px solid #d7e0e8;
+  border-radius:8px;
+  background:#fff;
+  padding:4px 8px;
+  font:inherit;
+  font-size:11.5px;
+  font-weight:700;
+}
+.expense-type-editor .tool-btn{
+  height:34px!important;
+  flex:0 0 auto;
+}
