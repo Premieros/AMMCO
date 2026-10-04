@@ -2055,7 +2055,7 @@ function vehicleDate(v){
  }
  const s=String(v??'').trim()
  if(!s)return ''
- let m=s.match(/^(\d{4})[-\/.](\d{1,2})[-\/.](\d{1,2})$/)
+ let m=s.match(/^(\d{4})[-\/.](\d{1,2})[-\/.](\d{1,2})(?:[ T].*)?$/)
  if(m)return m[1]+'-'+m[2].padStart(2,'0')+'-'+m[3].padStart(2,'0')
  m=s.match(/^(\d{1,2})[-\/.](\d{1,2})[-\/.](\d{4})$/)
  if(m)return m[3]+'-'+m[2].padStart(2,'0')+'-'+m[1].padStart(2,'0')
@@ -2070,14 +2070,20 @@ async function parseVehicleReportFile(file){
  const wb=XLSX.read(await file.arrayBuffer(),{type:'array',cellDates:true,cellFormula:true})
  const aliases={
   business_date:['التاريخ','تاريخ','date','اليوم'],
-  vehicle_label:['السياره','سيارة','رقمالسياره','رقمسياره','car','vehicle','vehicleno'],
-  driver_name:['السائق','سائق','السواق','driver'],
-  fuel_expense:['سولار','الوقود','وقود','بنزين','fuel','diesel'],
+  vehicle_label:['المركبه','المركبة','السياره','سيارة','رقمالسياره','رقمسياره','car','vehicle','vehicleno'],
+  driver_name:['قائدالمركبه','قائدالمركبة','السائق','سائق','السواق','driver'],
+  fuel_expense:['التكلفه','التكلفة','سولار','الوقود','وقود','بنزين','fuel','diesel'],
+  fuel_liters:['عدداللترات','اللترات','لترات','liters','litres'],
+  fuel_price:['سعرالوقود','سعرالسولار','fuelprice'],
+  invoice_no:['رقمالفاتوره','رقمالفاتورة','invoice'],
+  station:['المحطه','المحطة','station'],
+  payment_method:['طريقهالسداد','طريقةالسداد','paymentmethod'],
+  service_fee:['اكراميهالعامل','إكراميةالعامل','رسومالخدمه','رسومالخدمة','servicefee'],
   maintenance_expense:['الصيانه','صيانه','maintenance','repair'],
   other_expense:['مصروفاتاخرى','مصروفاتاخري','اخري','اخرى','otherexpense'],
   sales:['المبيعات','مبيعات','البيع','بيع','sales'],
   opening_odometer:['عداداول','عدادالبدايه','عدادبدايه','openingodometer','startkm'],
-  closing_odometer:['عداداخر','عدادالنهايه','عدادنهايه','closingodometer','endkm']
+  closing_odometer:['عدادالكيلومتر','عداداخر','عدادالنهايه','عدادنهايه','closingodometer','odometer','endkm']
  }
  const lookup=new Map()
  Object.entries(aliases).forEach(([k,vals])=>vals.forEach(v=>lookup.set(vehicleNorm(v),k)))
@@ -2104,8 +2110,13 @@ async function parseVehicleReportFile(file){
     driver_name:String(val('driver_name')??'').trim(),
     fuel_expense:vehicleNum(val('fuel_expense')),
     maintenance_expense:vehicleNum(val('maintenance_expense')),
-    other_expense:vehicleNum(val('other_expense')),
+    other_expense:vehicleNum(val('other_expense'))+vehicleNum(val('service_fee')),
     sales:vehicleNum(val('sales')),
+    fuel_liters:vehicleNum(val('fuel_liters')),
+    fuel_price:vehicleNum(val('fuel_price')),
+    invoice_no:String(val('invoice_no')??'').trim(),
+    station:String(val('station')??'').trim(),
+    payment_method:String(val('payment_method')??'').trim(),
     opening_odometer:map.opening_odometer===undefined?null:vehicleNum(val('opening_odometer')),
     closing_odometer:map.closing_odometer===undefined?null:vehicleNum(val('closing_odometer'))
    }
@@ -2187,7 +2198,7 @@ async function renderReps(){
   const x=by.get(k)
   if(!x)return
   if(v.vehicle_label)x.vehicles.add(v.vehicle_label)
-  x.fuel+=Number(v.fuel_expense||0);x.maintenance+=Number(v.maintenance_expense||0);x.vehicleOther+=Number(v.other_expense||0);x.vehicleExpense+=Number(v.total_expense||0);x.vehicleSales+=Number(v.sales||0)
+  x.fuel+=Number(v.fuel_expense||0);x.fuelLiters+=Number(v.raw_payload?.fuel_liters||0);x.maintenance+=Number(v.maintenance_expense||0);x.vehicleOther+=Number(v.other_expense||0);x.vehicleExpense+=Number(v.total_expense||0);x.vehicleSales+=Number(v.sales||0)
  })
  const repOptions=[...by.values()].sort((a,b)=>String(a.rep_name).localeCompare(String(b.rep_name),'ar')).map(x=>'<option data-branch="'+x.branch_id+'" value="'+escapeAttr(x.rep_name)+'">'+escapeHtml(x.rep_name)+' — '+escapeHtml(x.branch_name)+'</option>').join('')
  const branchOpts='<option value="">اختر الفرع</option>'+branches.map(b=>'<option value="'+b.id+'" '+(branch===b.id?'selected':'')+'>'+escapeHtml(b.name)+'</option>').join('')
@@ -2201,7 +2212,7 @@ async function renderReps(){
    '<form id="vehicle-upload-form" class="rep-vehicle-box" onsubmit="uploadVehicleReport(event)"><h3>رفع تقرير السيارة</h3>'+
     '<div class="field"><label>الفرع</label><select name="branch_id" required>'+branchOpts+'</select></div>'+
     '<div class="field"><label>ملف Excel</label><input name="file" type="file" accept=".xlsx,.xls,.csv" required></div>'+
-    '<div class="vehicle-help">يتعرف على: التاريخ، السيارة، السولار/الوقود، الصيانة، المبيعات، المصروفات الأخرى، العداد.</div>'+
+    '<div class="vehicle-help">يتعرف على تقرير السولار الحالي: رقم الفاتورة، المركبة، التكلفة، إكرامية العامل، عدد اللترات، سعر الوقود، عداد الكيلومتر، قائد المركبة، المحطة والتاريخ.</div>'+
     '<button class="btn" type="submit">رفع وربط التقرير</button><div id="vehicle-upload-msg"></div></form>'+
   '</div></section>':''
  const rows=[...by.values()].map(x=>({
@@ -2335,7 +2346,7 @@ async function renderRepDaily(){
  ;(vr.data||[]).forEach(v=>{
   if(v.raw_payload?.manual_assignment||!v.rep_name)return
   const k=v.branch_id+'|'+v.business_date+'|'+v.rep_name
-  const x=vehicles.get(k)||{labels:new Set(),fuel:0,maintenance:0,other:0,total:0,vehicleSales:0,openingOdo:null,closingOdo:null}
+  const x=vehicles.get(k)||{labels:new Set(),fuel:0,fuelLiters:0,maintenance:0,other:0,total:0,vehicleSales:0,openingOdo:null,closingOdo:null}
   if(v.vehicle_label)x.labels.add(v.vehicle_label)
   x.fuel+=Number(v.fuel_expense||0);x.maintenance+=Number(v.maintenance_expense||0);x.other+=Number(v.other_expense||0);x.total+=Number(v.total_expense||0);x.vehicleSales+=Number(v.sales||0)
   if(v.opening_odometer!=null&&(x.openingOdo==null||Number(v.opening_odometer)<x.openingOdo))x.openingOdo=Number(v.opening_odometer)
@@ -2343,7 +2354,7 @@ async function renderRepDaily(){
   vehicles.set(k,x)
  })
  const rows=(rr.data||[]).map(r=>{
-  const v=vehicles.get(r.branch_id+'|'+r.business_date+'|'+r.rep_name)||{labels:new Set(),fuel:0,maintenance:0,other:0,total:0,vehicleSales:0,openingOdo:null,closingOdo:null}
+  const v=vehicles.get(r.branch_id+'|'+r.business_date+'|'+r.rep_name)||{labels:new Set(),fuel:0,fuelLiters:0,maintenance:0,other:0,total:0,vehicleSales:0,openingOdo:null,closingOdo:null}
   const gross=Number(r.sales_before_discount||0),disc=Number(r.discounts||0),net=Number(r.net_after_discount||0)
   const rawQty=Number(r.raw_payload?.sales_qty||0),equivQty=Number(r.raw_payload?.equivalent_sales_qty||0)
   return {
@@ -2351,7 +2362,7 @@ async function renderRepDaily(){
    opening:money(r.opening_balance),gross:money(gross),disc:money(disc),discount_rate:pct(gross?disc/gross:0),net:money(net),
    sales_qty:qty(rawQty),equiv_qty:qty(equivQty),avg_price:money(equivQty?net/equivQty:0),
    deposit:money(r.deposit_amount),rep_expense:money(r.expense_amount),closing:money(r.closing_balance),
-   fuel:money(v.fuel),maintenance:money(v.maintenance),vehicle_other:money(v.other),vehicle_expense:money(v.total),
+   fuel:money(v.fuel),fuel_liters:qty(v.fuelLiters||0),maintenance:money(v.maintenance),vehicle_other:money(v.other),vehicle_expense:money(v.total),
    vehicle_sales:money(v.vehicleSales),opening_odometer:v.openingOdo==null?'—':qty(v.openingOdo),closing_odometer:v.closingOdo==null?'—':qty(v.closingOdo)
   }
  })
@@ -2363,7 +2374,7 @@ async function renderRepDaily(){
    {key:'opening',label:'رصيد أول',num:1},{key:'gross',label:'قبل الخصم',num:1},{key:'disc',label:'الخصم',num:1},{key:'discount_rate',label:'% الخصم'},
    {key:'net',label:'صافي البيع',num:1},{key:'sales_qty',label:'كمية البيع',num:1},{key:'equiv_qty',label:'الكمية المكافئة',num:1},
    {key:'avg_price',label:'متوسط السعر',num:1},{key:'deposit',label:'التوريد',num:1},{key:'rep_expense',label:'مصروف المندوب',num:1},
-   {key:'closing',label:'رصيد آخر',num:1},{key:'fuel',label:'السولار',num:1},{key:'maintenance',label:'الصيانة',num:1},
+   {key:'closing',label:'رصيد آخر',num:1},{key:'fuel',label:'تكلفة السولار',num:1},{key:'fuel_liters',label:'لترات السولار',num:1},{key:'maintenance',label:'الصيانة',num:1},
    {key:'vehicle_other',label:'مصروف سيارة آخر',num:1},{key:'vehicle_expense',label:'إجمالي مصروف السيارة',num:1},{key:'vehicle_sales',label:'مبيعات تقرير السيارة',num:1},
    {key:'opening_odometer',label:'عداد أول',num:1},{key:'closing_odometer',label:'عداد آخر',num:1}
   ],rows))
