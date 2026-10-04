@@ -2962,3 +2962,47 @@ body{background:#f5f7fa;color:var(--ui-text)}
 @media(max-width:480px){
   .user-branch-grid{grid-template-columns:1fr}
 }
+
+
+/* Manual wages and rent */
+.manual-accrual-card{
+  margin:0 0 14px;
+  padding:14px;
+  border:1px solid #dfe7ef;
+  border-radius:12px;
+  background:#fff;
+}
+.manual-accrual-head h3{margin:0 0 3px;font-size:14px}
+.manual-accrual-head p{margin:0;color:#64748b;font-size:11px}
+.manual-accrual-grid{
+  display:grid;
+  grid-template-columns:repeat(2,minmax(0,1fr));
+  gap:10px;
+  margin-top:12px;
+}
+.manual-accrual-row{
+  display:grid;
+  grid-template-columns:minmax(90px,1fr) minmax(120px,.8fr) minmax(120px,.8fr) auto;
+  gap:8px;
+  align-items:end;
+  padding:10px;
+  border:1px solid #e5ebf1;
+  border-radius:10px;
+  background:#fbfdff;
+}
+.manual-accrual-row strong{align-self:center}
+.manual-accrual-row label{display:flex;flex-direction:column;gap:4px;font-size:11px;color:#52606d}
+.manual-accrual-row input{
+  width:100%;
+  min-height:34px;
+  border:1px solid #d6dee7;
+  border-radius:8px;
+  padding:6px 8px;
+  background:#fff;
+}
+@media(max-width:900px){
+  .manual-accrual-grid{grid-template-columns:1fr}
+}
+@media(max-width:620px){
+  .manual-accrual-row{grid-template-columns:1fr}
+}
