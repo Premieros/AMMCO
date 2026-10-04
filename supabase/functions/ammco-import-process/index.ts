@@ -858,7 +858,13 @@ Deno.serve(async (req: Request) => {
         closing_value: row.closingValue,
         source_qty_row: row.sourceQtyRow,
         source_value_row: row.sourceValueRow,
-        raw_payload: row.rawPayload,
+        raw_payload: {
+          ...(row.rawPayload && typeof row.rawPayload === 'object' ? row.rawPayload : {}),
+          total_sales_source: parsed.totalSalesSummary ? 'Total!BB' : null,
+          total_sales_qty: parsed.totalSalesSummary?.totalSalesQty ?? null,
+          double_570_qty: parsed.totalSalesSummary?.double570Qty ?? null,
+          equivalent_cartons_month: parsed.totalSalesSummary?.equivalentSalesQty ?? null,
+        },
       }))
 
       const { error } = await admin.from('warehouse_daily_summary').insert(warehouseRows)
