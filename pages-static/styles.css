@@ -2907,7 +2907,7 @@ body{background:#f5f7fa;color:var(--ui-text)}
 }
 .manual-accrual-row{
   display:grid;
-  grid-template-columns:minmax(90px,1fr) minmax(120px,.8fr) minmax(120px,.8fr) auto;
+  grid-template-columns:minmax(90px,1fr) minmax(110px,.8fr) minmax(110px,.8fr) minmax(90px,.65fr) auto;
   gap:8px;
   align-items:end;
   padding:10px;
