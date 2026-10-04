@@ -126,7 +126,13 @@ function extractTotalSalesSummary(sheet){
     equivalentSalesQty+=equivalentQty
     items.push({row,productName,cartonPrice,salesQty,factor,equivalentQty})
   }
-  return {sourceSheet:'Total',sourceColumn:'BB',headerRow,startRow,totalSalesQty,double570Qty,equivalentSalesQty,items}
+  const reps=REP_COLUMNS.map((col,index)=>{
+    const repName=text(sheet,`${col}9`).replace(/\s+/g,' ').trim()
+    if(!repName)return null
+    const q=repSalesQty(sheet,col)
+    return {slot:index+1,sourceColumn:col,repName,salesQty:q.salesQty,equivalentSalesQty:q.equivalentSalesQty,double570Qty:q.double570Qty}
+  }).filter(Boolean)
+  return {sourceSheet:'Total',sourceColumn:'BB',headerRow,startRow,totalSalesQty,double570Qty,equivalentSalesQty,items,reps}
 }
 function extractRemittances(sheet){
   const out=[],{rows}=dims(sheet)
@@ -186,6 +192,22 @@ function extractTreasury(sheet,issues){
     out.push({entryDate,sourceRow:row,sourceCode:code,description,sourceCategory,canonicalCategory:cl.canonicalCategory,expenseGroup:cl.expenseGroup,entryKind:cl.entryKind,isExpense:cl.isExpense,classificationConfidence:cl.classificationConfidence,amount,direction,runningBalance,rawPayload:{source_row:row}})
   }return out
 }
+function repSalesQty(sheet,col){
+  const {rows}=dims(sheet)
+  let salesQty=0,equivalentSalesQty=0,double570Qty=0
+  for(let row=15;row<=rows;row++){
+    const product=text(sheet,`D${row}`).replace(/\s+/g,' ').trim()
+    if(!product)continue
+    const q=num(sheet,`${col}${row}`)
+    if(!q)continue
+    const price=nullableNum(sheet,`E${row}`)
+    const factor=Number(price||0)===570?2:1
+    salesQty+=q
+    equivalentSalesQty+=q*factor
+    if(factor===2)double570Qty+=q
+  }
+  return {salesQty,equivalentSalesQty,double570Qty}
+}
 function extractRepDay(sheet,name,businessDate,issues){
   const reps=[],seen=new Set()
   REP_COLUMNS.forEach((col,index)=>{
@@ -193,7 +215,8 @@ function extractRepDay(sheet,name,businessDate,issues){
     if(seen.has(rep)){issues.push({sheetName:name,rowNumber:9,cellRef:`${col}9`,code:'DUPLICATE_REP_IN_DAY',severity:'error',message:`المندوب "${rep}" مكرر في نفس اليوم`,rawValue:rep});return}
     seen.add(rep)
     const opening=num(sheet,`${col}2`),net=num(sheet,`${col}3`),deposit=num(sheet,`${col}4`),expense=num(sheet,`${col}5`),extra=num(sheet,`${col}6`),disc=num(sheet,`${col}7`),closing=num(sheet,`${col}8`)
-    reps.push({slot:index+1,sourceColumn:col,sourceAnchorCell:`${col}9`,repName:rep,openingBalance:opening,netAfterDiscount:net,depositAmount:deposit,expenseAmount:expense,extraDiscount:extra,totalDiscount:disc,closingBalance:closing,salesBeforeDiscount:net+disc,rawPayload:{}})
+    const q=repSalesQty(sheet,col)
+    reps.push({slot:index+1,sourceColumn:col,sourceAnchorCell:`${col}9`,repName:rep,openingBalance:opening,netAfterDiscount:net,depositAmount:deposit,expenseAmount:expense,extraDiscount:extra,totalDiscount:disc,closingBalance:closing,salesBeforeDiscount:net+disc,salesQty:q.salesQty,equivalentSalesQty:q.equivalentSalesQty,double570Qty:q.double570Qty,rawPayload:{sales_qty:q.salesQty,equivalent_sales_qty:q.equivalentSalesQty,double_570_qty:q.double570Qty}})
   })
   return {sheetName:name,businessDate,reps}
 }
