@@ -173,22 +173,71 @@ function monthLabel(month){
  const names=['يناير','فبراير','مارس','أبريل','مايو','يونيو','يوليو','أغسطس','سبتمبر','أكتوبر','نوفمبر','ديسمبر']
  return names[m-1]+' '+y
 }
+function getGlobalPeriod(){
+ const mode=localStorage.getItem('ammco.periodMode')||'month'
+ const manualFrom=localStorage.getItem('ammco.manualFrom')||''
+ const manualTo=localStorage.getItem('ammco.manualTo')||''
+ if(mode==='manual'&&/^\d{4}-\d{2}-\d{2}$/.test(manualFrom)&&/^\d{4}-\d{2}-\d{2}$/.test(manualTo)&&manualTo>=manualFrom){
+  return {mode:'manual',from:manualFrom,to:manualTo}
+ }
+ const r=globalMonthRange()
+ return {mode:'month',from:r.from,to:r.to}
+}
 function monthHeaderSelect(){
  const months=availableMonths.length?availableMonths:[selectedMonth]
- return '<div class="global-month-filter"><label>الشهر</label><select id="global-month-select">'+
-  months.map(m=>'<option value="'+m+'" '+(m===selectedMonth?'selected':'')+'>'+monthLabel(m)+'</option>').join('')+
- '</select></div>'
+ const active=getGlobalPeriod()
+ const manualLabel=active.mode==='manual'?formatDateRangeLabel(active.from,active.to):'فترة يدوية'
+ return '<div class="header-period-controls">'+
+  '<div class="global-month-filter"><label>الشهر</label><select id="global-month-select">'+
+   months.map(m=>'<option value="'+m+'" '+(m===selectedMonth?'selected':'')+'>'+monthLabel(m)+'</option>').join('')+
+  '</select></div>'+
+  '<button class="global-manual-period '+(active.mode==='manual'?'active':'')+'" type="button" onclick="openGlobalDateRangePicker()">'+
+   '<span>الفترة</span><b>'+escapeHtml(manualLabel)+'</b>'+
+  '</button></div>'
 }
 window.changeGlobalMonth=function(month){
- if(!month||month===selectedMonth)return
+ if(!month)return
  selectedMonth=month
  localStorage.setItem('ammco.selectedMonth',month)
+ localStorage.setItem('ammco.periodMode','month')
+ localStorage.removeItem('ammco.manualFrom')
+ localStorage.removeItem('ammco.manualTo')
  const r=route().split('?')[0],p=qs()
  p.delete('from');p.delete('to');p.delete('year')
  const query=p.toString()
  location.hash='#/'+r+(query?'?'+query:'')
  clearPageCache()
  render({force:true})
+}
+window.openGlobalDateRangePicker=function(){
+ const active=getGlobalPeriod()
+ document.getElementById('global-period-dialog')?.remove()
+ const html='<div class="dialog-backdrop" id="global-period-dialog"><div class="dialog-card date-range-dialog-card">'+
+  '<div class="dialog-head"><h3>تحديد فترة يدوية</h3><button class="tool-btn" type="button" onclick="document.getElementById(\'global-period-dialog\').remove()">إغلاق</button></div>'+
+  '<form id="global-period-form" class="date-range-picker-form">'+
+   '<div class="date-range-picker-grid">'+
+    '<div class="field"><label>من</label><input name="from" type="date" value="'+escapeAttr(active.from)+'" required></div>'+
+    '<div class="date-range-arrow">←</div>'+
+    '<div class="field"><label>إلى</label><input name="to" type="date" value="'+escapeAttr(active.to)+'" required></div>'+
+   '</div>'+
+   '<div id="global-period-msg"></div>'+
+   '<div class="date-range-actions"><button class="btn secondary" type="button" onclick="changeGlobalMonth(selectedMonth);document.getElementById(\'global-period-dialog\')?.remove()">العودة للشهر</button>'+
+    '<button class="btn" type="submit">تطبيق الفترة على كل الصفحات</button></div>'+
+  '</form></div></div>'
+ document.body.insertAdjacentHTML('beforeend',html)
+ document.getElementById('global-period-form').addEventListener('submit',e=>{
+  e.preventDefault()
+  const fd=new FormData(e.currentTarget),from=String(fd.get('from')||''),to=String(fd.get('to')||'')
+  const msg=document.getElementById('global-period-msg')
+  if(!from||!to){msg.innerHTML='<div class="error">حدد أول وآخر الفترة.</div>';return}
+  if(to<from){msg.innerHTML='<div class="error">آخر الفترة يجب ألا يسبق أول الفترة.</div>';return}
+  localStorage.setItem('ammco.periodMode','manual')
+  localStorage.setItem('ammco.manualFrom',from)
+  localStorage.setItem('ammco.manualTo',to)
+  document.getElementById('global-period-dialog')?.remove()
+  clearPageCache()
+  render({force:true})
+ })
 }
 
 function shell(title,subtitle,body){
@@ -289,7 +338,7 @@ window.openDateRangePicker=function(formId){
 function branchOptions(selected=''){return `<option value="">كل الفروع</option>${branches.map(b=>`<option value="${b.id}" ${selected===b.id?'selected':''}>${b.name}</option>`).join('')}`}
 function filters(from,to,branch){return `<form id="filters" class="filters compact-filters">
  <div class="field filter-branch"><label>الفرع</label><select name="branch">${branchOptions(branch)}</select></div>
- <div class="filter-month-note"><span>الشهر المطبق</span><b>${monthLabel(selectedMonth)}</b></div>
+ <div class="filter-month-note"><span>${getGlobalPeriod().mode==='manual'?'الفترة المطبقة':'الشهر المطبق'}</span><b>${getGlobalPeriod().mode==='manual'?formatDateRangeLabel(from,to):monthLabel(selectedMonth)}</b></div>
  <div class="filter-buttons"><button class="btn" type="submit">تطبيق الفرع</button><button class="btn secondary" type="button" onclick="resetReportFilters()">كل الفروع</button></div>
 </form>`}
 function bindFilters(path){document.getElementById('filters')?.addEventListener('submit',e=>{e.preventDefault();const f=new FormData(e.currentTarget);const current=route().split('?')[0];if(current==='reports'){location.hash=`#/reports?report=${selectedReport()}&branch=${f.get('branch')||''}`;return}location.hash=`#/${path}?branch=${f.get('branch')||''}`})}
@@ -708,7 +757,7 @@ async function approvedIdsForPeriod(from,to,branch=''){
  )
  return rows.map(x=>x.id)
 }
-function currentFilters(){const p=qs(),r=globalMonthRange();return {branch:p.get('branch')||'',from:r.from,to:r.to,compare:p.get('compare')==='1'}}
+function currentFilters(){const p=qs(),r=getGlobalPeriod();return {branch:p.get('branch')||'',from:r.from,to:r.to,compare:p.get('compare')==='1'}}
 
 async function loadDaily(branch,from,to){
  return fetchAllRows(
@@ -1526,6 +1575,12 @@ window.editTreasurySheetRow=function(id){
 
 
 async function renderSales(){const {branch,from,to}=currentFilters();const daily=await loadDaily(branch,from,to);const rows=daily.map(r=>{const gross=Number(r.gross_sales||0),disc=Number(r.discounts||0);return{business_date:r.business_date,branch_name:r.branch_name,gross:money(gross),discounts:money(disc),discount_rate:pct(gross?disc/gross:0),net:money(r.net_sales),collections:money(r.collections),expenses:money(r.expenses)}});shell('تقرير المبيعات','تفاصيل المبيعات اليومية حسب الفرع',filters(from,to,branch)+scope(from,to,branch)+table('المبيعات اليومية',[{key:'business_date',label:'التاريخ'},{key:'branch_name',label:'الفرع'},{key:'gross',label:'قبل الخصم',num:1},{key:'discounts',label:'الخصم',num:1},{key:'discount_rate',label:'% الخصم'},{key:'net',label:'صافي البيع',num:1},{key:'collections',label:'التحصيل',num:1},{key:'expenses',label:'المصروفات',num:1}],rows));bindFilters('sales')}
+function expenseOperationalType(row){
+ const group=String(row?.expense_group||'').trim()
+ if(['مصروفات السيارات','اجور وحوافز وعمولات','انتقالات وسفر','تشغيل ومرافق'].includes(group))return 'تشغيلي'
+ return 'غير تشغيلي'
+}
+
 async function renderExpensesCenter(){
  const {branch,from,to}=currentFilters()
  let expQ=supabase.from('v_expense_analysis')
@@ -1560,7 +1615,7 @@ async function renderExpensesCenter(){
  const categoryMap=new Map()
  expenses.forEach(r=>{
   const label=(r.canonical_category||r.expense_group||'غير مصنف').trim()||'غير مصنف'
-  const x=categoryMap.get(label)||{label,total:0,branches:new Map()}
+  const x=categoryMap.get(label)||{label,total:0,branches:new Map(),expenseType:expenseOperationalType(r)}
   const v=Number(r.amount||0)
   x.total+=v
   x.branches.set(r.branch_id,(x.branches.get(r.branch_id)||0)+v)
@@ -1569,7 +1624,7 @@ async function renderExpensesCenter(){
  const detailRows=[...categoryMap.values()]
   .sort((a,b)=>b.total-a.total)
   .map(x=>{
-   const row={label:escapeHtml(x.label)}
+   const row={label:escapeHtml(x.label),expense_type:x.expenseType}
    bset.forEach(b=>row[b.id]=money(x.branches.get(b.id)||0))
    row.total=money(x.total)
    row.rate=pct(totalExpenses?x.total/totalExpenses:0)
@@ -1577,6 +1632,7 @@ async function renderExpensesCenter(){
   })
  const detailCols=[
   {key:'label',label:'بند المصروف'},
+  {key:'expense_type',label:'نوع المصروف'},
   ...bset.map(b=>({key:b.id,label:b.name,num:1})),
   {key:'total',label:'الإجمالي',num:1},
   {key:'rate',label:'% من المصروفات'}
@@ -1702,15 +1758,16 @@ async function renderExpenses(){
   for(const [label,keys] of aliases)if(keys.some(k=>txt.includes(norm(k))))return label
   return r.canonical_category||r.category||r.entry_kind||'غير مصنف'
  }
- const matrix=new Map()
+ const matrix=new Map(),expenseTypes=new Map()
  cash.forEach(r=>{
   const label=matchLabel(r),row=matrix.get(label)||new Map()
   row.set(r.branch_id,(row.get(r.branch_id)||0)+Number(r.amount||0));matrix.set(label,row)
+  if(!expenseTypes.has(label))expenseTypes.set(label,r.is_expense?expenseOperationalType(r):'غير تشغيلي')
  })
  const extras=[...matrix.keys()].filter(k=>!requested.includes(k)).sort((a,b)=>String(a).localeCompare(String(b),'ar'))
  const labels=[...requested,...extras]
  const rows=labels.map(label=>{
-  const row=matrix.get(label)||new Map(),obj={label}
+  const row=matrix.get(label)||new Map(),obj={label,expense_type:expenseTypes.get(label)||'غير تشغيلي'}
   let total=0;bset.forEach(b=>{const v=row.get(b.id)||0;obj[b.id]=money(v);total+=v});obj.total=money(total);return obj
  })
  const salesObj={label:'المبيعات'},pctObj={label:'%'}
@@ -1718,7 +1775,7 @@ async function renderExpenses(){
  bset.forEach(b=>{const s=salesBy.get(b.id)||0;totalSales+=s;salesObj[b.id]=money(s)
   const exp=cash.filter(r=>r.branch_id===b.id&&r.is_expense).reduce((a,r)=>a+Number(r.amount||0),0);totalCash+=exp;pctObj[b.id]=pct(s?exp/s:0)})
  salesObj.total=money(totalSales);pctObj.total=pct(totalSales?totalCash/totalSales:0)
- const cols=[{key:'label',label:'البيان'},...bset.map(b=>({key:b.id,label:b.name,num:1})),{key:'total',label:'الإجمالي',num:1}]
+ const cols=[{key:'label',label:'البيان'},{key:'expense_type',label:'نوع المصروف'},...bset.map(b=>({key:b.id,label:b.name,num:1})),{key:'total',label:'الإجمالي',num:1}]
  shell('تقرير المصروفات','مطابقة بنود ورقة الإدارة × الفروع × الإجمالي',
   filters(from,to,branch)+scope(from,to,branch)+table('تحليل مصروفات الفروع',cols,[salesObj,pctObj,...rows]))
  bindFilters('expenses')
