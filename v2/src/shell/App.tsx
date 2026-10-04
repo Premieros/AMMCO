@@ -6,7 +6,11 @@ import type {Branch,Profile} from '../domain/types'
 import {Dashboard} from '../pages/Dashboard'
 import {Reports} from '../pages/Reports'
 import {Reps} from '../pages/Reps'
+import {RepDaily} from '../pages/RepDaily'
 import {Receivables} from '../pages/Receivables'
+import {Monthly} from '../pages/Monthly'
+import {Products} from '../pages/Products'
+import {Banks} from '../pages/Banks'
 import {Expenses} from '../pages/Expenses'
 import {Treasury} from '../pages/Treasury'
 import {Imports} from '../pages/Imports'
@@ -16,12 +20,16 @@ import {UsersPage} from '../pages/Users'
 import {Login} from '../pages/Login'
 import {LayoutDashboard,FileBarChart2,Users,Receipt,WalletCards,Upload,UserCog,LogOut,Boxes,Truck} from 'lucide-react'
 
-type Route='dashboard'|'reports'|'reps'|'receivables'|'expenses'|'treasury'|'inventory'|'vehicles'|'imports'|'users'
+type Route='dashboard'|'reports'|'reps'|'rep-daily'|'receivables'|'monthly'|'products'|'banks'|'expenses'|'treasury'|'inventory'|'vehicles'|'imports'|'users'
 const nav=[
  ['dashboard','لوحة التحكم',LayoutDashboard],
  ['reports','التقارير',FileBarChart2],
  ['reps','المناديب',Users],
+ ['rep-daily','يوميات المناديب',Users],
  ['receivables','المديونية والتحصيل',WalletCards],
+ ['monthly','التحليل الشهري وYTD',FileBarChart2],
+ ['products','الأصناف',Boxes],
+ ['banks','البنوك وYTD',WalletCards],
  ['expenses','المصروفات',Receipt],
  ['treasury','الخزينة',WalletCards],
  ['inventory','المخزون',Boxes],
@@ -113,7 +121,11 @@ export function App(){
    {route==='dashboard' && <Dashboard from={period.from} to={period.to} branchId={branchId||undefined}/>}
    {route==='reports' && <Reports from={period.from} to={period.to} branchId={branchId||undefined}/>}
    {route==='reps' && <Reps from={period.from} to={period.to} branchId={branchId||undefined}/>}
+   {route==='rep-daily' && <RepDaily from={period.from} to={period.to} branchId={branchId||undefined}/>}
    {route==='receivables' && <Receivables from={period.from} to={period.to} branchId={branchId||undefined}/>}
+   {route==='monthly' && <Monthly year={period.from.slice(0,4)} branchId={branchId||undefined}/>}
+   {route==='products' && <Products from={period.from} to={period.to} branchId={branchId||undefined}/>}
+   {route==='banks' && <Banks from={period.from.slice(0,4)+'-01-01'} to={period.to} branchId={branchId||undefined}/>}
    {route==='expenses' && <Expenses from={period.from} to={period.to} month={month} branchId={branchId||undefined} branches={branches} isAdmin={profile.role==='admin'}/>}
    {route==='treasury' && <Treasury from={period.from} to={period.to} branchId={branchId||undefined} branches={branches}/>}
    {route==='inventory' && <Inventory from={period.from} to={period.to} branchId={branchId||undefined}/>}
