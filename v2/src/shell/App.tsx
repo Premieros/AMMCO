@@ -48,6 +48,9 @@ export function App(){
  const [route,setRoute]=useState<Route>(routeFromHash())
  const [branchId,setBranchId]=useState('')
  const [month,setMonth]=useState('')
+ const [manualFrom,setManualFrom]=useState('')
+ const [manualTo,setManualTo]=useState('')
+ const [manualPeriod,setManualPeriod]=useState(false)
  const [ready,setReady]=useState(false)
  const [error,setError]=useState('')
 
@@ -79,7 +82,7 @@ export function App(){
   return()=>{live=false}
  },[session?.user.id])
 
- const period=useMemo(()=>month?monthBounds(month):{from:'',to:''},[month])
+ const period=useMemo(()=>manualPeriod&&manualFrom&&manualTo&&manualTo>=manualFrom?{from:manualFrom,to:manualTo}:month?monthBounds(month):{from:'',to:''},[month,manualPeriod,manualFrom,manualTo])
  if(!ready)return <div className="boot">AMMCO</div>
  if(!session)return <Login/>
  if(error)return <main className="login-page"><div className="login-card"><div className="error-box">{error}</div><button className="primary" onClick={()=>supabase.auth.signOut()}>خروج</button></div></main>
@@ -97,7 +100,10 @@ export function App(){
    <header className="topbar">
     <div><h1>{visibleNav.find(x=>x[0]===route)?.[1]||'AMMCO'}</h1><span>{activeBranch?.name||'كل الفروع'} • {month}</span></div>
     <div className="top-actions">
-     <label>الشهر<input type="month" value={month} onChange={e=>setMonth(e.target.value)}/></label>
+     <label>الشهر<input type="month" value={month} onChange={e=>{setMonth(e.target.value);setManualPeriod(false)}}/></label>
+     <label>من<input type="date" value={manualFrom||period.from} onChange={e=>setManualFrom(e.target.value)}/></label>
+     <label>إلى<input type="date" value={manualTo||period.to} onChange={e=>setManualTo(e.target.value)}/></label>
+     <button className={'small-btn '+(manualPeriod?'active':'')} onClick={()=>{if(!manualPeriod){setManualFrom(manualFrom||period.from);setManualTo(manualTo||period.to)}setManualPeriod(!manualPeriod)}}>{manualPeriod?'العودة للشهر':'تطبيق الفترة'}</button>
      <label>الفرع<select value={branchId} onChange={e=>setBranchId(e.target.value)}><option value="">كل الفروع</option>{branches.map(b=><option key={b.id} value={b.id}>{b.name}</option>)}</select></label>
      <span className="user-chip">{profile.full_name||session.user.email}</span>
      <button className="icon-btn" title="خروج" onClick={()=>supabase.auth.signOut()}><LogOut size={17}/></button>
