@@ -7,6 +7,11 @@ const cors={
 }
 const json=(body:unknown,status=200)=>new Response(JSON.stringify(body),{status,headers:{...cors,'Content-Type':'application/json'}})
 
+function normalizeVehicleLabel(v:string){
+  const ar='٠١٢٣٤٥٦٧٨٩',en='0123456789'
+  return String(v||'').trim().replace(/[٠-٩]/g,(d)=>en[ar.indexOf(d)]).replace(/\s+/g,' ').toLowerCase()
+}
+
 function monthBounds(month:string){
   if(!/^\d{4}-\d{2}$/.test(month)) return null
   const [y,m]=month.split('-').map(Number)
@@ -109,7 +114,8 @@ Deno.serve(async(req)=>{
       .order('id',{ascending:false})
     const map=new Map<string,string>()
     for(const x of maps||[]){
-      const k=String(x.vehicle_label||'').trim()
+      const raw=String(x.vehicle_label||'').trim()
+      const k=normalizeVehicleLabel(raw)
       if(k&&!map.has(k)&&x.rep_name) map.set(k,String(x.rep_name))
     }
 
@@ -123,13 +129,22 @@ Deno.serve(async(req)=>{
       return [{
         batch_id:batch.id,branch_id:branchId,business_date:d,vehicle_label:vehicle,
         driver_name:String(r.driver_name||'').trim()||null,
-        rep_name:map.get(vehicle)||null,
+        rep_name:map.get(normalizeVehicleLabel(vehicle))||null,
         sales:Number(r.sales||0),
         fuel_expense:fuel,maintenance_expense:maint,other_expense:other,
         total_expense:fuel+maint+other,
         opening_odometer:r.opening_odometer==null?null:Number(r.opening_odometer),
         closing_odometer:r.closing_odometer==null?null:Number(r.closing_odometer),
-        raw_payload:{source:'manual_vehicle_report_upload',uploaded_by:uid,uploaded_at:new Date().toISOString()}
+        raw_payload:{
+          source:'manual_vehicle_report_upload',
+          uploaded_by:uid,
+          uploaded_at:new Date().toISOString(),
+          fuel_liters:Number(r.fuel_liters||0),
+          fuel_price:Number(r.fuel_price||0),
+          invoice_no:String(r.invoice_no||'').trim()||null,
+          station:String(r.station||'').trim()||null,
+          payment_method:String(r.payment_method||'').trim()||null
+        }
       }]
     })
     if(!clean.length) return json({error:'لا توجد صفوف داخل الشهر المحدد'},400)
