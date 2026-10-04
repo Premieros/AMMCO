@@ -18,6 +18,8 @@ jobs:
       NEXT_PUBLIC_SUPABASE_URL: https://yumeijsyiphzdsulsubf.supabase.co
       NEXT_PUBLIC_SUPABASE_PUBLISHABLE_KEY: sb_publishable_ci_placeholder
       SUPABASE_SECRET_KEY: sb_secret_ci_placeholder
+      VITE_SUPABASE_URL: https://yumeijsyiphzdsulsubf.supabase.co
+      VITE_SUPABASE_PUBLISHABLE_KEY: eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6Inl1bWVpanN5aXBoemRzdWxzdWJmIiwicm9sZSI6ImFub24iLCJpYXQiOjE3OTA2ODk1ODAsImV4cCI6MjEwNjI2NTU4MH0.Hpy2VZpttnQGdrx6_6Y1c9w4iHG2HhopvFdrohk3BBE
     steps:
       - name: Checkout
         uses: actions/checkout@v4
