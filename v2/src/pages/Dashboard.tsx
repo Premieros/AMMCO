@@ -4,6 +4,7 @@ import {getDashboardAnalytics,type DashboardAnalytics} from '../data/dashboard'
 import {KpiCard} from '../components/KpiCard'
 import {TimelineChart} from '../components/TimelineChart'
 import {DataTable} from '../components/DataTable'
+import {BadgeDollarSign,Boxes,Building2,Gift,HandCoins,Percent,Receipt,RotateCcw,Scale,ShoppingCart,TrendingDown,WalletCards} from 'lucide-react'
 
 const money=(n:number)=>new Intl.NumberFormat('en-US',{maximumFractionDigits:0}).format(n)+' ج.م'
 const qty=(n:number)=>new Intl.NumberFormat('en-US',{maximumFractionDigits:2}).format(n)
@@ -16,28 +17,58 @@ export function Dashboard({from,to,branchId}:{from:string;to:string;branchId?:st
  useEffect(()=>{let live=true;setData(null);setAnalytics(null);setError('');Promise.all([getDashboardSummary({from,to,branchId}),getDashboardAnalytics({from,to,branchId})]).then(([x,a])=>{if(live){setData(x);setAnalytics(a)}}).catch(e=>live&&setError(e.message||String(e)));return()=>{live=false}},[from,to,branchId])
  if(error)return <div className="error-box">{error}</div>
  if(!data||!analytics)return <div className="panel loading">جاري تحميل لوحة التحكم…</div>
- return <div className="dashboard-page">
-  <div className="kpi-grid">
-   <KpiCard title="إجمالي قبل الخصم" value={money(data.grossSales)} hint={data.grossSales?('الخصم '+((data.discounts/data.grossSales)*100).toFixed(1)+'%'):''}/>
-   <KpiCard title="صافي المبيعات" value={money(data.netSales)} hint={(delta(analytics.current.sales,analytics.previous.sales)>=0?'+':'')+delta(analytics.current.sales,analytics.previous.sales).toFixed(1)+'% مقابل الفترة السابقة'}/>
-   <KpiCard title="التوريد" value={money(data.collections)} hint={(delta(analytics.current.collections,analytics.previous.collections)>=0?'+':'')+delta(analytics.current.collections,analytics.previous.collections).toFixed(1)+'% مقابل السابقة'}/>
-   <KpiCard title="نسبة التحصيل" value={(data.collectionRate*100).toFixed(1)+'%'} hint="التوريد ÷ صافي المبيعات"/>
-   <KpiCard title="المديونية" value={money(data.closingDebt)}/>
-   <KpiCard title="التالف" value={money(data.damagesValue)} hint={'الكمية: '+qty(data.damagesQty)}/>
-   <KpiCard title="المصروفات" value={money(data.expenses)} hint={data.netSales?((data.expenses/data.netSales)*100).toFixed(1)+'% من المبيعات':''}/>
-   <KpiCard title="الكمية المكافئة" value={qty(data.equivalentQty)}/>
-   <KpiCard title="متوسط السعر" value={money(data.avgPrice)}/>
-   <KpiCard title="رصيد الخزينة" value={money(data.closingCash)} hint={data.branches+' فروع لها بيانات'}/>
-   <KpiCard title="المخزون" value={money(data.inventoryValue)} hint={'الكمية: '+qty(data.inventoryQty)}/>
-   <KpiCard title="المرتجعات" value={money(data.returnsValue)} hint={'الكمية: '+qty(data.returnsQty)}/>
-   <KpiCard title="البونص" value={money(data.bonusesValue)} hint={'الكمية: '+qty(data.bonusesQty)}/>
-   <KpiCard title="الهدايا" value={money(data.giftsValue)} hint={'الكمية: '+qty(data.giftsQty)}/>
-   <KpiCard title="عدد الفروع" value={String(data.branches)} hint={branchId?'الفرع المحدد':'فروع لها بيانات في الفترة'}/>
-  </div>
-  <TimelineChart points={analytics.points}/>
-  <div className="executive-grid">
-   <section className="panel"><h2>تنبيهات وتحليلات</h2>{analytics.anomalies.length?<div className="anomaly-list">{analytics.anomalies.map((x,i)=><div className="anomaly-item" key={i}>{x}</div>)}</div>:<p className="muted">لا توجد انحرافات بارزة وفق القواعد الحالية.</p>}</section>
-   <DataTable title="ملخص أداء الفروع" rows={analytics.branches} columns={[{key:'branchName',label:'الفرع'},{key:'sales',label:'المبيعات',numeric:true,render:r=>money(r.sales)},{key:'expenses',label:'المصروفات',numeric:true,render:r=>money(r.expenses)},{key:'collections',label:'التحصيل',numeric:true,render:r=>money(r.collections)},{key:'closingDebt',label:'المديونية',numeric:true,render:r=>money(r.closingDebt)},{key:'expenseRatio',label:'نسبة المصروفات',render:r=>(r.expenseRatio*100).toFixed(1)+'%'}]}/>
-  </div>
+ return <div className="dashboard-page premium-dashboard">
+  <section className="dashboard-hero">
+   <div className="dashboard-hero-copy">
+    <span className="dashboard-hero-eyebrow">ملخص الأداء التنفيذي</span>
+    <h2>نظرة شاملة على أداء الفترة</h2>
+    <p>{from} ← {to}{branchId?' · الفرع المحدد':' · كل الفروع'}</p>
+   </div>
+   <div className="dashboard-hero-stats">
+    <div><span>صافي المبيعات</span><strong>{money(data.netSales)}</strong></div>
+    <div><span>التوريد</span><strong>{money(data.collections)}</strong></div>
+    <div><span>رصيد الخزينة</span><strong>{money(data.closingCash)}</strong></div>
+   </div>
+  </section>
+
+  <section className="dashboard-section">
+   <div className="dashboard-section-head"><div><span>المؤشرات الرئيسية</span><h2>الأداء المالي والتجاري</h2></div><small>أهم مؤشرات الفترة الحالية</small></div>
+   <div className="kpi-grid primary-kpis">
+    <KpiCard featured tone="blue" icon={<ShoppingCart size={20}/>} title="إجمالي قبل الخصم" value={money(data.grossSales)} hint={data.grossSales?('الخصم '+((data.discounts/data.grossSales)*100).toFixed(1)+'%'):''}/>
+    <KpiCard featured tone="green" icon={<BadgeDollarSign size={20}/>} title="صافي المبيعات" value={money(data.netSales)} hint={(delta(analytics.current.sales,analytics.previous.sales)>=0?'+':'')+delta(analytics.current.sales,analytics.previous.sales).toFixed(1)+'% مقابل الفترة السابقة'}/>
+    <KpiCard featured tone="cyan" icon={<HandCoins size={20}/>} title="التوريد" value={money(data.collections)} hint={(delta(analytics.current.collections,analytics.previous.collections)>=0?'+':'')+delta(analytics.current.collections,analytics.previous.collections).toFixed(1)+'% مقابل السابقة'}/>
+    <KpiCard featured tone="violet" icon={<Percent size={20}/>} title="نسبة التحصيل" value={(data.collectionRate*100).toFixed(1)+'%'} hint="التوريد ÷ صافي المبيعات"/>
+   </div>
+  </section>
+
+  <section className="dashboard-section">
+   <div className="dashboard-section-head"><div><span>الرقابة التشغيلية</span><h2>النقدية والمصروفات والمخزون</h2></div></div>
+   <div className="kpi-grid secondary-kpis">
+    <KpiCard tone="amber" icon={<WalletCards size={19}/>} title="المديونية" value={money(data.closingDebt)}/>
+    <KpiCard tone="red" icon={<TrendingDown size={19}/>} title="التالف" value={money(data.damagesValue)} hint={'الكمية: '+qty(data.damagesQty)}/>
+    <KpiCard tone="amber" icon={<Receipt size={19}/>} title="المصروفات" value={money(data.expenses)} hint={data.netSales?((data.expenses/data.netSales)*100).toFixed(1)+'% من المبيعات':''}/>
+    <KpiCard tone="neutral" icon={<Scale size={19}/>} title="الكمية المكافئة" value={qty(data.equivalentQty)}/>
+    <KpiCard tone="blue" icon={<BadgeDollarSign size={19}/>} title="متوسط السعر" value={money(data.avgPrice)}/>
+    <KpiCard tone="green" icon={<WalletCards size={19}/>} title="رصيد الخزينة" value={money(data.closingCash)} hint={data.branches+' فروع لها بيانات'}/>
+    <KpiCard tone="cyan" icon={<Boxes size={19}/>} title="المخزون" value={money(data.inventoryValue)} hint={'الكمية: '+qty(data.inventoryQty)}/>
+    <KpiCard tone="violet" icon={<RotateCcw size={19}/>} title="المرتجعات" value={money(data.returnsValue)} hint={'الكمية: '+qty(data.returnsQty)}/>
+    <KpiCard tone="green" icon={<Gift size={19}/>} title="البونص" value={money(data.bonusesValue)} hint={'الكمية: '+qty(data.bonusesQty)}/>
+    <KpiCard tone="blue" icon={<Gift size={19}/>} title="الهدايا" value={money(data.giftsValue)} hint={'الكمية: '+qty(data.giftsQty)}/>
+    <KpiCard tone="neutral" icon={<Building2 size={19}/>} title="عدد الفروع" value={String(data.branches)} hint={branchId?'الفرع المحدد':'فروع لها بيانات في الفترة'}/>
+   </div>
+  </section>
+
+  <section className="dashboard-section">
+   <div className="dashboard-section-head"><div><span>الاتجاهات</span><h2>حركة الفترة</h2></div></div>
+   <TimelineChart points={analytics.points}/>
+  </section>
+
+  <section className="dashboard-section">
+   <div className="dashboard-section-head"><div><span>المتابعة التنفيذية</span><h2>التنبيهات وأداء الفروع</h2></div></div>
+   <div className="executive-grid">
+    <section className="panel executive-alerts"><h2>تنبيهات وتحليلات</h2>{analytics.anomalies.length?<div className="anomaly-list">{analytics.anomalies.map((x,i)=><div className="anomaly-item" key={i}>{x}</div>)}</div>:<p className="muted">لا توجد انحرافات بارزة وفق القواعد الحالية.</p>}</section>
+    <DataTable title="ملخص أداء الفروع" rows={analytics.branches} columns={[{key:'branchName',label:'الفرع'},{key:'sales',label:'المبيعات',numeric:true,render:r=>money(r.sales)},{key:'expenses',label:'المصروفات',numeric:true,render:r=>money(r.expenses)},{key:'collections',label:'التحصيل',numeric:true,render:r=>money(r.collections)},{key:'closingDebt',label:'المديونية',numeric:true,render:r=>money(r.closingDebt)},{key:'expenseRatio',label:'نسبة المصروفات',render:r=>(r.expenseRatio*100).toFixed(1)+'%'}]}/>
+   </div>
+  </section>
  </div>
 }
