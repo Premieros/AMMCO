@@ -1,6 +1,6 @@
 import {FormEvent,useEffect,useMemo,useState} from 'react'
 import type {Branch} from '../domain/types'
-import {approveImport,deleteImport,getImportHistory,getImportReview,processImport,reuploadImport,resolveReviewedImport,uploadBranchWorkbook} from '../data/imports'
+import {approveImport,deleteImport,getImportHistory,getImportReview,getImportedDays,processImport,reuploadImport,resolveReviewedImport,uploadBranchWorkbook} from '../data/imports'
 import {DataTable} from '../components/DataTable'
 
 function snapshotMetrics(s:any){
@@ -25,10 +25,15 @@ export function Imports({month,branchId,branches,isAdmin}:{month:string;branchId
  const [rows,setRows]=useState<any[]>([]),[msg,setMsg]=useState(''),[busy,setBusy]=useState(false),[review,setReview]=useState<any|null>(null),[reupload,setReupload]=useState<any|null>(null)
  const [uploadMonth,setUploadMonth]=useState(month)
  const [bulkMonth,setBulkMonth]=useState(month)
+ const [uploadBranch,setUploadBranch]=useState(branchId||'')
+ const [activeTab,setActiveTab]=useState<'single'|'bulk'|'history'>('single')
+ const [filledDays,setFilledDays]=useState<string[]>([])
  const map=useMemo(()=>new Map(branches.map(b=>[b.id,b.name])),[branches])
  const load=()=>getImportHistory(branchId).then(setRows).catch(e=>setMsg(e.message||String(e)))
  useEffect(()=>{void load()},[branchId])
  useEffect(()=>{setUploadMonth(month);setBulkMonth(month)},[month])
+ useEffect(()=>{if(branchId)setUploadBranch(branchId)},[branchId])
+ useEffect(()=>{let live=true;if(!uploadBranch||!uploadMonth){setFilledDays([]);return}getImportedDays({month:uploadMonth,branchId:uploadBranch}).then(x=>{if(live)setFilledDays(x.map(r=>r.business_date))}).catch(()=>{if(live)setFilledDays([])});return()=>{live=false}},[uploadMonth,uploadBranch])
 
  async function submit(e:FormEvent<HTMLFormElement>){
   e.preventDefault();const f=new FormData(e.currentTarget),file=f.get('file')
@@ -37,7 +42,7 @@ export function Imports({month,branchId,branches,isAdmin}:{month:string;branchId
   const name=file.name.toLowerCase()
   const octoberNamed=/اكتوبر|أكتوبر|october|oct\b/.test(name)
   if(octoberNamed&&!chosenMonth.endsWith('-10')){setMsg('اسم الملف يشير إلى أكتوبر بينما الشهر المختار '+chosenMonth+' — صحح الشهر قبل الرفع');return}
-  try{setBusy(true);const out=await uploadBranchWorkbook({branchId:String(f.get('branch_id')),month:chosenMonth,file,historyMode:String(f.get('historyMode')||'append_only'),onProgress:setMsg});setMsg(out.processed.status==='validated'?'تم الرفع والتحليل — جاهز للاعتماد':out.processed.noNewDays?'لا توجد أيام جديدة':'تم الرفع ويحتاج مراجعة');(e.currentTarget as HTMLFormElement).reset();await load()}catch(x:any){setMsg(x.message||String(x))}finally{setBusy(false)}
+  try{setBusy(true);const out=await uploadBranchWorkbook({branchId:String(f.get('branch_id')),month:chosenMonth,file,historyMode:String(f.get('historyMode')||'append_only'),onProgress:setMsg});setMsg(out.processed.status==='validated'?'تم الرفع والتحليل — جاهز للاعتماد':out.processed.noNewDays?'لا توجد أيام جديدة':'تم الرفع ويحتاج مراجعة');(e.currentTarget as HTMLFormElement).reset();await load();const days=await getImportedDays({month:chosenMonth,branchId:String(f.get('branch_id'))});setFilledDays(days.map(r=>r.business_date))}catch(x:any){setMsg(x.message||String(x))}finally{setBusy(false)}
  }
 
  async function bulk(e:FormEvent<HTMLFormElement>){
@@ -62,14 +67,47 @@ export function Imports({month,branchId,branches,isAdmin}:{month:string;branchId
  async function submitReupload(e:FormEvent<HTMLFormElement>){e.preventDefault();if(!reupload)return;const f=new FormData(e.currentTarget),file=f.get('file');if(!(file instanceof File)||!file.size)return;try{setBusy(true);const out=await reuploadImport({branchId:reupload.branch_id,periodStart:reupload.period_start,periodEnd:reupload.period_end,file,onProgress:setMsg});setMsg(out.processed.status==='validated'?'تم رفع النسخة الجديدة وتحليلها واعتمادها':'تم رفع النسخة الجديدة وتحتاج مراجعة');setReupload(null);await load()}catch(x:any){setMsg(x.message||String(x))}finally{setBusy(false)}}
  async function resolve(mode:'append_only'|'replace'){if(!review)return;try{setMsg('جاري تجهيز النسخة…');await resolveReviewedImport(review.batch.id,mode);setReview(null);setMsg(mode==='replace'?'تم اعتماد الاستبدال':'تم الاحتفاظ بالقديم واعتماد الجديد فقط');await load()}catch(x:any){setMsg(x.message||String(x))}}
 
- return <div>
-  {isAdmin&&<section className="panel"><h2>رفع شيت فرع</h2><form className="upload-form" onSubmit={submit}><label>الفرع<select name="branch_id" defaultValue={branchId||''} required><option value="">اختر الفرع</option>{branches.map(b=><option key={b.id} value={b.id}>{b.name}</option>)}</select></label><label>الشهر<input name="month" type="month" value={uploadMonth} onChange={e=>setUploadMonth(e.target.value)} required/></label><label>ملف Excel<input name="file" type="file" accept=".xlsx" required/></label><label>طريقة الاستيراد<select name="historyMode" defaultValue="append_only"><option value="append_only">الأيام الجديدة فقط</option><option value="review">مراجعة التغييرات السابقة</option></select></label><button className="primary" disabled={busy}>{busy?'جاري المعالجة…':'رفع وتحليل'}</button></form></section>}
+ return <div className="imports-page">
+  <div className="subpage-tabs no-print">
+   <button className={activeTab==='single'?'active':''} onClick={()=>setActiveTab('single')}>رفع فردي</button>
+   {isAdmin&&<button className={activeTab==='bulk'?'active':''} onClick={()=>setActiveTab('bulk')}>رفع جماعي</button>}
+   <button className={activeTab==='history'?'active':''} onClick={()=>setActiveTab('history')}>سجل الاستيراد</button>
+  </div>
 
-  {isAdmin&&<section className="panel"><h2>رفع جماعي للفروع</h2><form className="bulk-v2" onSubmit={bulk}><div className="upload-form"><label>الشهر<input name="month" type="month" value={bulkMonth} onChange={e=>setBulkMonth(e.target.value)}/></label><label>طريقة التعامل<select name="historyMode" defaultValue="append_only"><option value="append_only">الأيام الجديدة فقط</option><option value="review">مراجعة التغييرات</option></select></label></div><div className="bulk-list">{branches.map(b=><label className="bulk-item" key={b.id}><span><b>{b.name}</b><small>{b.code||''}</small></span><input type="file" data-branch-id={b.id} data-branch-name={b.name} accept=".xlsx"/></label>)}</div><button className="primary" disabled={busy}>رفع الملفات المحددة</button></form></section>}
+  {activeTab==='single'&&isAdmin&&<section className="panel import-section">
+   <div className="section-heading"><div><span>استيراد شيت</span><h2>رفع شيت فرع</h2></div><small>حدد الشهر أولًا ثم اختر الفرع والملف</small></div>
+   <form className="upload-form" onSubmit={submit}>
+    <label>شهر الرفع<input name="month" type="month" value={uploadMonth} onChange={e=>setUploadMonth(e.target.value)} required/></label>
+    <label>الفرع<select name="branch_id" value={uploadBranch} onChange={e=>setUploadBranch(e.target.value)} required><option value="">اختر الفرع</option>{branches.map(b=><option key={b.id} value={b.id}>{b.name}</option>)}</select></label>
+    <label>ملف Excel<input name="file" type="file" accept=".xlsx" required/></label>
+    <label>طريقة الاستيراد<select name="historyMode" defaultValue="append_only"><option value="append_only">الأيام الجديدة فقط</option><option value="review">مراجعة التغييرات السابقة</option></select></label>
+    <button className="primary" disabled={busy}>{busy?'جاري المعالجة…':'رفع وتحليل'}</button>
+   </form>
+
+   <div className="filled-days-card">
+    <div className="filled-days-head"><div><b>أيام الشهر المعبأة</b><span>{uploadBranch?((map.get(uploadBranch)||'الفرع')+' · '+uploadMonth):'اختر الفرع لعرض الأيام'}</span></div><strong>{filledDays.length}</strong></div>
+    {uploadBranch&&uploadMonth?<div className="days-grid">
+     {Array.from({length:new Date(Number(uploadMonth.slice(0,4)),Number(uploadMonth.slice(5,7)),0).getDate()},(_,i)=>i+1).map(day=>{
+      const d=uploadMonth+'-'+String(day).padStart(2,'0'),filled=filledDays.includes(d)
+      return <span key={day} className={filled?'filled':''} title={filled?'موجود':'غير موجود'}>{day}</span>
+     })}
+    </div>:<p className="muted">بعد اختيار الفرع سيظهر هنا كل يوم موجود فعليًا في النظام لهذا الشهر.</p>}
+    <div className="days-legend"><span><i className="legend-dot filled"/>معبأ</span><span><i className="legend-dot"/>غير موجود</span></div>
+   </div>
+  </section>}
+
+  {activeTab==='bulk'&&isAdmin&&<section className="panel import-section">
+   <div className="section-heading"><div><span>رفع متعدد</span><h2>رفع جماعي للفروع</h2></div><small>شهر واحد لكل الملفات المختارة</small></div>
+   <form className="bulk-v2" onSubmit={bulk}>
+    <div className="upload-form"><label>شهر الرفع<input name="month" type="month" value={bulkMonth} onChange={e=>setBulkMonth(e.target.value)}/></label><label>طريقة التعامل<select name="historyMode" defaultValue="append_only"><option value="append_only">الأيام الجديدة فقط</option><option value="review">مراجعة التغييرات</option></select></label></div>
+    <div className="bulk-list">{branches.map(b=><label className="bulk-item" key={b.id}><span><b>{b.name}</b><small>{b.code||''}</small></span><input type="file" data-branch-id={b.id} data-branch-name={b.name} accept=".xlsx"/></label>)}</div>
+    <button className="primary" disabled={busy}>رفع الملفات المحددة</button>
+   </form>
+  </section>}
 
   {msg&&<div className="panel"><p className="muted">{msg}</p></div>}
 
-  <DataTable title="سجل الاستيراد" rows={rows.map(r=>({...r,branch:map.get(r.branch_id)||'—'}))} columns={[
+  {activeTab==='history'&&<DataTable title="سجل الاستيراد" rows={rows.map(r=>({...r,branch:map.get(r.branch_id)||'—'}))} columns={[
    {key:'branch',label:'الفرع'},{key:'original_file_name',label:'الملف'},{key:'period_start',label:'من'},{key:'period_end',label:'إلى'},{key:'version',label:'الإصدار'},{key:'status',label:'الحالة'},
    {key:'uploaded_at',label:'تاريخ الرفع',render:r=>new Date(r.uploaded_at).toLocaleString('en-GB')},
    {key:'action',label:'إجراء',filter:false,render:r=><div className="inline-actions">
@@ -79,7 +117,7 @@ export function Imports({month,branchId,branches,isAdmin}:{month:string;branchId
     {isAdmin&&<button className="small-btn" onClick={()=>setReupload(r)}>إعادة رفع</button>}
     {isAdmin&&<button className="small-btn" onClick={()=>remove(r)}>حذف</button>}
    </div>}
-  ]}/>
+  ]}/>}
 
   {reupload&&<div className="modal-backdrop"><form className="modal-card" onSubmit={submitReupload}><div className="modal-head"><h3>إعادة رفع الشيت</h3><button type="button" className="small-btn" onClick={()=>setReupload(null)}>إغلاق</button></div><p className="muted">الفترة: {reupload.period_start} — {reupload.period_end}</p><label className="upload-file-label">ملف Excel الجديد<input name="file" type="file" accept=".xlsx" required/></label>{msg&&<p className="muted">{msg}</p>}<button className="primary" disabled={busy}>{busy?'جاري الرفع…':'رفع وتحليل النسخة الجديدة'}</button></form></div>}
   {review&&<div className="modal-backdrop"><div className="modal-card wide-modal"><div className="modal-head"><h3>مراجعة فروق الشيت</h3><button className="small-btn" onClick={()=>setReview(null)}>إغلاق</button></div>
