@@ -1949,7 +1949,7 @@ html[dir='rtl'],body{
 
 /* Premier typography + faster perceived navigation */
 html{
- font-family:'Inter','Cairo',system-ui,-apple-system,sans-serif!important;
+ font-family:'Cairo','Inter',system-ui,-apple-system,sans-serif!important;
  font-feature-settings:'cv02','cv03','cv04','cv11';
  letter-spacing:-.011em;
  text-rendering:optimizeLegibility;
