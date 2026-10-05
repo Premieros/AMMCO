@@ -24,7 +24,7 @@ export async function getExpenses(params:{from:string;to:string;branchId?:string
   fetchAllPages<any>((fromRow,toRow)=>{
    let q=supabase.from('branch_expense_accrual_settings')
     .select('branch_id,month_start,wages,rent,working_days_basis,branch_manager,sector_manager,carried_expenses,commission_rate')
-    .eq('month_start',params.month+'-01')
+    .gte('month_start',params.from.slice(0,7)+'-01').lte('month_start',params.to.slice(0,7)+'-01')
    if(params.branchId)q=q.eq('branch_id',params.branchId)
    return q.range(fromRow,toRow)
   }),
@@ -36,23 +36,24 @@ export async function getExpenses(params:{from:string;to:string;branchId?:string
   })
  ])
  const daysBy=new Map<string,Set<string>>()
- for(const r of daily){const s=daysBy.get(r.branch_id)||new Set<string>();s.add(String(r.business_date));daysBy.set(r.branch_id,s)}
+ for(const r of daily){const key=r.branch_id+'|'+String(r.business_date).slice(0,7),s=daysBy.get(key)||new Set<string>();s.add(String(r.business_date));daysBy.set(key,s)}
  const accrualRows:ExpenseRow[]=[]
  for(const s of settings){
   const basis=Math.max(1,Number(s.working_days_basis||30))
-  const elapsed=Math.min((daysBy.get(s.branch_id)||new Set()).size,basis)
+  const month=String(s.month_start).slice(0,7),key=s.branch_id+'|'+month
+  const elapsed=Math.min((daysBy.get(key)||new Set()).size,basis)
   const ratio=elapsed/basis
   const wages=(Number(s.wages||0)+Number(s.branch_manager||0)+Number(s.sector_manager||0))*ratio
   const rent=Number(s.rent||0)*ratio
-  if(wages)accrualRows.push({id:'w-'+s.branch_id,branchId:s.branch_id,date:params.to,category:'أجور ومرتبات',group:'اجور وحوافز وعمولات',amount:wages,type:'تشغيلي',source:'استحقاق شهري',isExpense:true})
-  if(rent)accrualRows.push({id:'r-'+s.branch_id,branchId:s.branch_id,date:params.to,category:'إيجارات',group:'تشغيل ومرافق',amount:rent,type:'تشغيلي',source:'استحقاق شهري',isExpense:true})
+  if(wages)accrualRows.push({id:'w-'+s.branch_id+'-'+month,branchId:s.branch_id,date:month+'-01',category:'أجور ومرتبات',group:'اجور وحوافز وعمولات',amount:wages,type:'تشغيلي',source:'استحقاق شهري',isExpense:true})
+  if(rent)accrualRows.push({id:'r-'+s.branch_id+'-'+month,branchId:s.branch_id,date:month+'-01',category:'إيجارات',group:'تشغيل ومرافق',amount:rent,type:'تشغيلي',source:'استحقاق شهري',isExpense:true})
  }
  const rows:ExpenseRow[]=[
   ...cash.map(r=>({id:r.id,branchId:r.branch_id,date:r.entry_date,category:r.canonical_category||'غير مصنف',group:r.expense_group||'غير مصنف',amount:Number(r.amount||0),type:r.is_expense?(r.raw_payload?.manual_expense_type||'تلقائي'):'غير مصروف',source:'الخزينة',isExpense:Boolean(r.is_expense)})),
   ...petro.map(r=>({id:'p-'+r.id,branchId:r.branch_id,date:r.business_date,category:'بترو اب',group:'مصروفات السيارات',amount:Number(r.fuel_expense||0)+Number(r.other_expense||0),type:'تشغيلي',source:'بترو اب',isExpense:true})),
   ...accrualRows
  ]
- return {rows,settings:settings as AccrualSetting[]}
+ return {rows,settings:settings.filter(s=>String(s.month_start).slice(0,7)===params.month) as AccrualSetting[]}
 }
 
 export async function saveAccrual(input:{branchId:string;month:string;wages:number;rent:number;workingDays:number;branchManager?:number;sectorManager?:number;carriedExpenses?:number;commissionRate?:number}){
