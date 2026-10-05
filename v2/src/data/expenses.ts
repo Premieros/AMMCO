@@ -52,12 +52,12 @@ export async function getExpenses(params:{from:string;to:string;branchId?:string
  return {rows,settings:settings as AccrualSetting[]}
 }
 
-export async function saveAccrual(input:{branchId:string;month:string;wages:number;rent:number;workingDays:number}){
+export async function saveAccrual(input:{branchId:string;month:string;wages:number;rent:number;workingDays:number;branchManager?:number;sectorManager?:number;carriedExpenses?:number;commissionRate?:number}){
  const {data:{session}}=await supabase.auth.getSession()
  if(!session)throw new Error('انتهت جلسة الدخول')
  const res=await fetch(import.meta.env.VITE_SUPABASE_URL+'/functions/v1/ammco-admin-cash',{
   method:'POST',headers:{Authorization:'Bearer '+session.access_token,apikey:import.meta.env.VITE_SUPABASE_PUBLISHABLE_KEY,'Content-Type':'application/json'},
-  body:JSON.stringify({action:'set_accrual_settings',branch_id:input.branchId,month_start:input.month+'-01',wages:input.wages,rent:input.rent,working_days_basis:input.workingDays})
+  body:JSON.stringify({action:'set_accrual_settings',branch_id:input.branchId,month_start:input.month+'-01',wages:input.wages,rent:input.rent,working_days_basis:input.workingDays,...(input.branchManager===undefined?{}:{branch_manager:input.branchManager}),...(input.sectorManager===undefined?{}:{sector_manager:input.sectorManager}),...(input.carriedExpenses===undefined?{}:{carried_expenses:input.carriedExpenses}),...(input.commissionRate===undefined?{}:{commission_rate:input.commissionRate})})
  })
  const out=await res.json()
  if(!res.ok)throw new Error(out.error||'تعذر حفظ الإعدادات')
