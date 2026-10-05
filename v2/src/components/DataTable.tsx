@@ -1,5 +1,7 @@
 import {useEffect,useMemo,useRef,useState,type ReactNode} from 'react'
 import * as XLSX from 'xlsx'
+import html2canvas from 'html2canvas'
+import {jsPDF} from 'jspdf'
 
 export type Column<T>={
  key:keyof T|string
@@ -81,13 +83,68 @@ export function DataTable<T extends Record<string,any>>({title,columns,rows}:{ti
   XLSX.writeFile(wb,(title||'report')+'.xlsx')
  }
 
- const printTable=()=>{
+ const printableTable=()=>{
   const host=wrapRef.current?.querySelector('table')
-  if(!host)return
+  if(!host)return null
+  const clone=host.cloneNode(true) as HTMLTableElement
+  clone.querySelectorAll('.column-filter').forEach(x=>x.remove())
+  clone.querySelectorAll('.sort-head b').forEach(x=>x.remove())
+  clone.querySelectorAll('button').forEach(x=>{const span=x.querySelector('span');if(span)x.replaceWith(span.cloneNode(true))})
+  return clone
+ }
+
+ const printTable=()=>{
+  const clone=printableTable()
+  if(!clone)return
   const w=window.open('','_blank','width=1200,height=800')
   if(!w)return
-  w.document.write('<!doctype html><html lang="ar" dir="rtl"><head><meta charset="utf-8"><title>'+title+'</title><style>body{font-family:Tahoma,Arial;padding:20px;color:#172033}h1{font-size:18px}table{width:100%;border-collapse:collapse;font-size:11px}th,td{border:1px solid #cbd5e1;padding:6px;text-align:right}th{background:#f1f5f9}.num{direction:ltr;text-align:right}tfoot{font-weight:700;background:#eef2f7}</style></head><body><h1>'+title+'</h1>'+host.outerHTML+'</body></html>')
-  w.document.close();w.focus();setTimeout(()=>w.print(),150)
+  w.document.write('<!doctype html><html lang="ar" dir="rtl"><head><meta charset="utf-8"><title>'+title+'</title><style>@page{size:A4 landscape;margin:10mm}body{font-family:"Noto Sans Arabic",Tahoma,Arial,sans-serif;padding:8px;color:#172033}h1{font-size:18px;margin:0 0 12px}table{width:100%;border-collapse:collapse;font-size:10px}th,td{border:1px solid #cbd5e1;padding:6px 7px;text-align:right}th{background:#eef3f8;color:#172033;font-weight:700}tbody tr:nth-child(even){background:#f8fafc}.num{direction:ltr;text-align:right;font-variant-numeric:tabular-nums}tfoot{font-weight:700;background:#e8eef5}</style></head><body><h1>'+title+'</h1>'+clone.outerHTML+'</body></html>')
+  w.document.close();w.focus();setTimeout(()=>w.print(),180)
+ }
+
+ const makePdfBlob=async()=>{
+  const clone=printableTable()
+  if(!clone)throw new Error('لا يوجد جدول للتصدير')
+  const host=document.createElement('div')
+  host.dir='rtl'
+  host.className='pdf-capture'
+  host.innerHTML='<h1>'+title+'</h1>'
+  host.appendChild(clone)
+  Object.assign(host.style,{position:'fixed',left:'-12000px',top:'0',width:'1400px',background:'#fff',padding:'24px',zIndex:'-1'})
+  document.body.appendChild(host)
+  try{
+   const canvas=await html2canvas(host,{backgroundColor:'#ffffff',scale:1.4,useCORS:true,windowWidth:1500})
+   const pdf=new jsPDF({orientation:'landscape',unit:'mm',format:'a4',compress:true})
+   const pageW=pdf.internal.pageSize.getWidth(),pageH=pdf.internal.pageSize.getHeight()
+   const imgW=pageW-12,ratio=imgW/canvas.width,imgH=canvas.height*ratio
+   const data=canvas.toDataURL('image/jpeg',0.92)
+   let offset=0,page=0
+   while(offset<imgH){
+    if(page>0)pdf.addPage()
+    pdf.addImage(data,'JPEG',6,6-offset,imgW,imgH,undefined,'FAST')
+    offset+=pageH-12
+    page++
+   }
+   return pdf.output('blob')
+  }finally{host.remove()}
+ }
+
+ const downloadPdf=async()=>{
+  const blob=await makePdfBlob()
+  const url=URL.createObjectURL(blob),a=document.createElement('a')
+  a.href=url;a.download=(title||'report')+'.pdf';document.body.appendChild(a);a.click();a.remove();setTimeout(()=>URL.revokeObjectURL(url),1000)
+ }
+
+ const shareWhatsApp=async()=>{
+  const blob=await makePdfBlob()
+  const file=new File([blob],(title||'report')+'.pdf',{type:'application/pdf'})
+  const shareData={title,text:'تقرير '+title,files:[file]}
+  if(navigator.share&&navigator.canShare?.(shareData)){
+   await navigator.share(shareData)
+   return
+  }
+  const text='تقرير '+title+'\n'+location.href
+  window.open('https://wa.me/?text='+encodeURIComponent(text),'_blank','noopener,noreferrer')
  }
 
  return <section className="panel table-panel">
@@ -97,6 +154,8 @@ export function DataTable<T extends Record<string,any>>({title,columns,rows}:{ti
     <input className="table-search" value={search} onChange={e=>setSearch(e.target.value)} placeholder="بحث…"/>
     <button className="small-btn" onClick={()=>{setSearch('');setFilters({});setSort(null)}}>مسح الفلاتر</button>
     <button className="small-btn" onClick={exportExcel}>Excel</button>
+    <button className="small-btn" onClick={()=>void downloadPdf()}>PDF</button>
+    <button className="small-btn" onClick={()=>void shareWhatsApp()}>واتساب</button>
     <button className="small-btn" onClick={printTable}>طباعة</button>
    </div>
   </div>
