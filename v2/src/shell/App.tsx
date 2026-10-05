@@ -19,12 +19,14 @@ import {Vehicles} from '../pages/Vehicles'
 import {UsersPage} from '../pages/Users'
 import {BranchesPage} from '../pages/Branches'
 import {Settings} from '../pages/Settings'
+import {ManagementCenter} from '../pages/ManagementCenter'
 import {Login} from '../pages/Login'
-import {LayoutDashboard,FileBarChart2,Users,Receipt,WalletCards,Upload,UserCog,LogOut,Boxes,Truck,Settings as SettingsIcon} from 'lucide-react'
+import {LayoutDashboard,FileBarChart2,Users,Receipt,WalletCards,Upload,UserCog,LogOut,Boxes,Truck,Settings as SettingsIcon,ShieldAlert} from 'lucide-react'
 
-type Route='dashboard'|'reports'|'reps'|'rep-daily'|'receivables'|'monthly'|'products'|'banks'|'expenses'|'treasury'|'inventory'|'vehicles'|'imports'|'branches'|'users'|'settings'
+type Route='dashboard'|'management'|'reports'|'reps'|'rep-daily'|'receivables'|'monthly'|'products'|'banks'|'expenses'|'treasury'|'inventory'|'vehicles'|'imports'|'branches'|'users'|'settings'
 const nav=[
  ['dashboard','لوحة التحكم',LayoutDashboard],
+ ['management','مركز الإدارة',ShieldAlert],
  ['reports','التقارير',FileBarChart2],
  ['reps','المناديب',Users],
  ['rep-daily','يوميات المناديب',Users],
@@ -134,6 +136,7 @@ export function App(){
    </header>
 
    {route==='dashboard' && <Dashboard from={period.from} to={period.to} branchId={branchId||undefined}/>}
+   {route==='management' && <ManagementCenter from={period.from} to={period.to} branchId={branchId||undefined}/>}
    {route==='reports' && <Reports from={period.from} to={period.to} branchId={branchId||undefined}/>}
    {route==='reps' && <Reps from={period.from} to={period.to} branchId={branchId||undefined} isAdmin={profile.role==='admin'} month={month}/>} 
    {route==='rep-daily' && <RepDaily from={period.from} to={period.to} branchId={branchId||undefined}/>}
