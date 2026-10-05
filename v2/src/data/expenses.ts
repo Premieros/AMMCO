@@ -69,3 +69,21 @@ export async function setExpenseType(ids:number[],expenseType:'تشغيلي'|'غ
  const res=await fetch(import.meta.env.VITE_SUPABASE_URL+'/functions/v1/ammco-admin-cash',{method:'POST',headers:{Authorization:'Bearer '+session.access_token,apikey:import.meta.env.VITE_SUPABASE_PUBLISHABLE_KEY,'Content-Type':'application/json'},body:JSON.stringify({action:'set_expense_type',ids,expense_type:expenseType,label})})
  const out=await res.json();if(!res.ok)throw new Error(out.error||'تعذر تغيير نوع المصروف');return out
 }
+
+export async function correctExpenseEntry(input:{id:number;canonicalCategory:string;expenseGroup:string;reason:string}){
+ const {error}=await supabase.rpc('correct_cash_entry',{
+  p_cash_entry_id:input.id,
+  p_canonical_category:input.canonicalCategory,
+  p_expense_group:input.expenseGroup,
+  p_reason:input.reason
+ })
+ if(error)throw error
+}
+
+export async function getCashEntryAudit(id:number){
+ const {data,error}=await supabase.from('cash_entry_correction_log')
+  .select('id,cash_entry_id,old_canonical_category,new_canonical_category,old_expense_group,new_expense_group,old_description,new_description,reason,changed_at')
+  .eq('cash_entry_id',id).order('changed_at',{ascending:false})
+ if(error)throw error
+ return data??[]
+}
