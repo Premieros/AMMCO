@@ -86,3 +86,9 @@ tfoot th:first-child{z-index:4;background:#e7edf3}
  .table-tools{width:100%}.table-search{flex:1;min-width:0}
  .table-wrap{max-height:62vh}
 }
+
+.modal-backdrop{position:fixed;inset:0;background:rgba(15,23,42,.42);display:grid;place-items:center;padding:18px;z-index:1000}
+.modal-card{width:min(760px,100%);max-height:90vh;overflow:auto;background:#fff;border-radius:16px;border:1px solid #dfe6ee;padding:18px;box-shadow:0 24px 80px rgba(15,23,42,.22)}
+.modal-head{display:flex;align-items:center;justify-content:space-between;gap:10px;margin-bottom:14px}.modal-head h3{margin:0;font-size:16px}
+.form-grid{display:grid;grid-template-columns:1fr 1fr;gap:10px}.form-grid label{display:grid;gap:5px;font-size:11px;color:#64748b}.form-grid input,.form-grid select,.form-grid textarea{width:100%;border:1px solid #d7dee8;border-radius:8px;padding:8px 9px;background:#fff}.form-grid .full{grid-column:1/-1}
+@media(max-width:640px){.form-grid{grid-template-columns:1fr}}
