@@ -42,14 +42,14 @@ export function BranchSheets({branches,initialBranchId=''}:{branches:Branch[];in
 
  async function saveAll(){
   if(!selectedBatch)return
-  try{setSaving(true);setMsg('جاري حفظ التعديلات وإعادة حساب المؤشرات…');const out=await saveBatchContents({batchId:selectedBatch.id,branchId,inventoryEdits:[...invEdits].map(([id,e])=>({id,...e})),repEdits:[...repEdits].map(([id,e])=>({id,...e})),cashEdits:[...cashEdits].map(([id,e])=>({id,...e})),warehouseEdits:[...whEdits].map(([id,e])=>({id,...e})),cashDeletes:[...cashDeletes],cashNew});setMsg('تم الحفظ وتحديث '+out.affectedDatesCount+' يوم');const x=await getBatchContents(selectedBatch.id);setInventory(x.inventory);setReps(x.reps);setCash(x.cash);setWarehouse(x.warehouse);setInvEdits(new Map());setRepEdits(new Map());setCashEdits(new Map());setWhEdits(new Map());setCashDeletes(new Set());setCashNew([])}catch(e:any){setMsg(e.message||String(e))}finally{setSaving(false)}
+  try{setSaving(true);setMsg('جاري حفظ التعديلات وإعادة حساب المؤشرات…');const out=await saveBatchContents({batchId:selectedBatch.id,branchId,inventoryEdits:[...invEdits].map(([id,e])=>({id,...e})),repEdits:[...repEdits].map(([id,e])=>({id,...e})),cashEdits:[...cashEdits].map(([id,e])=>({id,...e})),warehouseEdits:[...whEdits].map(([id,e])=>({id,...e})),cashDeletes:[...cashDeletes],cashNew:cashNew.map(({__tempId,...r}:any)=>r)});setMsg('تم الحفظ وتحديث '+out.affectedDatesCount+' يوم');const x=await getBatchContents(selectedBatch.id);setInventory(x.inventory);setReps(x.reps);setCash(x.cash);setWarehouse(x.warehouse);setInvEdits(new Map());setRepEdits(new Map());setCashEdits(new Map());setWhEdits(new Map());setCashDeletes(new Set());setCashNew([])}catch(e:any){setMsg(e.message||String(e))}finally{setSaving(false)}
  }
 
  function addCash(){
   if(!selectedBatch)return
   const temp=-Date.now(),row={id:temp,entry_date:selectedBatch.period_start,description:'',category:'أخرى',canonical_category:'أخرى',expense_group:null,amount:0,direction:'out',is_expense:true,destination_id:null,running_balance:null}
   setCash([row,...cash])
-  setCashNew([...cashNew,{...row,id:undefined}])
+  setCashNew([...cashNew,{__tempId:temp,...row,id:undefined}])
  }
 
  return <div>
@@ -67,7 +67,7 @@ export function BranchSheets({branches,initialBranchId=''}:{branches:Branch[];in
   ]} onChange={(id,key,v)=>update('reps',id,key,v)}/>}
   {tab==='cash'&&<EditableTable rows={cashRows} columns={[
    ['entry_date','التاريخ','date'],['description','البيان','text'],['category','التصنيف الأصلي','text'],['canonical_category','التوجيه','text'],['expense_group','مجموعة المصروف','text'],['amount','القيمة','number'],['direction','الحركة','select'],['is_expense','مصروف؟','boolean']
-  ]} onChange={(id,key,v)=>{if(id<0){setCash(prev=>prev.map(r=>r.id===id?{...r,[key]:v}:r));setCashNew(prev=>prev.map((r,i)=>i===0?{...r,[key]:v}:r));return}update('cash',id,key,v)}} onDelete={id=>{if(id<0){setCash(prev=>prev.filter(r=>r.id!==id));return}setCash(prev=>prev.filter(r=>r.id!==id));setCashDeletes(prev=>new Set(prev).add(id))}}/>}
+  ]} onChange={(id,key,v)=>{if(id<0){setCash(prev=>prev.map(r=>r.id===id?{...r,[key]:v}:r));setCashNew(prev=>prev.map((r:any)=>r.__tempId===id?{...r,[key]:v}:r));return}update('cash',id,key,v)}} onDelete={id=>{if(id<0){setCash(prev=>prev.filter(r=>r.id!==id));setCashNew(prev=>prev.filter((r:any)=>r.__tempId!==id));return}setCash(prev=>prev.filter(r=>r.id!==id));setCashDeletes(prev=>new Set(prev).add(id))}}/>}
   {tab==='warehouse'&&<EditableTable rows={whRows} columns={[
    ['business_date','التاريخ','text'],['opening_qty','افتتاحي كمية','number'],['opening_value','افتتاحي قيمة','number'],['incoming_factory_qty','وارد مصنع كمية','number'],['incoming_factory_value','وارد مصنع قيمة','number'],['sales_qty','مبيعات كمية','number'],['sales_value','مبيعات قيمة','number'],['bonus_qty','بونص كمية','number'],['damages_qty','تالف كمية','number'],['closing_qty','رصيد آخر كمية','number'],['closing_value','رصيد آخر قيمة','number']
   ]} onChange={(id,key,v)=>update('warehouse',id,key,v)}/>}
