@@ -7,7 +7,7 @@ import {DataTable} from '../components/DataTable'
 export function ManagementCenter({from,to,branchId}:{from:string;to:string;branchId?:string}){
  const [analytics,setAnalytics]=useState<DashboardAnalytics|null>(null)
  const [pending,setPending]=useState<any[]>([])
- const [branchCount,setBranchCount]=useState(0)
+ const [branchCount,setBranchCount]=useState(0),[branchMap,setBranchMap]=useState<Map<string,string>>(new Map())
  const [error,setError]=useState('')
  useEffect(()=>{let live=true;(async()=>{try{
   const [a,imports,branches]=await Promise.all([getDashboardAnalytics({from,to,branchId}),getImportHistory(branchId),getBranches()])
@@ -15,6 +15,7 @@ export function ManagementCenter({from,to,branchId}:{from:string;to:string;branc
   setAnalytics(a)
   setPending(imports.filter(x=>['validated','rejected','failed'].includes(x.status)))
   setBranchCount(branchId?1:branches.length)
+  setBranchMap(new Map(branches.map(b=>[b.id,b.name])))
  }catch(e:any){if(live)setError(e.message||String(e))}})();return()=>{live=false}},[from,to,branchId])
  if(error)return <div className="error-box">{error}</div>
  if(!analytics)return <div className="panel loading">جاري تحميل مركز الإدارة…</div>
@@ -25,7 +26,7 @@ export function ManagementCenter({from,to,branchId}:{from:string;to:string;branc
   <section className="quality-hero panel"><div className="quality-score"><strong>{score}%</strong><span>سلامة البيانات</span></div><div className="quality-grid"><div><span>التغطية التشغيلية</span><b>{reporting} / {branchCount} فرع</b></div><div><span>تنبيهات نشطة</span><b>{analytics.anomalies.length}</b></div><div><span>ملفات معلقة</span><b>{pending.length}</b></div></div></section>
   <section className="panel"><h2>قائمة التدخل الإداري</h2>{analytics.anomalies.length?<div className="anomaly-list">{analytics.anomalies.map((x,i)=><div className="anomaly-item" key={i}>{x}</div>)}</div>:<p className="muted">لا توجد بنود معلقة تحتاج تدخلاً إداريًا وفق القواعد الحالية.</p>}</section>
   <DataTable title="ملفات الشيت المعلقة والمرفوضة" rows={pending} columns={[
-   {key:'branch_id',label:'الفرع',render:r=>r.branch_id},
+   {key:'branch_id',label:'الفرع',render:r=>branchMap.get(r.branch_id)||'—'},
    {key:'original_file_name',label:'الملف'},
    {key:'period_start',label:'من'},{key:'period_end',label:'إلى'},
    {key:'version',label:'الإصدار',numeric:true},
