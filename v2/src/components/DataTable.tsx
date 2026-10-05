@@ -24,6 +24,9 @@ export function DataTable<T extends Record<string,any>>({title,columns,rows}:{ti
  const [search,setSearch]=useState('')
  const [sort,setSort]=useState<{key:string;dir:'asc'|'desc'}|null>(null)
  const [filters,setFilters]=useState<Record<string,string>>({})
+ const [showColumns,setShowColumns]=useState(false)
+ const storageKey='ammco:columns:'+title
+ const [visibleKeys,setVisibleKeys]=useState<string[]>(()=>{try{const saved=localStorage.getItem(storageKey);const parsed=saved?JSON.parse(saved):null;return Array.isArray(parsed)?parsed:columns.map(c=>String(c.key))}catch{return columns.map(c=>String(c.key))}})
  const wrapRef=useRef<HTMLDivElement>(null)
 
  useEffect(()=>{
@@ -41,10 +44,13 @@ export function DataTable<T extends Record<string,any>>({title,columns,rows}:{ti
   return()=>{el.removeEventListener('mousedown',onDown);window.removeEventListener('mousemove',onMove);window.removeEventListener('mouseup',onUp);el.removeEventListener('click',onClick,true)}
  },[])
 
+ useEffect(()=>{const valid=new Set(columns.map(c=>String(c.key)));setVisibleKeys(prev=>{const next=prev.filter(k=>valid.has(k));return next.length?next:columns.map(c=>String(c.key))})},[columns])
+ useEffect(()=>{try{localStorage.setItem(storageKey,JSON.stringify(visibleKeys))}catch{}},[storageKey,visibleKeys])
+ const visibleColumns=useMemo(()=>columns.filter(c=>visibleKeys.includes(String(c.key))),[columns,visibleKeys])
  const filtered=useMemo(()=>{
   const q=search.trim().toLowerCase()
   const out=rows.filter(row=>{
-   if(q&&!columns.some(c=>display(raw(row,String(c.key))).toLowerCase().includes(q)))return false
+   if(q&&!visibleColumns.some(c=>display(raw(row,String(c.key))).toLowerCase().includes(q)))return false
    for(const [key,val] of Object.entries(filters)){
     if(val&&display(raw(row,key))!==val)return false
    }
@@ -57,7 +63,7 @@ export function DataTable<T extends Record<string,any>>({title,columns,rows}:{ti
    const cmp=Number.isFinite(an)&&Number.isFinite(bn)?an-bn:String(av??'').localeCompare(String(bv??''),'ar',{numeric:true})
    return sort.dir==='asc'?cmp:-cmp
   })
- },[rows,columns,search,filters,sort])
+ },[rows,visibleColumns,search,filters,sort])
 
  const uniqueValues=(key:string)=>[...new Set(rows.map(r=>display(raw(r,key))).filter(v=>v!=='—'))].sort((a,b)=>a.localeCompare(b,'ar',{numeric:true})).slice(0,250)
 
@@ -76,7 +82,7 @@ export function DataTable<T extends Record<string,any>>({title,columns,rows}:{ti
  }
 
  const exportExcel=()=>{
-  const data=filtered.map(r=>Object.fromEntries(columns.map(c=>[c.label,raw(r,String(c.key))??''])))
+  const data=filtered.map(r=>Object.fromEntries(visibleColumns.map(c=>[c.label,raw(r,String(c.key))??''])))
   const ws=XLSX.utils.json_to_sheet(data)
   const wb=XLSX.utils.book_new()
   XLSX.utils.book_append_sheet(wb,ws,title.slice(0,31)||'Report')
@@ -164,6 +170,7 @@ export function DataTable<T extends Record<string,any>>({title,columns,rows}:{ti
    <div><h2>{title}</h2><span>{filtered.length} من {rows.length} سجل</span></div>
    <div className="table-tools">
     <input className="table-search" value={search} onChange={e=>setSearch(e.target.value)} placeholder="بحث…"/>
+    <div className="column-picker-wrap"><button className={'small-btn '+(showColumns?'active':'')} onClick={()=>setShowColumns(v=>!v)}>الأعمدة ({visibleColumns.length}/{columns.length})</button>{showColumns&&<div className="column-picker"><div className="column-picker-head"><b>الأعمدة المعروضة</b><span>{visibleColumns.length} محدد</span></div><div className="column-picker-actions"><button type="button" className="small-btn" onClick={()=>setVisibleKeys(columns.map(c=>String(c.key)))}>تحديد الكل</button><button type="button" className="small-btn" onClick={()=>setVisibleKeys([String(columns[0]?.key||'')].filter(Boolean))}>إخفاء الكل</button></div><div className="column-picker-list">{columns.map(c=>{const key=String(c.key),checked=visibleKeys.includes(key),locked=columns[0]===c;return <label key={key}><input type="checkbox" checked={checked} disabled={locked} onChange={e=>setVisibleKeys(prev=>e.target.checked?[...new Set([...prev,key])]:prev.filter(x=>x!==key))}/><span>{c.label}</span></label>})}</div></div>}</div>
     <button className="small-btn" onClick={()=>{setSearch('');setFilters({});setSort(null)}}>مسح الفلاتر</button>
     <button className="small-btn" onClick={exportExcel}>Excel</button>
     <button className="small-btn" onClick={()=>void downloadPdf()}>PDF</button>
@@ -174,7 +181,7 @@ export function DataTable<T extends Record<string,any>>({title,columns,rows}:{ti
   <div className="table-wrap" ref={wrapRef}>
    <table>
     <thead>
-     <tr>{columns.map(c=>{
+     <tr>{visibleColumns.map(c=>{
       const key=String(c.key),active=sort?.key===key
       return <th key={key} className={c.numeric?'num':''}>
        <button className={'sort-head '+(active?'active':'')} onClick={()=>toggleSort(key)} title="ترتيب">
@@ -188,9 +195,9 @@ export function DataTable<T extends Record<string,any>>({title,columns,rows}:{ti
      })}</tr>
     </thead>
     <tbody>
-     {filtered.length?filtered.map((row,i)=><tr key={i}>{columns.map(c=><td key={String(c.key)} className={c.numeric?'num':''}>{c.render?c.render(row):display(raw(row,String(c.key)))}</td>)}</tr>):<tr><td colSpan={columns.length} className="empty">لا توجد بيانات في الفترة المحددة</td></tr>}
+     {filtered.length?filtered.map((row,i)=><tr key={i}>{visibleColumns.map(c=><td key={String(c.key)} className={c.numeric?'num':''}>{c.render?c.render(row):display(raw(row,String(c.key)))}</td>)}</tr>):<tr><td colSpan={visibleColumns.length} className="empty">لا توجد بيانات في الفترة المحددة</td></tr>}
     </tbody>
-    {!!filtered.length&&<tfoot><tr>{columns.map((c,i)=>{
+    {!!filtered.length&&<tfoot><tr>{visibleColumns.map((c,i)=>{
      if(i===0)return <th key={String(c.key)}>الإجمالي</th>
      const t=totalFor(c)
      return <td key={String(c.key)} className={c.numeric?'num':''}>{t===null?'':new Intl.NumberFormat('en-US',{maximumFractionDigits:2}).format(t)}</td>
