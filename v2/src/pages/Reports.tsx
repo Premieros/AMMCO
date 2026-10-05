@@ -27,7 +27,26 @@ function Executive({from,to,branchId}:{from:string;to:string;branchId?:string}){
  const [rows,setRows]=useState<BranchReport[]>([]),[loading,setLoading]=useState(true),[error,setError]=useState('')
  useEffect(()=>{let live=true;setLoading(true);getBranchReport({from,to,branchId}).then(x=>live&&setRows(x)).catch(e=>live&&setError(e.message||String(e))).finally(()=>live&&setLoading(false));return()=>{live=false}},[from,to,branchId])
  if(loading)return <div className="panel loading">جاري تحميل التقرير التنفيذي…</div>
- return <div>{error&&<div className="error-box">{error}</div>}<DataTable title="التقرير التنفيذي" rows={rows} columns={[{key:'branchName',label:'الفرع'},{key:'net',label:'المبيعات',numeric:true,render:r=>money(r.net)},{key:'collections',label:'التوريد',numeric:true,render:r=>money(r.collections)},{key:'closingDebt',label:'المديونية',numeric:true,render:r=>money(r.closingDebt)},{key:'discounts',label:'الخصم',numeric:true,render:r=>money(r.discounts)},{key:'equivQty',label:'الكمية المكافئة',numeric:true,render:r=>qty(r.equivQty)},{key:'avgPrice',label:'متوسط السعر',numeric:true,render:r=>money(r.avgPrice)},{key:'expenses',label:'المصروفات',numeric:true,render:r=>money(r.expenses)},{key:'inventoryValue',label:'قيمة المخزون',numeric:true,render:r=>money(r.inventoryValue)}]}/></div>
+ return <div>{error&&<div className="error-box">{error}</div>}<DataTable title="التقرير التنفيذي" rows={rows} columns={[
+  {key:'branchName',label:'الفرع'},
+  {key:'openingDebt',label:'افتتاحي مديونية',numeric:true,render:r=>money(r.openingDebt)},
+  {key:'net',label:'المبيعات',numeric:true,render:r=>money(r.net)},
+  {key:'collections',label:'التحصيل',numeric:true,render:r=>money(r.collections)},
+  {key:'monthDebt',label:'مديونية الشهر',numeric:true,render:r=>money(r.monthDebt)},
+  {key:'closingDebt',label:'مديونية تراكمية',numeric:true,render:r=>money(r.closingDebt)},
+  {key:'discounts',label:'الخصم',numeric:true,render:r=>money(r.discounts)},
+  {key:'discountRate',label:'% الخصم',render:r=>(r.discountRate*100).toFixed(1)+'%'},
+  {key:'equivQty',label:'الكمية المكافئة',numeric:true,render:r=>qty(r.equivQty)},
+  {key:'avgPrice',label:'متوسط السعر',numeric:true,render:r=>money(r.avgPrice)},
+  {key:'fuel',label:'م. سولار',numeric:true,render:r=>money(r.fuel)},
+  {key:'petro',label:'بترو أب',numeric:true,render:r=>money(r.petro)},
+  {key:'maintenance',label:'الصيانة',numeric:true,render:r=>money(r.maintenance)},
+  {key:'inventoryQty',label:'كمية المخزون',numeric:true,render:r=>qty(r.inventoryQty)},
+  {key:'inventoryValue',label:'قيمة المخزون',numeric:true,render:r=>money(r.inventoryValue)},
+  {key:'closingCash',label:'رصيد الخزينة',numeric:true,render:r=>money(r.closingCash)},
+  {key:'expenses',label:'المصروفات',numeric:true,render:r=>money(r.expenses)},
+  {key:'expenseRate',label:'% المصروفات',render:r=>(r.expenseRate*100).toFixed(1)+'%'}
+ ]}/></div>
 }
 
 export function Reports({from,to,branchId}:{from:string;to:string;branchId?:string}){
