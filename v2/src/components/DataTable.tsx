@@ -27,6 +27,8 @@ export function DataTable<T extends Record<string,any>>({title,columns,rows}:{ti
  const [filters,setFilters]=useState<Record<string,string>>({})
  const [showColumns,setShowColumns]=useState(false)
  const [showMore,setShowMore]=useState(false)
+ const widthStorageKey='ammco:column-widths:'+title
+ const [columnWidths,setColumnWidths]=useState<Record<string,number>>(()=>{try{const saved=localStorage.getItem(widthStorageKey);const parsed=saved?JSON.parse(saved):{};return parsed&&typeof parsed==='object'?parsed:{}}catch{return {}}})
  const storageKey='ammco:columns:'+title
  const [visibleKeys,setVisibleKeys]=useState<string[]>(()=>{try{const saved=localStorage.getItem(storageKey);const parsed=saved?JSON.parse(saved):null;return Array.isArray(parsed)?parsed:columns.map(c=>String(c.key))}catch{return columns.map(c=>String(c.key))}})
  const wrapRef=useRef<HTMLDivElement>(null)
@@ -48,6 +50,7 @@ export function DataTable<T extends Record<string,any>>({title,columns,rows}:{ti
 
  useEffect(()=>{const valid=new Set(columns.map(c=>String(c.key)));setVisibleKeys(prev=>{const next=prev.filter(k=>valid.has(k));return next.length?next:columns.map(c=>String(c.key))})},[columns])
  useEffect(()=>{try{localStorage.setItem(storageKey,JSON.stringify(visibleKeys))}catch{}},[storageKey,visibleKeys])
+ useEffect(()=>{try{localStorage.setItem(widthStorageKey,JSON.stringify(columnWidths))}catch{}},[widthStorageKey,columnWidths])
  const visibleColumns=useMemo(()=>columns.filter(c=>visibleKeys.includes(String(c.key))),[columns,visibleKeys])
  const filtered=useMemo(()=>{
   const q=search.trim().toLowerCase()
@@ -79,6 +82,18 @@ export function DataTable<T extends Record<string,any>>({title,columns,rows}:{ti
   return found?sum:null
  }
 
+ const startResize=(e:React.MouseEvent<HTMLSpanElement>,key:string)=>{
+  e.preventDefault();e.stopPropagation()
+  const th=e.currentTarget.closest('th') as HTMLTableCellElement|null
+  if(!th)return
+  const startX=e.clientX,startWidth=th.getBoundingClientRect().width
+  const onMove=(ev:MouseEvent)=>{
+   const delta=startX-ev.clientX
+   setColumnWidths(w=>({...w,[key]:Math.max(70,Math.round(startWidth+delta))}))
+  }
+  const onUp=()=>{window.removeEventListener('mousemove',onMove);window.removeEventListener('mouseup',onUp)}
+  window.addEventListener('mousemove',onMove);window.addEventListener('mouseup',onUp)
+ }
  const toggleSort=(key:string)=>{
   setSort(s=>!s||s.key!==key?{key,dir:'asc'}:s.dir==='asc'?{key,dir:'desc'}:null)
  }
@@ -182,10 +197,11 @@ export function DataTable<T extends Record<string,any>>({title,columns,rows}:{ti
     <thead>
      <tr>{visibleColumns.map(c=>{
       const key=String(c.key),active=sort?.key===key
-      return <th key={key} className={c.numeric?'num':''}>
+      return <th key={key} className={c.numeric?'num':''} style={columnWidths[key]?{width:columnWidths[key],minWidth:columnWidths[key],maxWidth:columnWidths[key]}:undefined}>
        <button className={'sort-head '+(active?'active':'')} onClick={()=>toggleSort(key)} title="ترتيب">
         <span>{c.label}</span><b>{active?(sort?.dir==='asc'?'↑':'↓'):'↕'}</b>
        </button>
+       <span className="col-resizer" onMouseDown={e=>startResize(e,key)} title="اسحب لتغيير عرض العمود"/>
        {c.filter!==false&&<select className="column-filter" value={filters[key]||''} onChange={e=>setFilters(s=>({...s,[key]:e.target.value}))}>
         <option value="">الكل</option>
         {uniqueValues(key).map(v=><option key={v} value={v}>{v}</option>)}
@@ -194,7 +210,7 @@ export function DataTable<T extends Record<string,any>>({title,columns,rows}:{ti
      })}</tr>
     </thead>
     <tbody>
-     {filtered.length?filtered.map((row,i)=><tr key={i}>{visibleColumns.map(c=><td key={String(c.key)} className={c.numeric?'num':''}>{c.render?c.render(row):display(raw(row,String(c.key)))}</td>)}</tr>):<tr><td colSpan={visibleColumns.length} className="empty">لا توجد بيانات في الفترة المحددة</td></tr>}
+     {filtered.length?filtered.map((row,i)=><tr key={i}>{visibleColumns.map(c=>{const key=String(c.key);return <td key={key} className={c.numeric?'num':''} style={columnWidths[key]?{width:columnWidths[key],minWidth:columnWidths[key],maxWidth:columnWidths[key]}:undefined}>{c.render?c.render(row):display(raw(row,key))}</td>})}</tr>):<tr><td colSpan={visibleColumns.length} className="empty">لا توجد بيانات في الفترة المحددة</td></tr>}
     </tbody>
     {!!filtered.length&&<tfoot><tr>{visibleColumns.map((c,i)=>{
      if(i===0)return <th key={String(c.key)}>الإجمالي</th>
