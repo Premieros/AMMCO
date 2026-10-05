@@ -1,4 +1,4 @@
-import {useEffect,useState} from 'react'
+import {useEffect,useMemo,useState} from 'react'
 import {getDashboardSummary,type DashboardSummary} from '../data/core'
 import {getDashboardAnalytics,type DashboardAnalytics} from '../data/dashboard'
 import {KpiCard} from '../components/KpiCard'
@@ -14,7 +14,31 @@ export function Dashboard({from,to,branchId}:{from:string;to:string;branchId?:st
  const [data,setData]=useState<DashboardSummary|null>(null)
  const [analytics,setAnalytics]=useState<DashboardAnalytics|null>(null)
  const [error,setError]=useState('')
+ const [rankBy,setRankBy]=useState<'branch'|'rep'>('branch')
+ const [rankMetric,setRankMetric]=useState<'sales'|'collections'|'closingDebt'|'discounts'>('sales')
  useEffect(()=>{let live=true;setData(null);setAnalytics(null);setError('');Promise.all([getDashboardSummary({from,to,branchId}),getDashboardAnalytics({from,to,branchId})]).then(([x,a])=>{if(live){setData(x);setAnalytics(a)}}).catch(e=>live&&setError(e.message||String(e)));return()=>{live=false}},[from,to,branchId])
+ const ranking=useMemo(()=>{
+  if(!analytics)return []
+  const source=rankBy==='branch'
+   ? analytics.branches.map(x=>({name:x.branchName,sales:x.sales,collections:x.collections,closingDebt:x.closingDebt,discounts:x.discounts}))
+   : analytics.reps.map(x=>({name:x.repName,sales:x.sales,collections:x.collections,closingDebt:x.closingDebt,discounts:x.discounts}))
+  const totalSales=source.reduce((s,x)=>s+x.sales,0)
+  return source.map(x=>{
+   const value=x[rankMetric]
+   const percent=rankMetric==='sales'
+    ? (totalSales?x.sales/totalSales:0)
+    : rankMetric==='collections'
+      ? (x.sales?x.collections/x.sales:0)
+      : rankMetric==='closingDebt'
+        ? (x.sales?x.closingDebt/x.sales:0)
+        : ((x.sales+x.discounts)?x.discounts/(x.sales+x.discounts):0)
+   return {...x,value,percent}
+  }).sort((a,b)=>b.value-a.value)
+ },[analytics,rankBy,rankMetric])
+ const maxRankValue=ranking[0]?.value||1
+ const metricLabel=rankMetric==='sales'?'المبيعات':rankMetric==='collections'?'التوريد':rankMetric==='closingDebt'?'المديونية':'الخصم'
+ const ratioLabel=rankMetric==='sales'?'من إجمالي المبيعات':rankMetric==='collections'?'من المبيعات':rankMetric==='closingDebt'?'من المبيعات':'من إجمالي قبل الخصم'
+
  if(error)return <div className="error-box">{error}</div>
  if(!data||!analytics)return <div className="panel loading">جاري تحميل لوحة التحكم…</div>
  return <div className="dashboard-page premium-dashboard">
@@ -50,6 +74,31 @@ export function Dashboard({from,to,branchId}:{from:string;to:string;branchId?:st
     <KpiCard tone="green" icon={<Gift size={18}/>} title="البونص" value={money(data.bonusesValue)} hint={'الكمية: '+qty(data.bonusesQty)}/>
     <KpiCard tone="blue" icon={<Gift size={18}/>} title="الهدايا" value={money(data.giftsValue)} hint={'الكمية: '+qty(data.giftsQty)}/>
     <KpiCard tone="neutral" icon={<Building2 size={18}/>} title="عدد الفروع" value={String(data.branches)} hint={branchId?'الفرع المحدد':'فروع لها بيانات في الفترة'}/>
+   </div>
+  </section>
+
+  <section className="dashboard-section ranking-section">
+   <div className="dashboard-section-head ranking-head">
+    <div><span>الترتيب</span><h2>الأداء من الأعلى إلى الأقل</h2></div>
+    <div className="ranking-controls no-print">
+     <div className="segmented-control">
+      <button className={rankBy==='branch'?'active':''} onClick={()=>setRankBy('branch')}>حسب الفرع</button>
+      <button className={rankBy==='rep'?'active':''} onClick={()=>setRankBy('rep')}>حسب المندوب</button>
+     </div>
+     <div className="segmented-control ranking-metrics">
+      <button className={rankMetric==='sales'?'active':''} onClick={()=>setRankMetric('sales')}>مبيعات</button>
+      <button className={rankMetric==='collections'?'active':''} onClick={()=>setRankMetric('collections')}>توريد</button>
+      <button className={rankMetric==='closingDebt'?'active':''} onClick={()=>setRankMetric('closingDebt')}>مديونية</button>
+      <button className={rankMetric==='discounts'?'active':''} onClick={()=>setRankMetric('discounts')}>خصم</button>
+     </div>
+    </div>
+   </div>
+   <div className="ranking-chart" role="img" aria-label={'ترتيب '+metricLabel+' '+(rankBy==='branch'?'حسب الفروع':'حسب المناديب')}>
+    {ranking.length?ranking.map((x,i)=><div className="ranking-row" key={rankBy+'-'+x.name+'-'+i}>
+     <div className="ranking-label"><b>{i+1}</b><span>{x.name}</span></div>
+     <div className="ranking-bar-track"><span style={{width:Math.max(2,(x.value/maxRankValue)*100)+'%'}}/></div>
+     <div className="ranking-value"><strong>{money(x.value)}</strong><small>{(x.percent*100).toFixed(1)}% {ratioLabel}</small></div>
+    </div>):<p className="muted">لا توجد بيانات للترتيب في الفترة المحددة.</p>}
    </div>
   </section>
 
