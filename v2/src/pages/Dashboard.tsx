@@ -23,16 +23,15 @@ export function Dashboard({from,to,branchId}:{from:string;to:string;branchId?:st
    <KpiCard title="التوريد" value={money(data.collections)} hint={(delta(analytics.current.collections,analytics.previous.collections)>=0?'+':'')+delta(analytics.current.collections,analytics.previous.collections).toFixed(1)+'% مقابل السابقة'}/>
    <KpiCard title="نسبة التحصيل" value={(data.collectionRate*100).toFixed(1)+'%'} hint="التوريد ÷ صافي المبيعات"/>
    <KpiCard title="المديونية" value={money(data.closingDebt)}/>
-   <KpiCard title="قيمة الخصم" value={money(data.discounts)} hint={data.grossSales?((data.discounts/data.grossSales)*100).toFixed(1)+'% من قبل الخصم':''}/>
+   <KpiCard title="التالف" value={money(data.damagesValue)} hint={'الكمية: '+qty(data.damagesQty)}/>
    <KpiCard title="المصروفات" value={money(data.expenses)} hint={data.netSales?((data.expenses/data.netSales)*100).toFixed(1)+'% من المبيعات':''}/>
    <KpiCard title="الكمية المكافئة" value={qty(data.equivalentQty)}/>
    <KpiCard title="متوسط السعر" value={money(data.avgPrice)}/>
    <KpiCard title="رصيد الخزينة" value={money(data.closingCash)} hint={data.branches+' فروع لها بيانات'}/>
-   <KpiCard title="قيمة المخزون" value={money(data.inventoryValue)} hint="آخر رصيد مخزون لكل فرع"/>
-   <KpiCard title="المرتجعات" value={money(data.returnsValue)}/>
-   <KpiCard title="البونص" value={money(data.bonusesValue)}/>
-   <KpiCard title="الهدايا" value={money(data.giftsValue)}/>
-   <KpiCard title="التالف" value={money(data.damagesValue)}/>
+   <KpiCard title="المخزون" value={money(data.inventoryValue)} hint={'الكمية: '+qty(data.inventoryQty)}/>
+   <KpiCard title="المرتجعات" value={money(data.returnsValue)} hint={'الكمية: '+qty(data.returnsQty)}/>
+   <KpiCard title="البونص" value={money(data.bonusesValue)} hint={'الكمية: '+qty(data.bonusesQty)}/>
+   <KpiCard title="الهدايا" value={money(data.giftsValue)} hint={'الكمية: '+qty(data.giftsQty)}/>
    <KpiCard title="عدد الفروع" value={String(data.branches)} hint={branchId?'الفرع المحدد':'فروع لها بيانات في الفترة'}/>
   </div>
   <TimelineChart points={analytics.points}/>
