@@ -65,3 +65,21 @@ export async function resolveReviewedImport(batchId:string,mode:'append_only'|'r
  await approveImport(batchId)
  return out
 }
+
+export async function reuploadImport(input:{branchId:string;periodStart:string;periodEnd:string;file:File;onProgress?:(x:string)=>void}){
+ input.onProgress?.('قراءة الملف')
+ const parserUrl='/AMMCO/workbook-parser.js'
+ const parser:any=await import(/* @vite-ignore */ parserUrl)
+ const parsed=await parser.parseWorkbookBrowser(input.file,{periodStart:input.periodStart,periodEnd:input.periodEnd})
+ const {data:{session}}=await supabase.auth.getSession()
+ if(!session)throw new Error('انتهت جلسة الدخول')
+ input.onProgress?.('رفع النسخة الجديدة')
+ const fd=new FormData();fd.set('branch_id',input.branchId);fd.set('period_start',input.periodStart);fd.set('period_end',input.periodEnd);fd.set('file',input.file)
+ let res=await fetch(import.meta.env.VITE_SUPABASE_URL+'/functions/v1/ammco-import-upload',{method:'POST',headers:{Authorization:'Bearer '+session.access_token,apikey:import.meta.env.VITE_SUPABASE_PUBLISHABLE_KEY},body:fd})
+ const uploaded=await res.json();if(!res.ok)throw new Error(uploaded.error||'تعذر رفع الملف')
+ input.onProgress?.('تحليل النسخة')
+ res=await fetch(import.meta.env.VITE_SUPABASE_URL+'/functions/v1/ammco-import-process',{method:'POST',headers:{Authorization:'Bearer '+session.access_token,apikey:import.meta.env.VITE_SUPABASE_PUBLISHABLE_KEY,'Content-Type':'application/json'},body:JSON.stringify({batchId:uploaded.batchId,parsed,historyMode:'review'})})
+ const processed=await res.json();if(!res.ok)throw new Error(processed.error||'تعذر تحليل الملف')
+ if(processed.status==='validated')await approveImport(uploaded.batchId)
+ return {uploaded,processed}
+}
