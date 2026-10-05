@@ -18,10 +18,11 @@ import {Inventory} from '../pages/Inventory'
 import {Vehicles} from '../pages/Vehicles'
 import {UsersPage} from '../pages/Users'
 import {BranchesPage} from '../pages/Branches'
+import {Settings} from '../pages/Settings'
 import {Login} from '../pages/Login'
-import {LayoutDashboard,FileBarChart2,Users,Receipt,WalletCards,Upload,UserCog,LogOut,Boxes,Truck} from 'lucide-react'
+import {LayoutDashboard,FileBarChart2,Users,Receipt,WalletCards,Upload,UserCog,LogOut,Boxes,Truck,Settings as SettingsIcon} from 'lucide-react'
 
-type Route='dashboard'|'reports'|'reps'|'rep-daily'|'receivables'|'monthly'|'products'|'banks'|'expenses'|'treasury'|'inventory'|'vehicles'|'imports'|'branches'|'users'
+type Route='dashboard'|'reports'|'reps'|'rep-daily'|'receivables'|'monthly'|'products'|'banks'|'expenses'|'treasury'|'inventory'|'vehicles'|'imports'|'branches'|'users'|'settings'
 const nav=[
  ['dashboard','لوحة التحكم',LayoutDashboard],
  ['reports','التقارير',FileBarChart2],
@@ -38,6 +39,7 @@ const nav=[
  ['imports','الاستيراد',Upload],
  ['branches','إدارة الفروع',Boxes],
  ['users','إدارة المستخدمين',UserCog],
+ ['settings','الإعدادات',SettingsIcon],
 ] as const
 
 const monthBounds=(month:string)=>{
@@ -122,7 +124,7 @@ export function App(){
 
    {route==='dashboard' && <Dashboard from={period.from} to={period.to} branchId={branchId||undefined}/>}
    {route==='reports' && <Reports from={period.from} to={period.to} branchId={branchId||undefined}/>}
-   {route==='reps' && <Reps from={period.from} to={period.to} branchId={branchId||undefined}/>}
+   {route==='reps' && <Reps from={period.from} to={period.to} branchId={branchId||undefined} isAdmin={profile.role==='admin'} month={month}/>} 
    {route==='rep-daily' && <RepDaily from={period.from} to={period.to} branchId={branchId||undefined}/>}
    {route==='receivables' && <Receivables from={period.from} to={period.to} branchId={branchId||undefined}/>}
    {route==='monthly' && <Monthly year={period.from.slice(0,4)} branchId={branchId||undefined}/>}
@@ -135,6 +137,7 @@ export function App(){
    {route==='imports' && <Imports month={month} branchId={branchId||undefined} branches={branches} isAdmin={profile.role==='admin'}/>}
    {route==='branches' && profile.role==='admin' && <BranchesPage/>}
    {route==='users' && profile.role==='admin' && <UsersPage/>}
+   {route==='settings' && <Settings/>}
   </main>
  </div>
 }
