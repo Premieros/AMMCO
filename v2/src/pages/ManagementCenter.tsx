@@ -9,6 +9,7 @@ export function ManagementCenter({from,to,branchId}:{from:string;to:string;branc
  const [pending,setPending]=useState<any[]>([])
  const [branchCount,setBranchCount]=useState(0),[branchMap,setBranchMap]=useState<Map<string,string>>(new Map())
  const [error,setError]=useState('')
+ const [activeTab,setActiveTab]=useState<'overview'|'interventions'|'imports'>('overview')
  useEffect(()=>{let live=true;(async()=>{try{
   const [a,imports,branches]=await Promise.all([getDashboardAnalytics({from,to,branchId}),getImportHistory(branchId),getBranches()])
   if(!live)return
@@ -23,15 +24,16 @@ export function ManagementCenter({from,to,branchId}:{from:string;to:string;branc
  const deductions=analytics.anomalies.length*4+pending.length*5
  const score=Math.max(10,Math.min(100,100-deductions))
  return <div>
-  <section className="quality-hero panel"><div className="quality-score"><strong>{score}%</strong><span>سلامة البيانات</span></div><div className="quality-grid"><div><span>التغطية التشغيلية</span><b>{reporting} / {branchCount} فرع</b></div><div><span>تنبيهات نشطة</span><b>{analytics.anomalies.length}</b></div><div><span>ملفات معلقة</span><b>{pending.length}</b></div></div></section>
-  <section className="panel"><h2>قائمة التدخل الإداري</h2>{analytics.anomalies.length?<div className="anomaly-list">{analytics.anomalies.map((x,i)=><div className="anomaly-item" key={i}>{x}</div>)}</div>:<p className="muted">لا توجد بنود معلقة تحتاج تدخلاً إداريًا وفق القواعد الحالية.</p>}</section>
-  <DataTable title="ملفات الشيت المعلقة والمرفوضة" rows={pending} columns={[
+  <div className="subpage-tabs no-print"><button className={activeTab==='overview'?'active':''} onClick={()=>setActiveTab('overview')}>نظرة عامة</button><button className={activeTab==='interventions'?'active':''} onClick={()=>setActiveTab('interventions')}>التدخل الإداري</button><button className={activeTab==='imports'?'active':''} onClick={()=>setActiveTab('imports')}>الملفات المعلقة</button></div>
+  {activeTab==='overview'&&<section className="quality-hero panel"><div className="quality-score"><strong>{score}%</strong><span>سلامة البيانات</span></div><div className="quality-grid"><div><span>التغطية التشغيلية</span><b>{reporting} / {branchCount} فرع</b></div><div><span>تنبيهات نشطة</span><b>{analytics.anomalies.length}</b></div><div><span>ملفات معلقة</span><b>{pending.length}</b></div></div></section>
+  {activeTab==='interventions'&&<section className="panel"><h2>قائمة التدخل الإداري</h2>{analytics.anomalies.length?<div className="anomaly-list">{analytics.anomalies.map((x,i)=><div className="anomaly-item" key={i}>{x}</div>)}</div>:<p className="muted">لا توجد بنود معلقة تحتاج تدخلاً إداريًا وفق القواعد الحالية.</p>}</section>}
+  {activeTab==='imports'&&<DataTable title="ملفات الشيت المعلقة والمرفوضة" rows={pending} columns={[
    {key:'branch_id',label:'الفرع',render:r=>branchMap.get(r.branch_id)||'—'},
    {key:'original_file_name',label:'الملف'},
    {key:'period_start',label:'من'},{key:'period_end',label:'إلى'},
    {key:'version',label:'الإصدار',numeric:true},
    {key:'status',label:'الحالة'},
    {key:'uploaded_at',label:'وقت الرفع',render:r=>new Date(r.uploaded_at).toLocaleString('en-GB')}
-  ]}/>
+  ]}/>} 
  </div>
 }
