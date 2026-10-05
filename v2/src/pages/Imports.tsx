@@ -1,10 +1,10 @@
 import {FormEvent,useEffect,useMemo,useState} from 'react'
 import type {Branch} from '../domain/types'
-import {approveImport,deleteImport,getImportHistory,getImportReview,processImport,resolveReviewedImport,uploadBranchWorkbook} from '../data/imports'
+import {approveImport,deleteImport,getImportHistory,getImportReview,processImport,reuploadImport,resolveReviewedImport,uploadBranchWorkbook} from '../data/imports'
 import {DataTable} from '../components/DataTable'
 
 export function Imports({month,branchId,branches,isAdmin}:{month:string;branchId?:string;branches:Branch[];isAdmin:boolean}){
- const [rows,setRows]=useState<any[]>([]),[msg,setMsg]=useState(''),[busy,setBusy]=useState(false),[review,setReview]=useState<any|null>(null)
+ const [rows,setRows]=useState<any[]>([]),[msg,setMsg]=useState(''),[busy,setBusy]=useState(false),[review,setReview]=useState<any|null>(null),[reupload,setReupload]=useState<any|null>(null)
  const map=useMemo(()=>new Map(branches.map(b=>[b.id,b.name])),[branches])
  const load=()=>getImportHistory(branchId).then(setRows).catch(e=>setMsg(e.message||String(e)))
  useEffect(()=>{void load()},[branchId])
@@ -34,6 +34,7 @@ export function Imports({month,branchId,branches,isAdmin}:{month:string;branchId
  async function remove(r:any){if(!confirm('سيتم حذف الشيت «'+(r.original_file_name||'')+'» وبياناته المرتبطة. هل تريد المتابعة؟'))return;try{setMsg('جاري الحذف…');await deleteImport(r.id);setMsg('تم الحذف');await load()}catch(x:any){setMsg(x.message||String(x))}}
  async function rerun(id:string){try{setMsg('جاري إعادة التحليل…');await processImport(id);setMsg('تمت إعادة المعالجة');await load()}catch(x:any){setMsg(x.message||String(x))}}
  async function openReview(r:any){try{setMsg('جاري تحميل المراجعة…');const data=await getImportReview(r.id);setReview({batch:r,...data});setMsg('')}catch(x:any){setMsg(x.message||String(x))}}
+ async function submitReupload(e:FormEvent<HTMLFormElement>){e.preventDefault();if(!reupload)return;const f=new FormData(e.currentTarget),file=f.get('file');if(!(file instanceof File)||!file.size)return;try{setBusy(true);const out=await reuploadImport({branchId:reupload.branch_id,periodStart:reupload.period_start,periodEnd:reupload.period_end,file,onProgress:setMsg});setMsg(out.processed.status==='validated'?'تم رفع النسخة الجديدة وتحليلها واعتمادها':'تم رفع النسخة الجديدة وتحتاج مراجعة');setReupload(null);await load()}catch(x:any){setMsg(x.message||String(x))}finally{setBusy(false)}}
  async function resolve(mode:'append_only'|'replace'){if(!review)return;try{setMsg('جاري تجهيز النسخة…');await resolveReviewedImport(review.batch.id,mode);setReview(null);setMsg(mode==='replace'?'تم اعتماد الاستبدال':'تم الاحتفاظ بالقديم واعتماد الجديد فقط');await load()}catch(x:any){setMsg(x.message||String(x))}}
 
  return <div>
@@ -50,10 +51,12 @@ export function Imports({month,branchId,branches,isAdmin}:{month:string;branchId
     {isAdmin&&r.status==='validated'&&<button className="small-btn" onClick={()=>approve(r.id)}>اعتماد</button>}
     {isAdmin&&['uploaded','failed'].includes(r.status)&&<button className="small-btn" onClick={()=>rerun(r.id)}>إعادة التحليل</button>}
     {r.status==='rejected'&&<button className="small-btn" onClick={()=>openReview(r)}>مراجعة</button>}
+    {isAdmin&&<button className="small-btn" onClick={()=>setReupload(r)}>إعادة رفع</button>}
     {isAdmin&&<button className="small-btn" onClick={()=>remove(r)}>حذف</button>}
    </div>}
   ]}/>
 
+  {reupload&&<div className="modal-backdrop"><form className="modal-card" onSubmit={submitReupload}><div className="modal-head"><h3>إعادة رفع الشيت</h3><button type="button" className="small-btn" onClick={()=>setReupload(null)}>إغلاق</button></div><p className="muted">الفترة: {reupload.period_start} — {reupload.period_end}</p><label className="upload-file-label">ملف Excel الجديد<input name="file" type="file" accept=".xlsx" required/></label>{msg&&<p className="muted">{msg}</p>}<button className="primary" disabled={busy}>{busy?'جاري الرفع…':'رفع وتحليل النسخة الجديدة'}</button></form></div>}
   {review&&<div className="modal-backdrop"><div className="modal-card"><div className="modal-head"><h3>مراجعة فروق الشيت</h3><button className="small-btn" onClick={()=>setReview(null)}>إغلاق</button></div><p className="muted">الأخطاء: {review.issues.filter((x:any)=>x.severity==='error').length} • التحذيرات: {review.issues.filter((x:any)=>x.severity==='warning').length} • الأيام المتغيرة: {review.changes.length}</p><div className="review-list">{review.changes.map((ch:any)=><div className="review-card" key={ch.business_date}><b>{ch.business_date}</b><span>{ch.resolution_status||'غير محسوم'}</span></div>)}</div><div className="inline-actions review-actions"><button className="small-btn" onClick={()=>resolve('append_only')}>احتفظ بالسابق واستورد الجديد فقط</button><button className="primary" onClick={()=>resolve('replace')}>اعتماد الاستبدال بهذه النسخة</button></div></div></div>}
  </div>
 }
