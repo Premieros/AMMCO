@@ -485,3 +485,33 @@ thead th{position:sticky}
 }
 thead th:hover .col-resizer:after,.col-resizer:hover:after{background:#8aa3b4}
 th[style],td[style]{overflow:hidden;text-overflow:ellipsis}
+
+
+/* Make on-screen tables match print layout */
+.table-wrap table{
+ table-layout:fixed;
+ width:100%;
+}
+.table-wrap thead th,
+.table-wrap tbody td,
+.table-wrap tfoot th,
+.table-wrap tfoot td{
+ white-space:normal!important;
+ word-break:break-word;
+ overflow-wrap:anywhere;
+ overflow:visible;
+ text-overflow:clip;
+ vertical-align:middle;
+}
+.table-wrap th[style],
+.table-wrap td[style]{
+ overflow:visible!important;
+ text-overflow:clip!important;
+}
+.table-wrap .sort-head span{
+ white-space:normal;
+ line-height:1.45;
+}
+.table-wrap .column-filter{
+ min-width:0;
+}
