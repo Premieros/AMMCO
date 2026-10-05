@@ -62,6 +62,12 @@ export type DashboardSummary={
  equivalentQty:number
  avgPrice:number
  branches:number
+ collectionRate:number
+ inventoryValue:number
+ returnsValue:number
+ bonusesValue:number
+ giftsValue:number
+ damagesValue:number
 }
 
 export async function getDashboardSummary(params:{from:string;to:string;branchId?:string}):Promise<DashboardSummary>{
@@ -69,7 +75,7 @@ export async function getDashboardSummary(params:{from:string;to:string;branchId
  const safeIds=ids.length?ids:[ZERO]
  const daily=await fetchAllPages<any>((fromRow,toRow)=>{
   let q=supabase.from('v_branch_daily_kpis')
-   .select('branch_id,business_date,gross_sales,net_sales,discounts,collections,closing_receivables,expenses,closing_cash')
+   .select('branch_id,business_date,gross_sales,net_sales,discounts,collections,closing_receivables,expenses,closing_cash,inventory_value,returns_value,bonuses_value,gifts_value,damages_value')
    .gte('business_date',params.from).lte('business_date',params.to)
    .order('business_date',{ascending:true})
   if(params.branchId)q=q.eq('branch_id',params.branchId)
@@ -83,16 +89,18 @@ export async function getDashboardSummary(params:{from:string;to:string;branchId
   if(params.branchId)q=q.eq('branch_id',params.branchId)
   return q.range(fromRow,toRow)
  })
- let netSales=0,grossSales=0,discounts=0,collections=0,expenses=0,equivalentQty=0
- const latest=new Map<string,{date:string,debt:number,cash:number}>()
+ let netSales=0,grossSales=0,discounts=0,collections=0,expenses=0,equivalentQty=0,returnsValue=0,bonusesValue=0,giftsValue=0,damagesValue=0
+ const latest=new Map<string,{date:string,debt:number,cash:number,inventory:number}>()
  for(const r of daily){
   netSales+=Number(r.net_sales||0);grossSales+=Number(r.gross_sales||0);discounts+=Number(r.discounts||0)
   collections+=Number(r.collections||0);expenses+=Number(r.expenses||0)
+  returnsValue+=Number(r.returns_value||0);bonusesValue+=Number(r.bonuses_value||0);giftsValue+=Number(r.gifts_value||0);damagesValue+=Number(r.damages_value||0)
   const p=latest.get(r.branch_id)
-  if(!p||String(r.business_date)>=p.date)latest.set(r.branch_id,{date:String(r.business_date),debt:Number(r.closing_receivables||0),cash:Number(r.closing_cash||0)})
+  if(!p||String(r.business_date)>=p.date)latest.set(r.branch_id,{date:String(r.business_date),debt:Number(r.closing_receivables||0),cash:Number(r.closing_cash||0),inventory:Number(r.inventory_value||0)})
  }
  for(const r of reps)equivalentQty+=Number(r.raw_payload?.equivalent_sales_qty||0)
  const closingDebt=[...latest.values()].reduce((s,x)=>s+x.debt,0)
+ const inventoryValue=[...latest.values()].reduce((s,x)=>s+x.inventory,0)
  const cashByBranch=new Map<string,{opening:number|null,incoming:number,outgoing:number}>()
  for(const r of cashRows){
   let x=cashByBranch.get(r.branch_id)
@@ -103,5 +111,5 @@ export async function getDashboardSummary(params:{from:string;to:string;branchId
   if(r.direction==='out')x.outgoing+=amount
  }
  const closingCash=[...cashByBranch.values()].reduce((s,x)=>s+(x.opening===null?0:x.opening+x.incoming-x.outgoing),0)
- return {netSales,grossSales,discounts,collections,closingDebt,expenses,closingCash,equivalentQty,avgPrice:equivalentQty?netSales/equivalentQty:0,branches:latest.size}
+ return {netSales,grossSales,discounts,collections,closingDebt,expenses,closingCash,equivalentQty,avgPrice:equivalentQty?netSales/equivalentQty:0,branches:latest.size,collectionRate:netSales?collections/netSales:0,inventoryValue,returnsValue,bonusesValue,giftsValue,damagesValue}
 }
