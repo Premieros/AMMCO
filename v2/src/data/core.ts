@@ -73,6 +73,7 @@ export type DashboardSummary={
  bonusesQty:number
  giftsQty:number
  damagesQty:number
+ fuel:number
 }
 
 export async function getDashboardSummary(params:{from:string;to:string;branchId?:string}):Promise<DashboardSummary>{
@@ -102,7 +103,14 @@ export async function getDashboardSummary(params:{from:string;to:string;branchId
   if(params.branchId)q=q.eq('branch_id',params.branchId)
   return q.range(fromRow,toRow)
  })
- let netSales=0,grossSales=0,discounts=0,collections=0,expenses=0,equivalentQty=0,returnsValue=0,bonusesValue=0,giftsValue=0,damagesValue=0,returnsQty=0,bonusesQty=0,giftsQty=0,damagesQty=0
+ const fuelRows=await fetchAllPages<any>((fromRow,toRow)=>{
+  let q=supabase.from('v_expense_analysis')
+   .select('branch_id,canonical_category,expense_group,amount')
+   .gte('entry_date',params.from).lte('entry_date',params.to)
+  if(params.branchId)q=q.eq('branch_id',params.branchId)
+  return q.range(fromRow,toRow)
+ })
+ let netSales=0,grossSales=0,discounts=0,collections=0,expenses=0,equivalentQty=0,returnsValue=0,bonusesValue=0,giftsValue=0,damagesValue=0,returnsQty=0,bonusesQty=0,giftsQty=0,damagesQty=0,fuel=0
  const latest=new Map<string,{date:string,debt:number,cash:number,inventory:number}>()
  for(const r of daily){
   netSales+=Number(r.net_sales||0);grossSales+=Number(r.gross_sales||0);discounts+=Number(r.discounts||0)
@@ -120,6 +128,7 @@ export async function getDashboardSummary(params:{from:string;to:string;branchId
   else if(date===p.date)p.qty+=Number(r.closing_qty||0)
  }
  for(const r of reps)equivalentQty+=Number(r.raw_payload?.equivalent_sales_qty||0)
+ for(const r of fuelRows){const t=((r.canonical_category||'')+' '+(r.expense_group||'')).toLowerCase();if(/سولار|وقود|fuel/.test(t))fuel+=Number(r.amount||0)}
  const closingDebt=[...latest.values()].reduce((s,x)=>s+x.debt,0)
  const inventoryValue=[...latest.values()].reduce((s,x)=>s+x.inventory,0)
  const inventoryQty=[...inventoryLatest.values()].reduce((s,x)=>s+x.qty,0)
@@ -133,5 +142,5 @@ export async function getDashboardSummary(params:{from:string;to:string;branchId
   if(r.direction==='out')x.outgoing+=amount
  }
  const closingCash=[...cashByBranch.values()].reduce((s,x)=>s+(x.opening===null?0:x.opening+x.incoming-x.outgoing),0)
- return {netSales,grossSales,discounts,collections,closingDebt,expenses,closingCash,equivalentQty,avgPrice:equivalentQty?netSales/equivalentQty:0,branches:latest.size,collectionRate:netSales?collections/netSales:0,inventoryValue,returnsValue,bonusesValue,giftsValue,damagesValue,inventoryQty,returnsQty,bonusesQty,giftsQty,damagesQty}
+ return {netSales,grossSales,discounts,collections,closingDebt,expenses,closingCash,equivalentQty,avgPrice:equivalentQty?netSales/equivalentQty:0,branches:latest.size,collectionRate:netSales?collections/netSales:0,inventoryValue,returnsValue,bonusesValue,giftsValue,damagesValue,inventoryQty,returnsQty,bonusesQty,giftsQty,damagesQty,fuel}
 }
