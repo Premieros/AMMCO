@@ -98,7 +98,7 @@ export function DataTable<T extends Record<string,any>>({title,columns,rows}:{ti
   if(!clone)return
   const w=window.open('','_blank','width=1200,height=800')
   if(!w)return
-  w.document.write('<!doctype html><html lang="ar" dir="rtl"><head><meta charset="utf-8"><title>'+title+'</title><style>@page{size:A4 landscape;margin:10mm}body{font-family:"Noto Sans Arabic",Tahoma,Arial,sans-serif;padding:8px;color:#172033}h1{font-size:18px;margin:0 0 12px}table{width:100%;border-collapse:collapse;font-size:10px}th,td{border:1px solid #cbd5e1;padding:6px 7px;text-align:right}th{background:#eef3f8;color:#172033;font-weight:700}tbody tr:nth-child(even){background:#f8fafc}.num{direction:ltr;text-align:right;font-variant-numeric:tabular-nums}tfoot{font-weight:700;background:#e8eef5}</style></head><body><h1>'+title+'</h1>'+clone.outerHTML+'</body></html>')
+  w.document.write('<!doctype html><html lang="ar" dir="rtl"><head><meta charset="utf-8"><title>'+title+'</title><style>@page{size:A4 landscape;margin:5mm}html,body{margin:0;padding:0}body{font-family:"Noto Sans Arabic",Tahoma,Arial,sans-serif;color:#172033}h1{font-size:16px;margin:0 0 8px}table{width:100%;border-collapse:collapse;table-layout:fixed;font-size:8.5px;page-break-inside:auto}thead{display:table-header-group}tfoot{display:table-footer-group}tr{page-break-inside:avoid;page-break-after:auto}th,td{border:1px solid #cbd5e1;padding:4px 5px;text-align:right;white-space:normal;word-break:break-word;overflow-wrap:anywhere}th{background:#eef3f8;color:#172033;font-weight:700}.num{direction:ltr;text-align:right;font-variant-numeric:tabular-nums}tfoot{font-weight:700;background:#e8eef5}</style></head><body><h1>'+title+'</h1>'+clone.outerHTML+'</body></html>')
   w.document.close();w.focus();setTimeout(()=>w.print(),180)
  }
 
@@ -116,13 +116,25 @@ export function DataTable<T extends Record<string,any>>({title,columns,rows}:{ti
    const canvas=await html2canvas(host,{backgroundColor:'#ffffff',scale:1.4,useCORS:true,windowWidth:1500})
    const pdf=new jsPDF({orientation:'landscape',unit:'mm',format:'a4',compress:true})
    const pageW=pdf.internal.pageSize.getWidth(),pageH=pdf.internal.pageSize.getHeight()
-   const imgW=pageW-12,ratio=imgW/canvas.width,imgH=canvas.height*ratio
-   const data=canvas.toDataURL('image/jpeg',0.92)
-   let offset=0,page=0
-   while(offset<imgH){
+   const margin=4,printW=pageW-margin*2,printH=pageH-margin*2
+   const ratio=printW/canvas.width
+   const renderedH=canvas.height*ratio
+   const slicePx=Math.floor(printH/ratio)
+   let sourceY=0,page=0
+   while(sourceY<canvas.height){
+    const sourceH=Math.min(slicePx,canvas.height-sourceY)
+    const pageCanvas=document.createElement('canvas')
+    pageCanvas.width=canvas.width
+    pageCanvas.height=sourceH
+    const ctx=pageCanvas.getContext('2d')
+    if(!ctx)throw new Error('تعذر تجهيز صفحة PDF')
+    ctx.fillStyle='#ffffff';ctx.fillRect(0,0,pageCanvas.width,pageCanvas.height)
+    ctx.drawImage(canvas,0,sourceY,canvas.width,sourceH,0,0,canvas.width,sourceH)
+    const pageImg=pageCanvas.toDataURL('image/jpeg',0.92)
+    const pageImgH=sourceH*ratio
     if(page>0)pdf.addPage()
-    pdf.addImage(data,'JPEG',6,6-offset,imgW,imgH,undefined,'FAST')
-    offset+=pageH-12
+    pdf.addImage(pageImg,'JPEG',margin,margin,printW,pageImgH,undefined,'FAST')
+    sourceY+=sourceH
     page++
    }
    return pdf.output('blob')
