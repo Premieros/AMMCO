@@ -8,12 +8,12 @@ const ZERO='00000000-0000-0000-0000-000000000000'
 const money=(n:number)=>new Intl.NumberFormat('en-US',{maximumFractionDigits:0}).format(n)
 const qty=(n:number)=>new Intl.NumberFormat('en-US',{maximumFractionDigits:2}).format(n)
 const pct=(n:number)=>(n*100).toFixed(1)+'%'
-const prevMonth=(from:string)=>{const d=new Date(from+'T00:00:00Z'),p=new Date(Date.UTC(d.getUTCFullYear(),d.getUTCMonth()-1,1)),y=p.getUTCFullYear(),m=p.getUTCMonth()+1,last=new Date(Date.UTC(y,m,0)).getUTCDate();return {from:y+'-'+String(m).padStart(2,'0')+'-01',to:y+'-'+String(m).padStart(2,'0')+'-'+String(last).padStart(2,'0')}}
+const previousPeriod=(from:string,to:string)=>{const a=new Date(from+'T00:00:00Z'),b=new Date(to+'T00:00:00Z'),days=Math.max(1,Math.round((b.getTime()-a.getTime())/86400000)+1),prevTo=new Date(a.getTime()-86400000),prevFrom=new Date(prevTo.getTime()-(days-1)*86400000);return {from:prevFrom.toISOString().slice(0,10),to:prevTo.toISOString().slice(0,10)}}
 
 export function ExecutiveComparison({from,to,branchId}:{from:string;to:string;branchId?:string}){
  const [rows,setRows]=useState<any[]>([]),[loading,setLoading]=useState(true),[error,setError]=useState('')
  useEffect(()=>{let live=true;(async()=>{try{
-  const prev=prevMonth(from),ytdFrom=to.slice(0,4)+'-01-01',ids=await getApprovedBatchIds(),safe=ids.length?ids:[ZERO]
+  const prev=previousPeriod(from,to),ytdFrom=to.slice(0,4)+'-01-01',ids=await getApprovedBatchIds(),safe=ids.length?ids:[ZERO]
   const loadDaily=(a:string,b:string)=>fetchAllPages<any>((x,y)=>{let q=supabase.from('v_branch_daily_kpis').select('branch_id,branch_name,business_date,gross_sales,net_sales,discounts,collections,opening_receivables,closing_receivables,expenses').gte('business_date',a).lte('business_date',b).order('business_date');if(branchId)q=q.eq('branch_id',branchId);return q.range(x,y)})
   const [cur,old,ytd,wh]=await Promise.all([
    loadDaily(from,to),loadDaily(prev.from,prev.to),
@@ -29,6 +29,6 @@ export function ExecutiveComparison({from,to,branchId}:{from:string;to:string;br
  }catch(e:any){if(live)setError(e.message||String(e))}finally{if(live)setLoading(false)}})();return()=>{live=false}},[from,to,branchId])
  if(loading)return <div className="panel loading">جاري تحميل المقارنة التنفيذية…</div>
  return <div>{error&&<div className="error-box">{error}</div>}<DataTable title="المقارنة التنفيذية للفروع" rows={rows} columns={[
-  {key:'branchName',label:'الفرع'},{key:'gross',label:'قبل الخصم',numeric:true,render:r=>money(r.gross)},{key:'discounts',label:'الخصم',numeric:true,render:r=>money(r.discounts)},{key:'discountRate',label:'% الخصم',render:r=>pct(r.discountRate)},{key:'net',label:'صافي البيع',numeric:true,render:r=>money(r.net)},{key:'collections',label:'التحصيل',numeric:true,render:r=>money(r.collections)},{key:'openingDebt',label:'مديونية أول',numeric:true,render:r=>money(r.openingDebt)},{key:'closingDebt',label:'مديونية آخر',numeric:true,render:r=>money(r.closingDebt)},{key:'expenses',label:'المصروفات',numeric:true,render:r=>money(r.expenses)},{key:'expenseRate',label:'% المصروفات',render:r=>pct(r.expenseRate)},{key:'prevNet',label:'الشهر السابق',numeric:true,render:r=>money(r.prevNet)},{key:'change',label:'التغير',render:r=>pct(r.change)},{key:'ytdNet',label:'YTD',numeric:true,render:r=>money(r.ytdNet)},{key:'stockQty',label:'كمية المخزون',numeric:true,render:r=>qty(r.stockQty)},{key:'stockValue',label:'قيمة المخزون',numeric:true,render:r=>money(r.stockValue)}
+  {key:'branchName',label:'الفرع'},{key:'gross',label:'قبل الخصم',numeric:true,render:r=>money(r.gross)},{key:'discounts',label:'الخصم',numeric:true,render:r=>money(r.discounts)},{key:'discountRate',label:'% الخصم',render:r=>pct(r.discountRate)},{key:'net',label:'صافي البيع',numeric:true,render:r=>money(r.net)},{key:'collections',label:'التحصيل',numeric:true,render:r=>money(r.collections)},{key:'openingDebt',label:'مديونية أول',numeric:true,render:r=>money(r.openingDebt)},{key:'closingDebt',label:'مديونية آخر',numeric:true,render:r=>money(r.closingDebt)},{key:'expenses',label:'المصروفات',numeric:true,render:r=>money(r.expenses)},{key:'expenseRate',label:'% المصروفات',render:r=>pct(r.expenseRate)},{key:'prevNet',label:'الفترة السابقة',numeric:true,render:r=>money(r.prevNet)},{key:'change',label:'التغير',render:r=>pct(r.change)},{key:'ytdNet',label:'YTD',numeric:true,render:r=>money(r.ytdNet)},{key:'stockQty',label:'كمية المخزون',numeric:true,render:r=>qty(r.stockQty)},{key:'stockValue',label:'قيمة المخزون',numeric:true,render:r=>money(r.stockValue)}
  ]}/></div>
 }
