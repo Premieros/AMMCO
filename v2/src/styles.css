@@ -2141,3 +2141,141 @@ body{
   white-space:normal;
  }
 }
+
+
+/* Readability pass: clearer Cairo text and smoother large numbers */
+html{
+ font-size:16px!important;
+ text-rendering:optimizeLegibility;
+}
+body{
+ font-weight:500;
+ line-height:1.7;
+ -webkit-font-smoothing:antialiased;
+ -moz-osx-font-smoothing:grayscale;
+ font-synthesis:none;
+}
+body,button,input,select,textarea{
+ font-family:'Cairo','Inter',system-ui,-apple-system,BlinkMacSystemFont,'Segoe UI',sans-serif!important;
+}
+button,input,select,textarea{
+ font-size:13px;
+}
+.sidebar nav a{
+ font-size:13.5px!important;
+ font-weight:650!important;
+ line-height:1.7!important;
+}
+.nav-caption,.sidebar-foot small{
+ font-size:10.5px!important;
+}
+.strip-title strong{
+ font-size:18px!important;
+ font-weight:750!important;
+ letter-spacing:0!important;
+}
+.strip-title small,
+.strip-field span,
+.strip-user,
+.strip-pill{
+ font-size:10px!important;
+}
+.strip-field select,
+.strip-field input{
+ font-size:11px!important;
+}
+.dashboard-section-head>div>span,
+.chart-eyebrow,
+.page-breadcrumb,
+.section-heading>div>span{
+ font-size:10px!important;
+}
+.dashboard-section-head h2,
+.premium-chart-head h2,
+.section-heading h2{
+ font-size:17px!important;
+ font-weight:750!important;
+}
+.dashboard-section-head small,
+.premium-chart-head small,
+.section-heading small{
+ font-size:11px!important;
+}
+.premium-kpi .kpi-copy>span,
+.kpi-card span{
+ font-size:11.5px!important;
+ font-weight:650!important;
+}
+.premium-kpi .kpi-copy>strong,
+.kpi-card strong{
+ font-size:21px!important;
+ line-height:1.3!important;
+ font-weight:700!important;
+ letter-spacing:0!important;
+ font-variant-numeric:tabular-nums;
+ text-rendering:geometricPrecision;
+}
+.premium-kpi.featured .kpi-copy>strong{
+ font-size:23px!important;
+ font-weight:700!important;
+}
+.premium-kpi small,
+.kpi-card small{
+ font-size:10.5px!important;
+ line-height:1.65!important;
+}
+table{
+ font-size:12px!important;
+ line-height:1.75!important;
+}
+th,td{
+ font-size:11.5px!important;
+}
+thead th{
+ font-weight:750!important;
+}
+td.num,th.num,
+.ranking-value strong,
+.dashboard-hero-stats strong{
+ font-variant-numeric:tabular-nums;
+ font-feature-settings:'tnum' 1,'lnum' 1;
+ letter-spacing:0!important;
+}
+.dashboard-hero h2{
+ font-size:28px!important;
+ font-weight:750!important;
+}
+.dashboard-hero p,
+.dashboard-hero-eyebrow{
+ font-size:11px!important;
+}
+.dashboard-hero-stats span{
+ font-size:10.5px!important;
+}
+.dashboard-hero-stats strong{
+ font-size:18px!important;
+ font-weight:700!important;
+}
+.ranking-label>span{
+ font-size:12px!important;
+ font-weight:700!important;
+}
+.ranking-value strong{
+ font-size:13px!important;
+ font-weight:700!important;
+}
+.ranking-value small{
+ font-size:10px!important;
+ line-height:1.55!important;
+}
+.muted,.loading,.panel p{
+ font-size:12px!important;
+}
+.small-btn,.primary{
+ font-weight:700!important;
+}
+@media(max-width:900px){
+ html{font-size:15px!important}
+ .premium-kpi .kpi-copy>strong,.kpi-card strong{font-size:20px!important}
+ .dashboard-hero h2{font-size:24px!important}
+}
