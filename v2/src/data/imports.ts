@@ -1,8 +1,23 @@
 import {supabase} from '../lib/supabase'
 import {fetchAllPages} from './pagination'
 
+async function authedPost(path:string,body:any){
+ const {data:{session}}=await supabase.auth.getSession()
+ if(!session)throw new Error('انتهت جلسة الدخول')
+ const res=await fetch(import.meta.env.VITE_SUPABASE_URL+path,{method:'POST',headers:{Authorization:'Bearer '+session.access_token,apikey:import.meta.env.VITE_SUPABASE_PUBLISHABLE_KEY,'Content-Type':'application/json'},body:JSON.stringify(body)})
+ const out=await res.json()
+ if(!res.ok)throw new Error(out.error||'تعذر تنفيذ العملية')
+ return out
+}
+
 export async function getImportHistory(branchId?:string){
- return fetchAllPages<any>((from,to)=>{let q=supabase.from('import_batches').select('id,branch_id,file_name,period_start,period_end,status,version,uploaded_at,validated_at,approved_at,metadata').order('uploaded_at',{ascending:false});if(branchId)q=q.eq('branch_id',branchId);return q.range(from,to)})
+ return fetchAllPages<any>((from,to)=>{
+  let q=supabase.from('import_batches')
+   .select('id,branch_id,original_file_name,period_start,period_end,status,version,uploaded_at,validated_at,approved_at,failure_message,metadata')
+   .order('uploaded_at',{ascending:false})
+  if(branchId)q=q.eq('branch_id',branchId)
+  return q.range(from,to)
+ })
 }
 
 export async function uploadBranchWorkbook(input:{branchId:string;month:string;file:File;historyMode:string;onProgress?:(x:string)=>void}){
@@ -28,4 +43,25 @@ export async function approveImport(batchId:string){
  const {data,error}=await supabase.rpc('approve_import_batch',{p_batch_id:batchId})
  if(error)throw error
  return data
+}
+
+export const processImport=(batchId:string,historyMode?:'append_only'|'review'|'replace')=>authedPost('/functions/v1/ammco-import-process',{batchId,...(historyMode?{historyMode}:{})})
+export const deleteImport=(batchId:string)=>authedPost('/functions/v1/ammco-import-delete',{batchId})
+
+export async function getImportReview(batchId:string){
+ const [{data:issues,error:issuesError},{data:changes,error:changesError}]=await Promise.all([
+  supabase.from('import_validation_issues').select('code,severity,message,sheet_name,row_number').eq('batch_id',batchId).order('severity',{ascending:true}).limit(200),
+  supabase.from('import_day_changes').select('business_date,old_snapshot,new_snapshot,resolution_status').eq('batch_id',batchId).order('business_date').limit(100)
+ ])
+ const error=issuesError||changesError
+ if(error)throw error
+ return {issues:issues||[],changes:changes||[]}
+}
+
+export async function resolveReviewedImport(batchId:string,mode:'append_only'|'replace'){
+ const out=await processImport(batchId,mode)
+ if(out.noNewDays)return out
+ if(out.status!=='validated')throw new Error('النسخة ما زالت تحتاج مراجعة')
+ await approveImport(batchId)
+ return out
 }
