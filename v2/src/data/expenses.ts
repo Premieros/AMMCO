@@ -1,10 +1,13 @@
 import {supabase} from '../lib/supabase'
 import {fetchAllPages} from './pagination'
+import {getApprovedBatchIds} from './core'
+const ZERO='00000000-0000-0000-0000-000000000000'
 
 export type ExpenseRow={id:string|number;branchId:string;date:string;category:string;group:string;amount:number;type:string;source:string;isExpense:boolean}
 export type AccrualSetting={branch_id:string;month_start:string;wages:number;rent:number;working_days_basis:number;branch_manager:number;sector_manager:number;carried_expenses:number;commission_rate:number}
 
 export async function getExpenses(params:{from:string;to:string;branchId?:string;month:string}){
+ const ids=await getApprovedBatchIds(),safe=ids.length?ids:[ZERO]
  const [cash,petro,settings,daily]=await Promise.all([
   fetchAllPages<any>((fromRow,toRow)=>{
    let q=supabase.from('cash_entries').select('id,branch_id,entry_date,canonical_category,expense_group,amount,raw_payload,is_expense')
@@ -14,7 +17,7 @@ export async function getExpenses(params:{from:string;to:string;branchId?:string
   }),
   fetchAllPages<any>((fromRow,toRow)=>{
    let q=supabase.from('vehicle_daily').select('id,branch_id,business_date,fuel_expense,other_expense,raw_payload')
-    .gte('business_date',params.from).lte('business_date',params.to).contains('raw_payload',{non_cash:true})
+    .in('batch_id',safe).gte('business_date',params.from).lte('business_date',params.to).contains('raw_payload',{non_cash:true})
    if(params.branchId)q=q.eq('branch_id',params.branchId)
    return q.range(fromRow,toRow)
   }),
