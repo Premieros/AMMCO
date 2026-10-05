@@ -13,7 +13,9 @@
     "react": "19.3.0",
     "react-dom": "19.3.0",
     "lucide-react": "^0.468.0",
-    "xlsx": "0.18.5"
+    "xlsx": "0.18.5",
+    "html2canvas": "^1.4.1",
+    "jspdf": "^2.5.2"
   },
   "devDependencies": {
     "@types/react": "latest",
