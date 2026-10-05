@@ -557,3 +557,30 @@ th[style],td[style]{overflow:hidden;text-overflow:ellipsis}
  overflow:hidden!important;
  white-space:nowrap!important;
 }
+
+
+/* Keep table headers readable at narrow widths */
+.table-wrap table{
+ width:max-content!important;
+ min-width:100%!important;
+ table-layout:fixed;
+}
+.table-wrap thead th,
+.table-wrap tbody td,
+.table-wrap tfoot th,
+.table-wrap tfoot td{
+ word-break:normal!important;
+ overflow-wrap:break-word!important;
+}
+.table-wrap .sort-head span{
+ white-space:normal!important;
+ word-break:keep-all!important;
+ overflow-wrap:normal!important;
+}
+.table-wrap th.num,
+.table-wrap td.num{
+ min-width:110px;
+}
+.table-wrap .column-filter{
+ width:100%;
+}
