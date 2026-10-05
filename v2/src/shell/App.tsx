@@ -21,13 +21,17 @@ import {BranchesPage} from '../pages/Branches'
 import {Settings} from '../pages/Settings'
 import {ManagementCenter} from '../pages/ManagementCenter'
 import {BranchSheets} from '../pages/BranchSheets'
+import {ExecutiveComparison} from '../pages/ExecutiveComparison'
+import {MetricDrilldown} from '../pages/MetricDrilldown'
 import {Login} from '../pages/Login'
 import {LayoutDashboard,FileBarChart2,Users,Receipt,WalletCards,Upload,UserCog,LogOut,Boxes,Truck,Settings as SettingsIcon,ShieldAlert} from 'lucide-react'
 
-type Route='dashboard'|'management'|'reports'|'reps'|'rep-daily'|'receivables'|'monthly'|'products'|'banks'|'expenses'|'treasury'|'inventory'|'vehicles'|'imports'|'branch-sheets'|'branches'|'users'|'settings'
+type Route='dashboard'|'management'|'comparison'|'drilldown'|'reports'|'reps'|'rep-daily'|'receivables'|'monthly'|'products'|'banks'|'expenses'|'treasury'|'inventory'|'vehicles'|'imports'|'branch-sheets'|'branches'|'users'|'settings'
 const nav=[
  ['dashboard','لوحة التحكم',LayoutDashboard],
  ['management','مركز الإدارة',ShieldAlert],
+ ['comparison','المقارنة التنفيذية',FileBarChart2],
+ ['drilldown','تحليل المؤشرات',LayoutDashboard],
  ['reports','التقارير',FileBarChart2],
  ['reps','المناديب',Users],
  ['rep-daily','يوميات المناديب',Users],
@@ -139,6 +143,8 @@ export function App(){
 
    {route==='dashboard' && <Dashboard from={period.from} to={period.to} branchId={branchId||undefined}/>}
    {route==='management' && <ManagementCenter from={period.from} to={period.to} branchId={branchId||undefined}/>}
+   {route==='comparison' && <ExecutiveComparison from={period.from} to={period.to} branchId={branchId||undefined}/>}
+   {route==='drilldown' && <MetricDrilldown from={period.from} to={period.to} branchId={branchId||undefined}/>}
    {route==='reports' && <Reports from={period.from} to={period.to} branchId={branchId||undefined}/>}
    {route==='reps' && <Reps from={period.from} to={period.to} branchId={branchId||undefined} isAdmin={profile.role==='admin'} month={month}/>} 
    {route==='rep-daily' && <RepDaily from={period.from} to={period.to} branchId={branchId||undefined}/>}
