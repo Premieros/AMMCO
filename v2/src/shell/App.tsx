@@ -75,6 +75,8 @@ export function App(){
  const [ready,setReady]=useState(false)
  const [navProgress,setNavProgress]=useState(0)
  const [navLoading,setNavLoading]=useState(false)
+ const [interactionBusy,setInteractionBusy]=useState(false)
+ const [interactionLabel,setInteractionLabel]=useState('جاري التنفيذ…')
  const [error,setError]=useState('')
 
  useEffect(()=>{
@@ -120,6 +122,23 @@ export function App(){
   const done=window.setTimeout(()=>setNavLoading(false),1120)
   return()=>{timers.forEach(clearTimeout);clearTimeout(done)}
  },[route,branchId,month,manualPeriod,manualFrom,manualTo,ready,session?.user.id])
+
+ useEffect(()=>{
+  let timer=0
+  const handler=(e:MouseEvent)=>{
+   const el=(e.target as HTMLElement).closest('button,a,[role="button"]') as HTMLElement|null
+   if(!el||el.getAttribute('aria-disabled')==='true'||(el as HTMLButtonElement).disabled)return
+   el.classList.add('interaction-pressed')
+   window.setTimeout(()=>el.classList.remove('interaction-pressed'),220)
+   const label=(el.textContent||el.getAttribute('title')||'جاري التنفيذ').trim().replace(/\s+/g,' ').slice(0,42)
+   setInteractionLabel(label?'جاري: '+label:'جاري التنفيذ…')
+   setInteractionBusy(true)
+   window.clearTimeout(timer)
+   timer=window.setTimeout(()=>setInteractionBusy(false),900)
+  }
+  document.addEventListener('click',handler,true)
+  return()=>{document.removeEventListener('click',handler,true);window.clearTimeout(timer)}
+ },[])
  const applyPreset=(type:'month'|'prev'|'ytd'|'last7')=>{
   if(type==='month'){setManualPeriod(false);return}
   const bounds=monthBounds(month),end=new Date(bounds.to+'T00:00:00')
@@ -139,11 +158,12 @@ export function App(){
  const activeBranch=branches.find(b=>b.id===branchId)
 
  return <div className="app-shell">
-  {navLoading&&<div className="route-progress" aria-live="polite"><span style={{width:navProgress+'%'}}/><b>{navProgress}%</b></div>}
+  {navLoading&&<div className="route-progress" aria-live="polite"><span style={{width:navProgress+'%'}}/><b><i className="spinner-dot"/>{navProgress}%</b></div>}
+  {interactionBusy&&<div className="interaction-toast" aria-live="polite"><span className="action-spinner"/><b>{interactionLabel}</b></div>}
   <aside className="sidebar">
    <div className="brand"><span className="brand-mark">A</span><div><b>AMMCO</b><span>Management Intelligence</span></div></div>
    <div className="nav-caption">القائمة الرئيسية</div>
-   <nav>{visibleNav.map(([id,label,Icon])=><a key={id} className={route===id?'active':''} href={'#/'+id}><span className="nav-icon"><Icon size={18}/></span><span>{label}</span></a>)}</nav>
+   <nav>{visibleNav.map(([id,label,Icon])=><a key={id} className={route===id?'active':''} href={'#/'+id} onClick={()=>{setNavProgress(8);setNavLoading(true);setInteractionLabel('جاري فتح '+label);setInteractionBusy(true)}}><span className="nav-icon">{navLoading&&route!==id?<span className="mini-spinner"/>:<Icon size={18}/>}</span><span>{label}</span></a>)}</nav>
    <div className="sidebar-foot"><span>AMMCO v2</span><small>نظام التقارير والإدارة</small></div>
   </aside>
   <main>
