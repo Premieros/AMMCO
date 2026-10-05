@@ -167,22 +167,27 @@ export function App(){
    <div className="sidebar-foot"><span>AMMCO v2</span><small>نظام التقارير والإدارة</small></div>
   </aside>
   <main>
-   <header className="topbar">
-    <div className="page-heading"><span className="eyebrow">AMMCO / {manualPeriod?'فترة مخصصة':'تقرير شهري'}</span><h1>{visibleNav.find(x=>x[0]===route)?.[1]||'AMMCO'}</h1><div className="context-row"><span>{activeBranch?.name||'كل الفروع'}</span><i>•</i><span>{period.from} ← {period.to}</span></div></div>
-    <div className="top-actions no-print">
-     <label>الشهر<select value={month} onChange={e=>{setMonth(e.target.value);setManualPeriod(false)}}>{approvedMonths.map(m=><option key={m} value={m}>{monthLabel(m)}</option>)}</select></label>
-     <label className="range-label">الفترة
-      <span className={'range-control '+(manualPeriod?'active':'')}>
-       <input aria-label="من" type="date" value={manualFrom||period.from} onChange={e=>{setManualFrom(e.target.value);setManualPeriod(true)}}/>
-       <b>—</b>
-       <input aria-label="إلى" type="date" value={manualTo||period.to} onChange={e=>{setManualTo(e.target.value);setManualPeriod(true)}}/>
-      </span>
-     </label>
-     {manualPeriod&&<button className="small-btn active" onClick={()=>setManualPeriod(false)}>العودة للشهر</button>}
-     <div className="preset-actions"><button className="small-btn" onClick={()=>applyPreset('month')}>هذا الشهر</button><button className="small-btn" onClick={()=>applyPreset('prev')}>الشهر السابق</button><button className="small-btn" onClick={()=>applyPreset('ytd')}>YTD</button><button className="small-btn" onClick={()=>applyPreset('last7')}>آخر 7 أيام</button></div>
-     <label>الفرع<select value={branchId} onChange={e=>setBranchId(e.target.value)}><option value="">كل الفروع</option>{branches.map(b=><option key={b.id} value={b.id}>{b.name}</option>)}</select></label>
-     <span className="user-chip">{profile.full_name||session.user.email}</span>
-     <button className="icon-btn" title="خروج" onClick={()=>supabase.auth.signOut()}><LogOut size={17}/></button>
+   <header className="topbar clean-topbar">
+    <div className="clean-topbar-main">
+     <div className="page-heading clean-page-title">
+      <span className="eyebrow page-breadcrumb">AMMCO / {manualPeriod?'فترة مخصصة':'تقرير شهري'}</span>
+      <h1>{visibleNav.find(x=>x[0]===route)?.[1]||'AMMCO'}</h1>
+      <div className="context-row page-meta"><span>{activeBranch?.name||'كل الفروع'}</span><i>•</i><span>{period.from} ← {period.to}</span></div>
+     </div>
+     <div className="clean-filters-row no-print">
+      <label className="filter-field compact-field"><span>الشهر</span><select value={month} onChange={e=>{setMonth(e.target.value);setManualPeriod(false)}}>{approvedMonths.map(m=><option key={m} value={m}>{monthLabel(m)}</option>)}</select></label>
+      <label className="filter-field range-field"><span>الفترة</span><div className={'range-box '+(manualPeriod?'active':'')}><input aria-label="من" type="date" value={manualFrom||period.from} onChange={e=>{setManualFrom(e.target.value);setManualPeriod(true)}}/><b>—</b><input aria-label="إلى" type="date" value={manualTo||period.to} onChange={e=>{setManualTo(e.target.value);setManualPeriod(true)}}/></div></label>
+      <label className="filter-field compact-field"><span>الفرع</span><select value={branchId} onChange={e=>setBranchId(e.target.value)}><option value="">كل الفروع</option>{branches.map(b=><option key={b.id} value={b.id}>{b.name}</option>)}</select></label>
+      <div className="user-badge"><span>{profile.full_name||session.user.email}</span></div>
+      <button className="icon-btn logout-btn" title="خروج" onClick={()=>supabase.auth.signOut()}><LogOut size={17}/></button>
+     </div>
+    </div>
+    <div className="quick-filters-row no-print">
+     <button className={'quick-pill '+(!manualPeriod?'active':'')} onClick={()=>applyPreset('month')}>هذا الشهر</button>
+     <button className="quick-pill" onClick={()=>applyPreset('prev')}>الشهر السابق</button>
+     <button className="quick-pill" onClick={()=>applyPreset('last7')}>آخر 7 أيام</button>
+     <button className="quick-pill" onClick={()=>applyPreset('ytd')}>YTD</button>
+     {manualPeriod&&<button className="quick-pill soft" onClick={()=>setManualPeriod(false)}>العودة للشهر</button>}
     </div>
    </header>
 
