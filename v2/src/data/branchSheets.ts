@@ -12,13 +12,14 @@ export async function getBranchBatches(branchId:string){
 }
 
 export async function getBatchContents(batchId:string){
- const [inventory,reps,cash,warehouse]=await Promise.all([
+ const [inventory,reps,cash,warehouse,destinations]=await Promise.all([
   fetchAllPages<any>((a,b)=>supabase.from('inventory_daily').select('*').eq('batch_id',batchId).order('business_date').order('product_name').range(a,b)),
   fetchAllPages<any>((a,b)=>supabase.from('sales_rep_daily').select('*').eq('batch_id',batchId).order('business_date').order('rep_name').range(a,b)),
   fetchAllPages<any>((a,b)=>supabase.from('cash_entries').select('*').eq('batch_id',batchId).order('entry_date',{ascending:false}).order('id',{ascending:false}).range(a,b)),
   fetchAllPages<any>((a,b)=>supabase.from('warehouse_daily_summary').select('*').eq('batch_id',batchId).order('business_date').range(a,b)),
+  fetchAllPages<any>((a,b)=>supabase.from('cash_destinations').select('id,name,destination_type').eq('is_active',true).order('name').range(a,b)),
  ])
- return {inventory,reps,cash,warehouse}
+ return {inventory,reps,cash,warehouse,destinations}
 }
 
 export async function saveBatchContents(payload:any){
