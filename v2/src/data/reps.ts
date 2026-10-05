@@ -36,7 +36,7 @@ export async function getRepSummaries(params:{from:string;to:string;branchId?:st
  const [sales,remittances,branches]=await Promise.all([
   fetchAllPages<any>((fromRow,toRow)=>{
    let q=supabase.from('sales_rep_daily')
-    .select('branch_id,business_date,rep_name,sales_before_discount,discounts,net_after_discount,raw_payload')
+    .select('branch_id,business_date,rep_name,sales_before_discount,discounts,net_after_discount,collections,raw_payload')
     .in('batch_id',safeIds).gte('business_date',params.from).lte('business_date',params.to)
     .order('business_date',{ascending:true})
    if(params.branchId)q=q.eq('branch_id',params.branchId)
@@ -72,6 +72,7 @@ export async function getRepSummaries(params:{from:string;to:string;branchId?:st
   x.gross+=Number(r.sales_before_discount||0)
   x.discounts+=Number(r.discounts||0)
   x.net+=Number(r.net_after_discount||0)
+  x.deposits+=Number(r.collections||0)
   x.equiv+=Number(r.raw_payload?.equivalent_sales_qty||0)
   byRep.set(key,x)
  }
@@ -85,7 +86,6 @@ export async function getRepSummaries(params:{from:string;to:string;branchId?:st
   const d=String(r.business_date)
   if(!x.openingDate||d<x.openingDate){x.openingDate=d;x.openingDebt=Number(r.opening_debt||0)}
   if(!x.closingDate||d>=x.closingDate){x.closingDate=d;x.closingDebt=Number(r.closing_debt||0)}
-  x.deposits+=Number(r.deposit_amount||0)
   byRep.set(key,x)
  }
 
