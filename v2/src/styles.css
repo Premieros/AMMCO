@@ -1932,3 +1932,16 @@ input:focus,select:focus,textarea:focus{
  .section-heading{align-items:flex-start;flex-direction:column}
  .days-grid{grid-template-columns:repeat(7,minmax(28px,1fr))}
 }
+
+
+/* Typography copied from Premier reference design system (read-only source) */
+:root{
+ font-family:'Cairo','Inter',system-ui,-apple-system,BlinkMacSystemFont,'Segoe UI',sans-serif!important;
+ font-feature-settings:'cv02','cv03','cv04','cv11';
+}
+html,body,button,input,select,textarea{
+ font-family:'Cairo','Inter',system-ui,-apple-system,BlinkMacSystemFont,'Segoe UI',sans-serif!important;
+}
+html[dir='rtl'],body{
+ letter-spacing:0;
+}
