@@ -4,7 +4,7 @@ import {getDashboardAnalytics,type DashboardAnalytics} from '../data/dashboard'
 import {KpiCard} from '../components/KpiCard'
 import {TimelineChart} from '../components/TimelineChart'
 import {DataTable} from '../components/DataTable'
-import {BadgeDollarSign,Boxes,Building2,Gift,HandCoins,Percent,Receipt,RotateCcw,Scale,ShoppingCart,TrendingDown,WalletCards} from 'lucide-react'
+import {BadgeDollarSign,Boxes,Building2,Fuel,Gift,HandCoins,Percent,Receipt,RotateCcw,Scale,ShoppingCart,TrendingDown,WalletCards} from 'lucide-react'
 
 const money=(n:number)=>new Intl.NumberFormat('en-US',{maximumFractionDigits:0}).format(n)+' ج.م'
 const qty=(n:number)=>new Intl.NumberFormat('en-US',{maximumFractionDigits:2}).format(n)
@@ -41,6 +41,7 @@ export function Dashboard({from,to,branchId}:{from:string;to:string;branchId?:st
     <KpiCard tone="amber" icon={<WalletCards size={18}/>} title="المديونية" value={money(data.closingDebt)}/>
     <KpiCard tone="red" icon={<TrendingDown size={18}/>} title="التالف" value={money(data.damagesValue)} hint={'الكمية: '+qty(data.damagesQty)}/>
     <KpiCard tone="amber" icon={<Receipt size={18}/>} title="المصروفات" value={money(data.expenses)} hint={data.netSales?((data.expenses/data.netSales)*100).toFixed(1)+'% من المبيعات':''}/>
+    <KpiCard tone="amber" icon={<Fuel size={18}/>} title="السولار" value={money(data.fuel)} hint={data.expenses?((data.fuel/data.expenses)*100).toFixed(1)+'% من المصروفات':''}/>
     <KpiCard tone="neutral" icon={<Scale size={18}/>} title="الكمية المكافئة" value={qty(data.equivalentQty)}/>
     <KpiCard tone="blue" icon={<BadgeDollarSign size={18}/>} title="متوسط السعر" value={money(data.avgPrice)}/>
     <KpiCard tone="green" icon={<WalletCards size={18}/>} title="رصيد الخزينة" value={money(data.closingCash)} hint={data.branches+' فروع لها بيانات'}/>
