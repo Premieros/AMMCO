@@ -68,6 +68,11 @@ export type DashboardSummary={
  bonusesValue:number
  giftsValue:number
  damagesValue:number
+ inventoryQty:number
+ returnsQty:number
+ bonusesQty:number
+ giftsQty:number
+ damagesQty:number
 }
 
 export async function getDashboardSummary(params:{from:string;to:string;branchId?:string}):Promise<DashboardSummary>{
@@ -82,6 +87,14 @@ export async function getDashboardSummary(params:{from:string;to:string;branchId
   return q.range(fromRow,toRow)
  })
  const cashRows=await fetchAllPages<any>((fromRow,toRow)=>{let q=supabase.from('cash_entries').select('branch_id,entry_date,id,direction,amount,running_balance').in('batch_id',safeIds).gte('entry_date',params.from).lte('entry_date',params.to).order('entry_date',{ascending:true}).order('id',{ascending:true});if(params.branchId)q=q.eq('branch_id',params.branchId);return q.range(fromRow,toRow)})
+ const inventoryRows=await fetchAllPages<any>((fromRow,toRow)=>{
+  let q=supabase.from('inventory_daily')
+   .select('branch_id,business_date,closing_qty,return_factory_qty,bonus_qty,gifts_qty,damages_qty')
+   .in('batch_id',safeIds).gte('business_date',params.from).lte('business_date',params.to)
+   .order('business_date',{ascending:true})
+  if(params.branchId)q=q.eq('branch_id',params.branchId)
+  return q.range(fromRow,toRow)
+ })
  const reps=await fetchAllPages<any>((fromRow,toRow)=>{
   let q=supabase.from('sales_rep_daily')
    .select('branch_id,business_date,raw_payload')
@@ -89,7 +102,7 @@ export async function getDashboardSummary(params:{from:string;to:string;branchId
   if(params.branchId)q=q.eq('branch_id',params.branchId)
   return q.range(fromRow,toRow)
  })
- let netSales=0,grossSales=0,discounts=0,collections=0,expenses=0,equivalentQty=0,returnsValue=0,bonusesValue=0,giftsValue=0,damagesValue=0
+ let netSales=0,grossSales=0,discounts=0,collections=0,expenses=0,equivalentQty=0,returnsValue=0,bonusesValue=0,giftsValue=0,damagesValue=0,returnsQty=0,bonusesQty=0,giftsQty=0,damagesQty=0
  const latest=new Map<string,{date:string,debt:number,cash:number,inventory:number}>()
  for(const r of daily){
   netSales+=Number(r.net_sales||0);grossSales+=Number(r.gross_sales||0);discounts+=Number(r.discounts||0)
@@ -98,9 +111,18 @@ export async function getDashboardSummary(params:{from:string;to:string;branchId
   const p=latest.get(r.branch_id)
   if(!p||String(r.business_date)>=p.date)latest.set(r.branch_id,{date:String(r.business_date),debt:Number(r.closing_receivables||0),cash:Number(r.closing_cash||0),inventory:Number(r.inventory_value||0)})
  }
+ const inventoryLatest=new Map<string,{date:string,qty:number}>()
+ for(const r of inventoryRows){
+  returnsQty+=Number(r.return_factory_qty||0);bonusesQty+=Number(r.bonus_qty||0);giftsQty+=Number(r.gifts_qty||0);damagesQty+=Number(r.damages_qty||0)
+  const p=inventoryLatest.get(r.branch_id)
+  const date=String(r.business_date)
+  if(!p||date>p.date)inventoryLatest.set(r.branch_id,{date,qty:Number(r.closing_qty||0)})
+  else if(date===p.date)p.qty+=Number(r.closing_qty||0)
+ }
  for(const r of reps)equivalentQty+=Number(r.raw_payload?.equivalent_sales_qty||0)
  const closingDebt=[...latest.values()].reduce((s,x)=>s+x.debt,0)
  const inventoryValue=[...latest.values()].reduce((s,x)=>s+x.inventory,0)
+ const inventoryQty=[...inventoryLatest.values()].reduce((s,x)=>s+x.qty,0)
  const cashByBranch=new Map<string,{opening:number|null,incoming:number,outgoing:number}>()
  for(const r of cashRows){
   let x=cashByBranch.get(r.branch_id)
@@ -111,5 +133,5 @@ export async function getDashboardSummary(params:{from:string;to:string;branchId
   if(r.direction==='out')x.outgoing+=amount
  }
  const closingCash=[...cashByBranch.values()].reduce((s,x)=>s+(x.opening===null?0:x.opening+x.incoming-x.outgoing),0)
- return {netSales,grossSales,discounts,collections,closingDebt,expenses,closingCash,equivalentQty,avgPrice:equivalentQty?netSales/equivalentQty:0,branches:latest.size,collectionRate:netSales?collections/netSales:0,inventoryValue,returnsValue,bonusesValue,giftsValue,damagesValue}
+ return {netSales,grossSales,discounts,collections,closingDebt,expenses,closingCash,equivalentQty,avgPrice:equivalentQty?netSales/equivalentQty:0,branches:latest.size,collectionRate:netSales?collections/netSales:0,inventoryValue,returnsValue,bonusesValue,giftsValue,damagesValue,inventoryQty,returnsQty,bonusesQty,giftsQty,damagesQty}
 }
