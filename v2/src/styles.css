@@ -388,3 +388,33 @@ button:focus-visible,.sidebar nav a:focus-visible{
 @media(max-width:560px){
  .interaction-toast{left:12px;right:12px;bottom:12px;max-width:none}
 }
+
+
+/* Column visibility picker */
+.column-picker-wrap{position:relative}
+.column-picker{
+ position:absolute;
+ top:calc(100% + 7px);
+ left:0;
+ z-index:120;
+ width:min(320px,80vw);
+ max-height:420px;
+ overflow:auto;
+ background:#fff;
+ border:1px solid #dce4eb;
+ border-radius:12px;
+ box-shadow:0 18px 48px rgba(16,24,40,.16);
+ padding:10px;
+}
+.column-picker-head{display:flex;align-items:center;justify-content:space-between;gap:8px;padding:2px 2px 8px;border-bottom:1px solid #edf1f4}
+.column-picker-head b{font-size:12px;color:#24384a}.column-picker-head span{font-size:10px;color:#7b8794}
+.column-picker-actions{display:flex;gap:6px;padding:9px 0}
+.column-picker-actions .small-btn{flex:1;min-height:30px;font-size:10px}
+.column-picker-list{display:grid;gap:4px}
+.column-picker-list label{display:flex;align-items:center;gap:8px;padding:7px 8px;border-radius:8px;font-size:11px;color:#344054;cursor:pointer}
+.column-picker-list label:hover{background:#f6f8fa}
+.column-picker-list input{width:15px;height:15px;accent-color:#1f4b67}
+.column-picker-list input:disabled+span{color:#98a2b3}
+@media(max-width:560px){
+ .column-picker{position:fixed;left:12px;right:12px;top:auto;bottom:68px;width:auto;max-height:55vh}
+}
