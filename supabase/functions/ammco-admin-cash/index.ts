@@ -68,9 +68,14 @@ Deno.serve(async(req)=>{
       const wages=money(body?.wages??0,'الأجور')
       const rent=money(body?.rent??0,'الإيجار')
       const workingDays=Number(body?.working_days_basis??0)
+      const branchManager=body?.branch_manager===undefined?undefined:money(body.branch_manager,'مدير الفرع')
+      const sectorManager=body?.sector_manager===undefined?undefined:money(body.sector_manager,'مدير القطاع')
+      const carriedExpenses=body?.carried_expenses===undefined?undefined:money(body.carried_expenses,'المصروفات المرحلة')
+      const commissionRate=body?.commission_rate===undefined?undefined:Number(body.commission_rate)
       if(!branchId)return json({error:'الفرع مطلوب'},400)
       if(!/^\d{4}-\d{2}-01$/.test(monthStart))return json({error:'شهر الإعداد غير صالح'},400)
       if(!Number.isInteger(workingDays)||workingDays<1||workingDays>31)return json({error:'أيام العمل يجب أن تكون بين 1 و31'},400)
+      if(commissionRate!==undefined&&(!Number.isFinite(commissionRate)||commissionRate<0||commissionRate>1))return json({error:'نسبة العمولة غير صالحة'},400)
 
       const {data:branch,error:bErr}=await admin.from('branches')
         .select('id,organization_id')
@@ -78,17 +83,23 @@ Deno.serve(async(req)=>{
       if(bErr)return json({error:bErr.message},500)
       if(!branch||branch.organization_id!==me.organization_id)return json({error:'الفرع لا يتبع المؤسسة الحالية'},403)
 
+      const payload:any={
+        branch_id:branchId,
+        organization_id:me.organization_id,
+        month_start:monthStart,
+        wages,
+        rent,
+        working_days_basis:workingDays,
+        updated_by:uid,
+        updated_at:new Date().toISOString()
+      }
+      if(branchManager!==undefined)payload.branch_manager=branchManager
+      if(sectorManager!==undefined)payload.sector_manager=sectorManager
+      if(carriedExpenses!==undefined)payload.carried_expenses=carriedExpenses
+      if(commissionRate!==undefined)payload.commission_rate=commissionRate
+
       const {data:row,error:uErr}=await admin.from('branch_expense_accrual_settings')
-        .upsert({
-          branch_id:branchId,
-          organization_id:me.organization_id,
-          month_start:monthStart,
-          wages,
-          rent,
-          working_days_basis:workingDays,
-          updated_by:uid,
-          updated_at:new Date().toISOString()
-        },{onConflict:'branch_id,month_start'})
+        .upsert(payload,{onConflict:'branch_id,month_start'})
         .select('branch_id,month_start,wages,rent,branch_manager,sector_manager,carried_expenses,commission_rate,working_days_basis,updated_at')
         .single()
       if(uErr)return json({error:uErr.message},500)
