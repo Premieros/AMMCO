@@ -72,6 +72,8 @@ Deno.serve(async(req)=>{
       for(const key of ['opening_balance','sales_before_discount','discounts','net_after_discount','deposit_amount','expense_amount','closing_balance']){
         if(edit[key]!==undefined)p[key]=Number(edit[key])
       }
+      if(edit.net_after_discount!==undefined)p.sales=Number(edit.net_after_discount)
+      if(edit.deposit_amount!==undefined)p.collections=Number(edit.deposit_amount)
       if(Object.keys(p).length===0)continue
       const {data:updated,error}=await admin.from('sales_rep_daily').update(p).eq('id',id).eq('batch_id',batchId).eq('branch_id',branchId).select('business_date').maybeSingle()
       if(error)throw new Error('تعديل بيانات المندوب: '+error.message)
@@ -88,6 +90,9 @@ Deno.serve(async(req)=>{
 
     for(const edit of cashEdits){
       const id=Number(edit?.id);if(!Number.isInteger(id)||id<=0)continue
+      const {data:before,error:beforeErr}=await admin.from('cash_entries').select('entry_date').eq('id',id).eq('batch_id',batchId).eq('branch_id',branchId).maybeSingle()
+      if(beforeErr)throw new Error('تحميل تاريخ حركة الخزينة قبل التعديل: '+beforeErr.message)
+      if(before?.entry_date)affectedDates.add(before.entry_date)
       const p:Record<string,unknown>={}
       if(edit.entry_date!==undefined)p.entry_date=String(edit.entry_date)
       if(edit.description!==undefined)p.description=String(edit.description||'').trim()||null
