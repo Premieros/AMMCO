@@ -32,29 +32,23 @@ export function Dashboard({from,to,branchId}:{from:string;to:string;branchId?:st
   </section>
 
   <section className="dashboard-section">
-   <div className="dashboard-section-head"><div><span>المؤشرات الرئيسية</span><h2>الأداء المالي والتجاري</h2></div><small>أهم مؤشرات الفترة الحالية</small></div>
-   <div className="kpi-grid primary-kpis">
-    <KpiCard featured tone="blue" icon={<ShoppingCart size={20}/>} title="إجمالي قبل الخصم" value={money(data.grossSales)} hint={data.grossSales?('الخصم '+((data.discounts/data.grossSales)*100).toFixed(1)+'%'):''}/>
-    <KpiCard featured tone="green" icon={<BadgeDollarSign size={20}/>} title="صافي المبيعات" value={money(data.netSales)} hint={(delta(analytics.current.sales,analytics.previous.sales)>=0?'+':'')+delta(analytics.current.sales,analytics.previous.sales).toFixed(1)+'% مقابل الفترة السابقة'}/>
-    <KpiCard featured tone="cyan" icon={<HandCoins size={20}/>} title="التوريد" value={money(data.collections)} hint={(delta(analytics.current.collections,analytics.previous.collections)>=0?'+':'')+delta(analytics.current.collections,analytics.previous.collections).toFixed(1)+'% مقابل السابقة'}/>
-    <KpiCard featured tone="violet" icon={<Percent size={20}/>} title="نسبة التحصيل" value={(data.collectionRate*100).toFixed(1)+'%'} hint="التوريد ÷ صافي المبيعات"/>
-   </div>
-  </section>
-
-  <section className="dashboard-section">
-   <div className="dashboard-section-head"><div><span>الرقابة التشغيلية</span><h2>النقدية والمصروفات والمخزون</h2></div></div>
-   <div className="kpi-grid secondary-kpis">
-    <KpiCard tone="amber" icon={<WalletCards size={19}/>} title="المديونية" value={money(data.closingDebt)}/>
-    <KpiCard tone="red" icon={<TrendingDown size={19}/>} title="التالف" value={money(data.damagesValue)} hint={'الكمية: '+qty(data.damagesQty)}/>
-    <KpiCard tone="amber" icon={<Receipt size={19}/>} title="المصروفات" value={money(data.expenses)} hint={data.netSales?((data.expenses/data.netSales)*100).toFixed(1)+'% من المبيعات':''}/>
-    <KpiCard tone="neutral" icon={<Scale size={19}/>} title="الكمية المكافئة" value={qty(data.equivalentQty)}/>
-    <KpiCard tone="blue" icon={<BadgeDollarSign size={19}/>} title="متوسط السعر" value={money(data.avgPrice)}/>
-    <KpiCard tone="green" icon={<WalletCards size={19}/>} title="رصيد الخزينة" value={money(data.closingCash)} hint={data.branches+' فروع لها بيانات'}/>
-    <KpiCard tone="cyan" icon={<Boxes size={19}/>} title="المخزون" value={money(data.inventoryValue)} hint={'الكمية: '+qty(data.inventoryQty)}/>
-    <KpiCard tone="violet" icon={<RotateCcw size={19}/>} title="المرتجعات" value={money(data.returnsValue)} hint={'الكمية: '+qty(data.returnsQty)}/>
-    <KpiCard tone="green" icon={<Gift size={19}/>} title="البونص" value={money(data.bonusesValue)} hint={'الكمية: '+qty(data.bonusesQty)}/>
-    <KpiCard tone="blue" icon={<Gift size={19}/>} title="الهدايا" value={money(data.giftsValue)} hint={'الكمية: '+qty(data.giftsQty)}/>
-    <KpiCard tone="neutral" icon={<Building2 size={19}/>} title="عدد الفروع" value={String(data.branches)} hint={branchId?'الفرع المحدد':'فروع لها بيانات في الفترة'}/>
+   <div className="dashboard-section-head"><div><span>المؤشرات</span><h2>ملخص الأداء</h2></div><small>كل المؤشرات في عرض واحد</small></div>
+   <div className="kpi-grid dashboard-kpi-wall">
+    <KpiCard tone="blue" icon={<ShoppingCart size={18}/>} title="إجمالي قبل الخصم" value={money(data.grossSales)} hint={data.grossSales?('الخصم '+((data.discounts/data.grossSales)*100).toFixed(1)+'%'):''}/>
+    <KpiCard tone="green" icon={<BadgeDollarSign size={18}/>} title="صافي المبيعات" value={money(data.netSales)} hint={(delta(analytics.current.sales,analytics.previous.sales)>=0?'+':'')+delta(analytics.current.sales,analytics.previous.sales).toFixed(1)+'% مقابل الفترة السابقة'}/>
+    <KpiCard tone="cyan" icon={<HandCoins size={18}/>} title="التوريد" value={money(data.collections)} hint={(delta(analytics.current.collections,analytics.previous.collections)>=0?'+':'')+delta(analytics.current.collections,analytics.previous.collections).toFixed(1)+'% مقابل السابقة'}/>
+    <KpiCard tone="violet" icon={<Percent size={18}/>} title="نسبة التحصيل" value={(data.collectionRate*100).toFixed(1)+'%'} hint="التوريد ÷ صافي المبيعات"/>
+    <KpiCard tone="amber" icon={<WalletCards size={18}/>} title="المديونية" value={money(data.closingDebt)}/>
+    <KpiCard tone="red" icon={<TrendingDown size={18}/>} title="التالف" value={money(data.damagesValue)} hint={'الكمية: '+qty(data.damagesQty)}/>
+    <KpiCard tone="amber" icon={<Receipt size={18}/>} title="المصروفات" value={money(data.expenses)} hint={data.netSales?((data.expenses/data.netSales)*100).toFixed(1)+'% من المبيعات':''}/>
+    <KpiCard tone="neutral" icon={<Scale size={18}/>} title="الكمية المكافئة" value={qty(data.equivalentQty)}/>
+    <KpiCard tone="blue" icon={<BadgeDollarSign size={18}/>} title="متوسط السعر" value={money(data.avgPrice)}/>
+    <KpiCard tone="green" icon={<WalletCards size={18}/>} title="رصيد الخزينة" value={money(data.closingCash)} hint={data.branches+' فروع لها بيانات'}/>
+    <KpiCard tone="cyan" icon={<Boxes size={18}/>} title="المخزون" value={money(data.inventoryValue)} hint={'الكمية: '+qty(data.inventoryQty)}/>
+    <KpiCard tone="violet" icon={<RotateCcw size={18}/>} title="المرتجعات" value={money(data.returnsValue)} hint={'الكمية: '+qty(data.returnsQty)}/>
+    <KpiCard tone="green" icon={<Gift size={18}/>} title="البونص" value={money(data.bonusesValue)} hint={'الكمية: '+qty(data.bonusesQty)}/>
+    <KpiCard tone="blue" icon={<Gift size={18}/>} title="الهدايا" value={money(data.giftsValue)} hint={'الكمية: '+qty(data.giftsQty)}/>
+    <KpiCard tone="neutral" icon={<Building2 size={18}/>} title="عدد الفروع" value={String(data.branches)} hint={branchId?'الفرع المحدد':'فروع لها بيانات في الفترة'}/>
    </div>
   </section>
 
