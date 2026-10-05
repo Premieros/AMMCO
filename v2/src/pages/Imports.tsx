@@ -3,6 +3,24 @@ import type {Branch} from '../domain/types'
 import {approveImport,deleteImport,getImportHistory,getImportReview,processImport,reuploadImport,resolveReviewedImport,uploadBranchWorkbook} from '../data/imports'
 import {DataTable} from '../components/DataTable'
 
+function snapshotMetrics(s:any){
+ if(!s||typeof s!=='object')return {net:0,collections:0,debt:0,expenses:0,inventory:0}
+ if(s.metrics)return {net:Number(s.metrics.netSales||0),collections:Number(s.metrics.collections||0),debt:Number(s.metrics.closingReceivables||0),expenses:Number(s.metrics.expenses||0),inventory:Number(s.metrics.inventoryValue||0)}
+ const reps=Array.isArray(s.reps)?s.reps:[],treasury=Array.isArray(s.treasury)?s.treasury:[]
+ return {
+  net:reps.reduce((a:number,r:any)=>a+Number(r.netAfterDiscount||r.sales||0),0),
+  collections:reps.reduce((a:number,r:any)=>a+Number(r.depositAmount||r.collections||0),0),
+  debt:reps.reduce((a:number,r:any)=>a+Number(r.closingBalance||0),0),
+  expenses:treasury.filter((x:any)=>x.isExpense).reduce((a:number,r:any)=>a+Number(r.amount||0),0),
+  inventory:Number(s.warehouse?.closingValue||0)
+ }
+}
+function changedSections(oldS:any,newS:any){
+ const labels:Record<string,string>={reps:'المناديب',remittances:'التوريدات',warehouse:'حركة المخزن',treasury:'الخزنة'}
+ return Object.keys(labels).filter(k=>JSON.stringify(oldS?.[k]??null)!==JSON.stringify(newS?.[k]??null)).map(k=>labels[k])
+}
+const fm=(n:number)=>new Intl.NumberFormat('en-US',{maximumFractionDigits:2}).format(n)
+
 export function Imports({month,branchId,branches,isAdmin}:{month:string;branchId?:string;branches:Branch[];isAdmin:boolean}){
  const [rows,setRows]=useState<any[]>([]),[msg,setMsg]=useState(''),[busy,setBusy]=useState(false),[review,setReview]=useState<any|null>(null),[reupload,setReupload]=useState<any|null>(null)
  const map=useMemo(()=>new Map(branches.map(b=>[b.id,b.name])),[branches])
@@ -57,6 +75,11 @@ export function Imports({month,branchId,branches,isAdmin}:{month:string;branchId
   ]}/>
 
   {reupload&&<div className="modal-backdrop"><form className="modal-card" onSubmit={submitReupload}><div className="modal-head"><h3>إعادة رفع الشيت</h3><button type="button" className="small-btn" onClick={()=>setReupload(null)}>إغلاق</button></div><p className="muted">الفترة: {reupload.period_start} — {reupload.period_end}</p><label className="upload-file-label">ملف Excel الجديد<input name="file" type="file" accept=".xlsx" required/></label>{msg&&<p className="muted">{msg}</p>}<button className="primary" disabled={busy}>{busy?'جاري الرفع…':'رفع وتحليل النسخة الجديدة'}</button></form></div>}
-  {review&&<div className="modal-backdrop"><div className="modal-card"><div className="modal-head"><h3>مراجعة فروق الشيت</h3><button className="small-btn" onClick={()=>setReview(null)}>إغلاق</button></div><p className="muted">الأخطاء: {review.issues.filter((x:any)=>x.severity==='error').length} • التحذيرات: {review.issues.filter((x:any)=>x.severity==='warning').length} • الأيام المتغيرة: {review.changes.length}</p><div className="review-list">{review.changes.map((ch:any)=><div className="review-card" key={ch.business_date}><b>{ch.business_date}</b><span>{ch.resolution_status||'غير محسوم'}</span></div>)}</div><div className="inline-actions review-actions"><button className="small-btn" onClick={()=>resolve('append_only')}>احتفظ بالسابق واستورد الجديد فقط</button><button className="primary" onClick={()=>resolve('replace')}>اعتماد الاستبدال بهذه النسخة</button></div></div></div>}
+  {review&&<div className="modal-backdrop"><div className="modal-card wide-modal"><div className="modal-head"><h3>مراجعة فروق الشيت</h3><button className="small-btn" onClick={()=>setReview(null)}>إغلاق</button></div>
+   <p className="muted">الأخطاء: {review.issues.filter((x:any)=>x.severity==='error').length} • التحذيرات: {review.issues.filter((x:any)=>x.severity==='warning').length} • الأيام المتغيرة: {review.changes.length}</p>
+   {!!review.issues.length&&<section className="review-section"><h4>ملاحظات التحقق</h4><div className="review-list">{review.issues.map((x:any,i:number)=><div className={'review-card issue-'+x.severity} key={i}><div><b>{x.code||'ملاحظة'}</b><span>{x.sheet_name||'—'}{x.row_number?' • صف '+x.row_number:''}</span></div><span>{x.severity} — {x.message}</span></div>)}</div></section>}
+   {!!review.changes.length&&<section className="review-section"><h4>الأيام المتغيرة</h4><div className="review-list">{review.changes.map((ch:any)=>{const a=snapshotMetrics(ch.old_snapshot),b=snapshotMetrics(ch.new_snapshot);const diffs=[['صافي المبيعات',a.net,b.net],['التحصيل',a.collections,b.collections],['مديونية آخر',a.debt,b.debt],['المصروفات',a.expenses,b.expenses],['قيمة المخزون',a.inventory,b.inventory]].filter((x:any)=>Math.abs(Number(x[1])-Number(x[2]))>.02);return <div className="review-card review-change" key={ch.business_date}><div><b>{ch.business_date}</b><span>{changedSections(ch.old_snapshot,ch.new_snapshot).join('، ')||'تغيير في محتوى اليوم'}</span></div><div className="diff-grid">{diffs.map((x:any)=><span key={x[0]}><small>{x[0]}</small><b>{fm(x[1])} ← {fm(x[2])}</b></span>)}</div><em>{ch.resolution_status||'غير محسوم'}</em></div>})}</div></section>}
+   <div className="inline-actions review-actions"><button className="small-btn" onClick={()=>resolve('append_only')}>احتفظ بالسابق واستورد الجديد فقط</button><button className="primary" onClick={()=>resolve('replace')}>اعتماد الاستبدال بهذه النسخة</button></div>
+  </div></div>}
  </div>
 }
