@@ -900,7 +900,7 @@ Deno.serve(async (req: Request) => {
 
     if (parsed.treasuryEntries.length > 0) {
       const cashRows = parsed.treasuryEntries
-        .filter((entry) => historyMode !== 'append_only' || effectiveDates.has(entry.entryDate))
+        .filter((entry) => historyMode !== 'append_only' || entry.entryDate === null || effectiveDates.has(entry.entryDate))
         .map((entry) => ({
         batch_id: batchId,
         branch_id: batch.branch_id,
