@@ -3,6 +3,7 @@ import {fetchAllPages} from './pagination'
 import type {Branch,Profile} from '../domain/types'
 
 const ZERO='00000000-0000-0000-0000-000000000000'
+let approvedIdsCache:{at:number;ids:string[]}|null=null
 
 export async function getProfile(userId:string):Promise<Profile|null>{
  const {data,error}=await supabase.from('profiles')
@@ -34,10 +35,20 @@ export async function getLatestApprovedPeriod(){
  return data??null
 }
 
+export async function getApprovedMonths(){
+ const rows=await fetchAllPages<any>((from,to)=>supabase.from('import_batches')
+  .select('period_start,period_end').eq('status','approved').order('period_start',{ascending:false}).range(from,to))
+ return [...new Set(rows.map(x=>String(x.period_end||x.period_start).slice(0,7)).filter(Boolean))].sort((a,b)=>b.localeCompare(a))
+}
+
 export async function getApprovedBatchIds(){
+ const now=Date.now()
+ if(approvedIdsCache&&now-approvedIdsCache.at<60000)return approvedIdsCache.ids
  const rows=await fetchAllPages<any>((from,to)=>supabase.from('import_batches')
   .select('id').eq('status','approved').range(from,to))
- return rows.map(x=>x.id as string)
+ const ids=rows.map(x=>x.id as string)
+ approvedIdsCache={at:now,ids}
+ return ids
 }
 
 export type DashboardSummary={
