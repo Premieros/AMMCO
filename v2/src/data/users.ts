@@ -4,3 +4,4 @@ async function call(method:string,body?:any){const {data:{session}}=await supaba
 export const getUsers=()=>call('GET')
 export const createUser=(body:any)=>call('POST',{action:'create',...body})
 export const updateUser=(body:any)=>call('POST',{action:'update',...body})
+export const resetUserPassword=(userId:string,password:string)=>call('POST',{action:'reset_password',user_id:userId,password})
