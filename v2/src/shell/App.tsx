@@ -95,6 +95,16 @@ export function App(){
  },[session?.user.id])
 
  const period=useMemo(()=>manualPeriod&&manualFrom&&manualTo&&manualTo>=manualFrom?{from:manualFrom,to:manualTo}:month?monthBounds(month):{from:'',to:''},[month,manualPeriod,manualFrom,manualTo])
+ const applyPreset=(type:'month'|'prev'|'ytd'|'last7')=>{
+  if(type==='month'){setManualPeriod(false);return}
+  const bounds=monthBounds(month),end=new Date(bounds.to+'T00:00:00')
+  if(type==='prev'){
+   const [y,m]=month.split('-').map(Number),d=new Date(y,m-2,1),pm=d.getFullYear()+'-'+String(d.getMonth()+1).padStart(2,'0'),p=monthBounds(pm)
+   setManualFrom(p.from);setManualTo(p.to);setManualPeriod(true);return
+  }
+  if(type==='ytd'){setManualFrom(month.slice(0,4)+'-01-01');setManualTo(bounds.to);setManualPeriod(true);return}
+  const start=new Date(end.getTime()-6*86400000);setManualFrom(start.toISOString().slice(0,10));setManualTo(bounds.to);setManualPeriod(true)
+ }
  if(!ready)return <div className="boot">AMMCO</div>
  if(!session)return <Login/>
  if(error)return <main className="login-page"><div className="login-card"><div className="error-box">{error}</div><button className="primary" onClick={()=>supabase.auth.signOut()}>خروج</button></div></main>
@@ -116,6 +126,7 @@ export function App(){
      <label>من<input type="date" value={manualFrom||period.from} onChange={e=>setManualFrom(e.target.value)}/></label>
      <label>إلى<input type="date" value={manualTo||period.to} onChange={e=>setManualTo(e.target.value)}/></label>
      <button className={'small-btn '+(manualPeriod?'active':'')} onClick={()=>{if(!manualPeriod){setManualFrom(manualFrom||period.from);setManualTo(manualTo||period.to)}setManualPeriod(!manualPeriod)}}>{manualPeriod?'العودة للشهر':'تطبيق الفترة'}</button>
+     <div className="preset-actions"><button className="small-btn" onClick={()=>applyPreset('month')}>هذا الشهر</button><button className="small-btn" onClick={()=>applyPreset('prev')}>الشهر السابق</button><button className="small-btn" onClick={()=>applyPreset('ytd')}>YTD</button><button className="small-btn" onClick={()=>applyPreset('last7')}>آخر 7 أيام</button></div>
      <label>الفرع<select value={branchId} onChange={e=>setBranchId(e.target.value)}><option value="">كل الفروع</option>{branches.map(b=><option key={b.id} value={b.id}>{b.name}</option>)}</select></label>
      <span className="user-chip">{profile.full_name||session.user.email}</span>
      <button className="icon-btn" title="خروج" onClick={()=>supabase.auth.signOut()}><LogOut size={17}/></button>
