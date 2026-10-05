@@ -1,28 +1,51 @@
-import {useEffect,useMemo,useState} from 'react'
+import {lazy,startTransition,Suspense,useEffect,useMemo,useState} from 'react'
 import type {Session} from '@supabase/supabase-js'
 import {recoverSession,supabase} from '../lib/supabase'
 import {getAllowedBranchIds,getApprovedMonths,getBranches,getLatestApprovedPeriod,getProfile} from '../data/core'
 import type {Branch,Profile} from '../domain/types'
-import {Dashboard} from '../pages/Dashboard'
-import {Reports} from '../pages/Reports'
-import {Reps} from '../pages/Reps'
-import {RepDaily} from '../pages/RepDaily'
-import {Receivables} from '../pages/Receivables'
-import {Monthly} from '../pages/Monthly'
-import {Products} from '../pages/Products'
-import {Banks} from '../pages/Banks'
-import {Expenses} from '../pages/Expenses'
-import {Treasury} from '../pages/Treasury'
-import {Imports} from '../pages/Imports'
-import {Inventory} from '../pages/Inventory'
-import {Vehicles} from '../pages/Vehicles'
-import {UsersPage} from '../pages/Users'
-import {BranchesPage} from '../pages/Branches'
-import {Settings} from '../pages/Settings'
-import {ManagementCenter} from '../pages/ManagementCenter'
-import {BranchSheets} from '../pages/BranchSheets'
-import {ExecutiveComparison} from '../pages/ExecutiveComparison'
-import {MetricDrilldown} from '../pages/MetricDrilldown'
+const pageLoaders={
+ dashboard:()=>import('../pages/Dashboard'),
+ reports:()=>import('../pages/Reports'),
+ reps:()=>import('../pages/Reps'),
+ 'rep-daily':()=>import('../pages/RepDaily'),
+ receivables:()=>import('../pages/Receivables'),
+ monthly:()=>import('../pages/Monthly'),
+ products:()=>import('../pages/Products'),
+ banks:()=>import('../pages/Banks'),
+ expenses:()=>import('../pages/Expenses'),
+ treasury:()=>import('../pages/Treasury'),
+ imports:()=>import('../pages/Imports'),
+ inventory:()=>import('../pages/Inventory'),
+ vehicles:()=>import('../pages/Vehicles'),
+ users:()=>import('../pages/Users'),
+ branches:()=>import('../pages/Branches'),
+ settings:()=>import('../pages/Settings'),
+ management:()=>import('../pages/ManagementCenter'),
+ 'branch-sheets':()=>import('../pages/BranchSheets'),
+ comparison:()=>import('../pages/ExecutiveComparison'),
+ drilldown:()=>import('../pages/MetricDrilldown')
+} as const
+
+const Dashboard=lazy(()=>pageLoaders.dashboard().then(m=>({default:m.Dashboard})))
+const Reports=lazy(()=>pageLoaders.reports().then(m=>({default:m.Reports})))
+const Reps=lazy(()=>pageLoaders.reps().then(m=>({default:m.Reps})))
+const RepDaily=lazy(()=>pageLoaders['rep-daily']().then(m=>({default:m.RepDaily})))
+const Receivables=lazy(()=>pageLoaders.receivables().then(m=>({default:m.Receivables})))
+const Monthly=lazy(()=>pageLoaders.monthly().then(m=>({default:m.Monthly})))
+const Products=lazy(()=>pageLoaders.products().then(m=>({default:m.Products})))
+const Banks=lazy(()=>pageLoaders.banks().then(m=>({default:m.Banks})))
+const Expenses=lazy(()=>pageLoaders.expenses().then(m=>({default:m.Expenses})))
+const Treasury=lazy(()=>pageLoaders.treasury().then(m=>({default:m.Treasury})))
+const Imports=lazy(()=>pageLoaders.imports().then(m=>({default:m.Imports})))
+const Inventory=lazy(()=>pageLoaders.inventory().then(m=>({default:m.Inventory})))
+const Vehicles=lazy(()=>pageLoaders.vehicles().then(m=>({default:m.Vehicles})))
+const UsersPage=lazy(()=>pageLoaders.users().then(m=>({default:m.UsersPage})))
+const BranchesPage=lazy(()=>pageLoaders.branches().then(m=>({default:m.BranchesPage})))
+const Settings=lazy(()=>pageLoaders.settings().then(m=>({default:m.Settings})))
+const ManagementCenter=lazy(()=>pageLoaders.management().then(m=>({default:m.ManagementCenter})))
+const BranchSheets=lazy(()=>pageLoaders['branch-sheets']().then(m=>({default:m.BranchSheets})))
+const ExecutiveComparison=lazy(()=>pageLoaders.comparison().then(m=>({default:m.ExecutiveComparison})))
+const MetricDrilldown=lazy(()=>pageLoaders.drilldown().then(m=>({default:m.MetricDrilldown})))
 import {Login} from '../pages/Login'
 import {LayoutDashboard,FileBarChart2,Users,Receipt,WalletCards,Upload,UserCog,LogOut,Boxes,Truck,Settings as SettingsIcon,ShieldAlert} from 'lucide-react'
 
@@ -92,7 +115,7 @@ export function App(){
    if(next?.expires_at&&next.expires_at*1000<=Date.now()+15000){setSession(await recoverSession());return}
    setSession(next)
   })
-  const onHash=()=>setRoute(routeFromHash())
+  const onHash=()=>startTransition(()=>setRoute(routeFromHash()))
   addEventListener('hashchange',onHash)
   return()=>{sub.subscription.unsubscribe();removeEventListener('hashchange',onHash)}
  },[])
@@ -126,12 +149,10 @@ export function App(){
 
  useEffect(()=>{
   if(!ready||!session)return
-  setNavLoading(true);setNavProgress(12)
-  const steps=[[90,32],[220,56],[420,78],[700,92],[950,100]] as const
-  const timers=steps.map(([ms,p])=>window.setTimeout(()=>setNavProgress(p),ms))
-  const done=window.setTimeout(()=>setNavLoading(false),1120)
-  return()=>{timers.forEach(clearTimeout);clearTimeout(done)}
- },[route,branchId,month,manualPeriod,manualFrom,manualTo,ready,session?.user.id])
+  setNavProgress(100)
+  const done=window.setTimeout(()=>setNavLoading(false),120)
+  return()=>window.clearTimeout(done)
+ },[route,ready,session?.user.id])
 
  useEffect(()=>{
   let timer=0
@@ -173,7 +194,11 @@ export function App(){
   <aside className="sidebar">
    <div className="brand"><span className="brand-mark">A</span><div><b>AMMCO</b><span>Management Intelligence</span></div></div>
    <div className="nav-caption">القائمة الرئيسية</div>
-   <nav>{visibleNav.map(([id,label,Icon])=><a key={id} className={route===id?'active':''} href={'#/'+id} onClick={()=>{setNavProgress(8);setNavLoading(true);setInteractionLabel('جاري فتح '+label);setInteractionBusy(true)}}><span className="nav-icon">{navLoading&&route!==id?<span className="mini-spinner"/>:<Icon size={18}/>}</span><span>{label}</span></a>)}</nav>
+   <nav>{visibleNav.map(([id,label,Icon])=><a key={id} className={route===id?'active':''} href={'#/'+id}
+    onMouseEnter={()=>{const load=pageLoaders[id as keyof typeof pageLoaders];void load?.()}}
+    onFocus={()=>{const load=pageLoaders[id as keyof typeof pageLoaders];void load?.()}}
+    onClick={()=>{setNavProgress(35);setNavLoading(true);setInteractionLabel('جاري فتح '+label);setInteractionBusy(true)}}>
+    <span className="nav-icon"><Icon size={18}/></span><span>{label}</span></a>)}</nav>
    <div className="sidebar-foot"><span>AMMCO v2</span><small>نظام التقارير والإدارة</small></div>
   </aside>
   <main>
@@ -199,6 +224,7 @@ export function App(){
    </header>
 
    <section className="page-content">
+    <Suspense fallback={<div className="panel loading fast-page-loader">جاري فتح الصفحة…</div>}>
     {route==='dashboard' && <Dashboard from={period.from} to={period.to} branchId={branchId||undefined}/>}
     {route==='management' && <ManagementCenter from={period.from} to={period.to} branchId={branchId||undefined}/>}
     {route==='comparison' && <ExecutiveComparison from={period.from} to={period.to} branchId={branchId||undefined}/>}
@@ -219,6 +245,7 @@ export function App(){
     {route==='branches' && profile.role==='admin' && <BranchesPage/>}
     {route==='users' && profile.role==='admin' && <UsersPage/>}
     {route==='settings' && <Settings/>}
+    </Suspense>
    </section>
   </main>
  </div>
