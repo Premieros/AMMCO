@@ -17,10 +17,11 @@ import {Imports} from '../pages/Imports'
 import {Inventory} from '../pages/Inventory'
 import {Vehicles} from '../pages/Vehicles'
 import {UsersPage} from '../pages/Users'
+import {BranchesPage} from '../pages/Branches'
 import {Login} from '../pages/Login'
 import {LayoutDashboard,FileBarChart2,Users,Receipt,WalletCards,Upload,UserCog,LogOut,Boxes,Truck} from 'lucide-react'
 
-type Route='dashboard'|'reports'|'reps'|'rep-daily'|'receivables'|'monthly'|'products'|'banks'|'expenses'|'treasury'|'inventory'|'vehicles'|'imports'|'users'
+type Route='dashboard'|'reports'|'reps'|'rep-daily'|'receivables'|'monthly'|'products'|'banks'|'expenses'|'treasury'|'inventory'|'vehicles'|'imports'|'branches'|'users'
 const nav=[
  ['dashboard','لوحة التحكم',LayoutDashboard],
  ['reports','التقارير',FileBarChart2],
@@ -35,6 +36,7 @@ const nav=[
  ['inventory','المخزون',Boxes],
  ['vehicles','السيارات وبترو اب',Truck],
  ['imports','الاستيراد',Upload],
+ ['branches','إدارة الفروع',Boxes],
  ['users','إدارة المستخدمين',UserCog],
 ] as const
 
@@ -96,7 +98,7 @@ export function App(){
  if(error)return <main className="login-page"><div className="login-card"><div className="error-box">{error}</div><button className="primary" onClick={()=>supabase.auth.signOut()}>خروج</button></div></main>
  if(!profile||!month)return <div className="boot">AMMCO</div>
 
- const visibleNav=nav.filter(([id])=>id!=='users'||profile.role==='admin')
+ const visibleNav=nav.filter(([id])=>!['users','branches'].includes(id)||profile.role==='admin')
  const activeBranch=branches.find(b=>b.id===branchId)
 
  return <div className="app-shell">
@@ -127,10 +129,11 @@ export function App(){
    {route==='products' && <Products from={period.from} to={period.to} branchId={branchId||undefined}/>}
    {route==='banks' && <Banks from={period.from.slice(0,4)+'-01-01'} to={period.to} branchId={branchId||undefined}/>}
    {route==='expenses' && <Expenses from={period.from} to={period.to} month={month} branchId={branchId||undefined} branches={branches} isAdmin={profile.role==='admin'}/>}
-   {route==='treasury' && <Treasury from={period.from} to={period.to} branchId={branchId||undefined} branches={branches}/>}
+   {route==='treasury' && <Treasury from={period.from} to={period.to} branchId={branchId||undefined} branches={branches} isAdmin={profile.role==='admin'}/>} 
    {route==='inventory' && <Inventory from={period.from} to={period.to} branchId={branchId||undefined}/>}
    {route==='vehicles' && <Vehicles from={period.from} to={period.to} month={month} branchId={branchId||undefined} branches={branches} isAdmin={profile.role==='admin'}/>}
    {route==='imports' && <Imports month={month} branchId={branchId||undefined} branches={branches} isAdmin={profile.role==='admin'}/>}
+   {route==='branches' && profile.role==='admin' && <BranchesPage/>}
    {route==='users' && profile.role==='admin' && <UsersPage/>}
   </main>
  </div>
