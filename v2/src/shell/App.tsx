@@ -20,10 +20,11 @@ import {UsersPage} from '../pages/Users'
 import {BranchesPage} from '../pages/Branches'
 import {Settings} from '../pages/Settings'
 import {ManagementCenter} from '../pages/ManagementCenter'
+import {BranchSheets} from '../pages/BranchSheets'
 import {Login} from '../pages/Login'
 import {LayoutDashboard,FileBarChart2,Users,Receipt,WalletCards,Upload,UserCog,LogOut,Boxes,Truck,Settings as SettingsIcon,ShieldAlert} from 'lucide-react'
 
-type Route='dashboard'|'management'|'reports'|'reps'|'rep-daily'|'receivables'|'monthly'|'products'|'banks'|'expenses'|'treasury'|'inventory'|'vehicles'|'imports'|'branches'|'users'|'settings'
+type Route='dashboard'|'management'|'reports'|'reps'|'rep-daily'|'receivables'|'monthly'|'products'|'banks'|'expenses'|'treasury'|'inventory'|'vehicles'|'imports'|'branch-sheets'|'branches'|'users'|'settings'
 const nav=[
  ['dashboard','لوحة التحكم',LayoutDashboard],
  ['management','مركز الإدارة',ShieldAlert],
@@ -39,6 +40,7 @@ const nav=[
  ['inventory','المخزون',Boxes],
  ['vehicles','السيارات وبترو اب',Truck],
  ['imports','الاستيراد',Upload],
+ ['branch-sheets','محرر الشيتات',FileBarChart2],
  ['branches','إدارة الفروع',Boxes],
  ['users','إدارة المستخدمين',UserCog],
  ['settings','الإعدادات',SettingsIcon],
@@ -112,7 +114,7 @@ export function App(){
  if(error)return <main className="login-page"><div className="login-card"><div className="error-box">{error}</div><button className="primary" onClick={()=>supabase.auth.signOut()}>خروج</button></div></main>
  if(!profile||!month)return <div className="boot">AMMCO</div>
 
- const visibleNav=nav.filter(([id])=>!['users','branches'].includes(id)||profile.role==='admin')
+ const visibleNav=nav.filter(([id])=>!['users','branches','branch-sheets'].includes(id)||profile.role==='admin')
  const activeBranch=branches.find(b=>b.id===branchId)
 
  return <div className="app-shell">
@@ -149,6 +151,7 @@ export function App(){
    {route==='inventory' && <Inventory from={period.from} to={period.to} branchId={branchId||undefined}/>}
    {route==='vehicles' && <Vehicles from={period.from} to={period.to} month={month} branchId={branchId||undefined} branches={branches} isAdmin={profile.role==='admin'}/>}
    {route==='imports' && <Imports month={month} branchId={branchId||undefined} branches={branches} isAdmin={profile.role==='admin'}/>}
+   {route==='branch-sheets' && profile.role==='admin' && <BranchSheets branches={branches} initialBranchId={branchId}/>}
    {route==='branches' && profile.role==='admin' && <BranchesPage/>}
    {route==='users' && profile.role==='admin' && <UsersPage/>}
    {route==='settings' && <Settings/>}
