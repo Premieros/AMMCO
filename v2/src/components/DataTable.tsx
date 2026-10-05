@@ -89,7 +89,7 @@ export function DataTable<T extends Record<string,any>>({title,columns,rows}:{ti
   const startX=e.clientX,startWidth=th.getBoundingClientRect().width
   const onMove=(ev:MouseEvent)=>{
    const delta=startX-ev.clientX
-   setColumnWidths(w=>({...w,[key]:Math.max(70,Math.round(startWidth+delta))}))
+   setColumnWidths(w=>({...w,[key]:Math.max(90,Math.round(startWidth+delta))}))
   }
   const onUp=()=>{window.removeEventListener('mousemove',onMove);window.removeEventListener('mouseup',onUp)}
   window.addEventListener('mousemove',onMove);window.addEventListener('mouseup',onUp)
@@ -197,7 +197,7 @@ export function DataTable<T extends Record<string,any>>({title,columns,rows}:{ti
     <thead>
      <tr>{visibleColumns.map(c=>{
       const key=String(c.key),active=sort?.key===key
-      return <th key={key} className={c.numeric?'num':''} style={columnWidths[key]?{width:columnWidths[key],minWidth:columnWidths[key],maxWidth:columnWidths[key]}:undefined}>
+      const autoWidth=c.numeric?110:Math.max(120,Math.min(240,c.label.length*14+48));const width=columnWidths[key]||autoWidth;return <th key={key} className={c.numeric?'num':''} style={{width,minWidth:width,maxWidth:width}}>
        <button className={'sort-head '+(active?'active':'')} onClick={()=>toggleSort(key)} title="ترتيب">
         <span>{c.label}</span><b>{active?(sort?.dir==='asc'?'↑':'↓'):'↕'}</b>
        </button>
@@ -210,7 +210,7 @@ export function DataTable<T extends Record<string,any>>({title,columns,rows}:{ti
      })}</tr>
     </thead>
     <tbody>
-     {filtered.length?filtered.map((row,i)=><tr key={i}>{visibleColumns.map(c=>{const key=String(c.key);return <td key={key} className={c.numeric?'num':''} style={columnWidths[key]?{width:columnWidths[key],minWidth:columnWidths[key],maxWidth:columnWidths[key]}:undefined}>{c.render?c.render(row):display(raw(row,key))}</td>})}</tr>):<tr><td colSpan={visibleColumns.length} className="empty">لا توجد بيانات في الفترة المحددة</td></tr>}
+     {filtered.length?filtered.map((row,i)=><tr key={i}>{visibleColumns.map(c=>{const key=String(c.key);const autoWidth=c.numeric?110:Math.max(120,Math.min(240,c.label.length*14+48));const width=columnWidths[key]||autoWidth;return <td key={key} className={c.numeric?'num':''} style={{width,minWidth:width,maxWidth:width}}>{c.render?c.render(row):display(raw(row,key))}</td>})}</tr>):<tr><td colSpan={visibleColumns.length} className="empty">لا توجد بيانات في الفترة المحددة</td></tr>}
     </tbody>
     {!!filtered.length&&<tfoot><tr>{visibleColumns.map((c,i)=>{
      if(i===0)return <th key={String(c.key)}>الإجمالي</th>
