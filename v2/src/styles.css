@@ -1945,3 +1945,53 @@ html,body,button,input,select,textarea{
 html[dir='rtl'],body{
  letter-spacing:0;
 }
+
+
+/* Premier typography + faster perceived navigation */
+html{
+ font-family:'Inter','Cairo',system-ui,-apple-system,sans-serif!important;
+ font-feature-settings:'cv02','cv03','cv04','cv11';
+ letter-spacing:-.011em;
+ text-rendering:optimizeLegibility;
+}
+html[dir='rtl'],
+html[dir='rtl'] body,
+html[dir='rtl'] button,
+html[dir='rtl'] input,
+html[dir='rtl'] select,
+html[dir='rtl'] textarea{
+ font-family:'Cairo','Inter',system-ui,-apple-system,sans-serif!important;
+ letter-spacing:0;
+}
+body{
+ -webkit-font-smoothing:antialiased;
+ -moz-osx-font-smoothing:grayscale;
+}
+.fast-page-loader{
+ min-height:120px;
+ display:grid;
+ place-items:center;
+ margin-bottom:0!important;
+}
+.page-content{
+ min-height:160px;
+}
+.route-progress{
+ height:3px;
+ background:transparent;
+}
+.route-progress span{
+ transition:width .1s ease!important;
+}
+.route-progress b{
+ display:none!important;
+}
+.interaction-toast{
+ animation-duration:.1s!important;
+}
+.sidebar nav a{
+ transition:background-color .1s ease,color .1s ease,border-color .1s ease,transform .1s ease!important;
+}
+.page-content{
+ animation:pageIn .12s ease both!important;
+}
