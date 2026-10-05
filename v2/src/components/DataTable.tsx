@@ -1,4 +1,5 @@
 import {useEffect,useMemo,useRef,useState,type ReactNode} from 'react'
+import {Columns3,Download,MoreHorizontal,Search,SlidersHorizontal} from 'lucide-react'
 import * as XLSX from 'xlsx'
 import html2canvas from 'html2canvas'
 import {jsPDF} from 'jspdf'
@@ -25,6 +26,7 @@ export function DataTable<T extends Record<string,any>>({title,columns,rows}:{ti
  const [sort,setSort]=useState<{key:string;dir:'asc'|'desc'}|null>(null)
  const [filters,setFilters]=useState<Record<string,string>>({})
  const [showColumns,setShowColumns]=useState(false)
+ const [showMore,setShowMore]=useState(false)
  const storageKey='ammco:columns:'+title
  const [visibleKeys,setVisibleKeys]=useState<string[]>(()=>{try{const saved=localStorage.getItem(storageKey);const parsed=saved?JSON.parse(saved):null;return Array.isArray(parsed)?parsed:columns.map(c=>String(c.key))}catch{return columns.map(c=>String(c.key))}})
  const wrapRef=useRef<HTMLDivElement>(null)
@@ -168,14 +170,11 @@ export function DataTable<T extends Record<string,any>>({title,columns,rows}:{ti
  return <section className="panel table-panel">
   <div className="table-head">
    <div><h2>{title}</h2><span>{filtered.length} من {rows.length} سجل</span></div>
-   <div className="table-tools">
-    <input className="table-search" value={search} onChange={e=>setSearch(e.target.value)} placeholder="بحث…"/>
-    <div className="column-picker-wrap"><button className={'small-btn '+(showColumns?'active':'')} onClick={()=>setShowColumns(v=>!v)}>الأعمدة ({visibleColumns.length}/{columns.length})</button>{showColumns&&<div className="column-picker"><div className="column-picker-head"><b>الأعمدة المعروضة</b><span>{visibleColumns.length} محدد</span></div><div className="column-picker-actions"><button type="button" className="small-btn" onClick={()=>setVisibleKeys(columns.map(c=>String(c.key)))}>تحديد الكل</button><button type="button" className="small-btn" onClick={()=>setVisibleKeys([String(columns[0]?.key||'')].filter(Boolean))}>إخفاء الكل</button></div><div className="column-picker-list">{columns.map(c=>{const key=String(c.key),checked=visibleKeys.includes(key),locked=columns[0]===c;return <label key={key}><input type="checkbox" checked={checked} disabled={locked} onChange={e=>setVisibleKeys(prev=>e.target.checked?[...new Set([...prev,key])]:prev.filter(x=>x!==key))}/><span>{c.label}</span></label>})}</div></div>}</div>
-    <button className="small-btn" onClick={()=>{setSearch('');setFilters({});setSort(null)}}>مسح الفلاتر</button>
-    <button className="small-btn" onClick={exportExcel}>Excel</button>
-    <button className="small-btn" onClick={()=>void downloadPdf()}>PDF</button>
-    <button className="small-btn" onClick={()=>void shareWhatsApp()}>واتساب</button>
-    <button className="small-btn" onClick={printTable}>طباعة</button>
+   <div className="table-tools compact-tools">
+    <div className="search-shell"><Search size={15}/><input className="table-search" value={search} onChange={e=>setSearch(e.target.value)} placeholder="بحث…"/></div>
+    <button className="icon-btn table-icon-btn" title="مسح البحث والفلاتر" onClick={()=>{setSearch('');setFilters({});setSort(null)}}><SlidersHorizontal size={16}/></button>
+    <div className="column-picker-wrap"><button className={'icon-btn table-icon-btn '+(showColumns?'active':'')} title={'الأعمدة '+visibleColumns.length+'/'+columns.length} onClick={()=>{setShowColumns(v=>!v);setShowMore(false)}}><Columns3 size={16}/></button>{showColumns&&<div className="column-picker"><div className="column-picker-head"><b>الأعمدة المعروضة</b><span>{visibleColumns.length} محدد</span></div><div className="column-picker-actions"><button type="button" className="small-btn" onClick={()=>setVisibleKeys(columns.map(c=>String(c.key)))}>تحديد الكل</button><button type="button" className="small-btn" onClick={()=>setVisibleKeys([String(columns[0]?.key||'')].filter(Boolean))}>إخفاء الكل</button></div><div className="column-picker-list">{columns.map(c=>{const key=String(c.key),checked=visibleKeys.includes(key),locked=columns[0]===c;return <label key={key}><input type="checkbox" checked={checked} disabled={locked} onChange={e=>setVisibleKeys(prev=>e.target.checked?[...new Set([...prev,key])]:prev.filter(x=>x!==key))}/><span>{c.label}</span></label>})}</div></div>}</div>
+    <div className="more-wrap"><button className={'icon-btn table-icon-btn '+(showMore?'active':'')} title="المزيد" onClick={()=>{setShowMore(v=>!v);setShowColumns(false)}}><MoreHorizontal size={17}/></button>{showMore&&<div className="more-menu"><button onClick={exportExcel}><Download size={15}/><span>Excel</span></button><button onClick={()=>void downloadPdf()}><Download size={15}/><span>PDF</span></button><button onClick={()=>void shareWhatsApp()}><span>↗</span><span>واتساب</span></button><button onClick={printTable}><span>⎙</span><span>طباعة</span></button></div>}</div>
    </div>
   </div>
   <div className="table-wrap" ref={wrapRef}>
