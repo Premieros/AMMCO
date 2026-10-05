@@ -140,13 +140,15 @@ export function App(){
 
  return <div className="app-shell">
   {navLoading&&<div className="route-progress" aria-live="polite"><span style={{width:navProgress+'%'}}/><b>{navProgress}%</b></div>}
-  <aside>
-   <div className="brand"><b>AMMCO</b><span>Management Intelligence v2</span></div>
-   <nav>{visibleNav.map(([id,label,Icon])=><a key={id} className={route===id?'active':''} href={'#/'+id}><Icon size={18}/><span>{label}</span></a>)}</nav>
+  <aside className="sidebar">
+   <div className="brand"><span className="brand-mark">A</span><div><b>AMMCO</b><span>Management Intelligence</span></div></div>
+   <div className="nav-caption">القائمة الرئيسية</div>
+   <nav>{visibleNav.map(([id,label,Icon])=><a key={id} className={route===id?'active':''} href={'#/'+id}><span className="nav-icon"><Icon size={18}/></span><span>{label}</span></a>)}</nav>
+   <div className="sidebar-foot"><span>AMMCO v2</span><small>نظام التقارير والإدارة</small></div>
   </aside>
   <main>
    <header className="topbar">
-    <div><h1>{visibleNav.find(x=>x[0]===route)?.[1]||'AMMCO'}</h1><span>{activeBranch?.name||'كل الفروع'} • {month}</span></div>
+    <div className="page-heading"><span className="eyebrow">AMMCO / {manualPeriod?'فترة مخصصة':'تقرير شهري'}</span><h1>{visibleNav.find(x=>x[0]===route)?.[1]||'AMMCO'}</h1><div className="context-row"><span>{activeBranch?.name||'كل الفروع'}</span><i>•</i><span>{period.from} ← {period.to}</span></div></div>
     <div className="top-actions no-print">
      <label>الشهر<select value={month} onChange={e=>{setMonth(e.target.value);setManualPeriod(false)}}>{approvedMonths.map(m=><option key={m} value={m}>{monthLabel(m)}</option>)}</select></label>
      <label className="range-label">الفترة
@@ -164,26 +166,28 @@ export function App(){
     </div>
    </header>
 
-   {route==='dashboard' && <Dashboard from={period.from} to={period.to} branchId={branchId||undefined}/>}
-   {route==='management' && <ManagementCenter from={period.from} to={period.to} branchId={branchId||undefined}/>}
-   {route==='comparison' && <ExecutiveComparison from={period.from} to={period.to} branchId={branchId||undefined}/>}
-   {route==='drilldown' && <MetricDrilldown from={period.from} to={period.to} branchId={branchId||undefined}/>}
-   {route==='reports' && <Reports from={period.from} to={period.to} branchId={branchId||undefined}/>}
-   {route==='reps' && <Reps from={period.from} to={period.to} branchId={branchId||undefined} isAdmin={profile.role==='admin'} month={month}/>} 
-   {route==='rep-daily' && <RepDaily from={period.from} to={period.to} branchId={branchId||undefined}/>}
-   {route==='receivables' && <Receivables from={period.from} to={period.to} branchId={branchId||undefined}/>}
-   {route==='monthly' && <Monthly year={period.from.slice(0,4)} branchId={branchId||undefined}/>}
-   {route==='products' && <Products from={period.from} to={period.to} branchId={branchId||undefined}/>}
-   {route==='banks' && <Banks from={period.from.slice(0,4)+'-01-01'} to={period.to} branchId={branchId||undefined}/>}
-   {route==='expenses' && <Expenses from={period.from} to={period.to} month={month} branchId={branchId||undefined} branches={branches} isAdmin={profile.role==='admin'}/>}
-   {route==='treasury' && <Treasury from={period.from} to={period.to} branchId={branchId||undefined} branches={branches} isAdmin={profile.role==='admin'}/>} 
-   {route==='inventory' && <Inventory from={period.from} to={period.to} branchId={branchId||undefined}/>}
-   {route==='vehicles' && <Vehicles from={period.from} to={period.to} month={month} branchId={branchId||undefined} branches={branches} isAdmin={profile.role==='admin'}/>}
-   {route==='imports' && <Imports month={month} branchId={branchId||undefined} branches={branches} isAdmin={profile.role==='admin'}/>}
-   {route==='branch-sheets' && profile.role==='admin' && <BranchSheets branches={branches} initialBranchId={branchId}/>}
-   {route==='branches' && profile.role==='admin' && <BranchesPage/>}
-   {route==='users' && profile.role==='admin' && <UsersPage/>}
-   {route==='settings' && <Settings/>}
+   <section className="page-content">
+    {route==='dashboard' && <Dashboard from={period.from} to={period.to} branchId={branchId||undefined}/>}
+    {route==='management' && <ManagementCenter from={period.from} to={period.to} branchId={branchId||undefined}/>}
+    {route==='comparison' && <ExecutiveComparison from={period.from} to={period.to} branchId={branchId||undefined}/>}
+    {route==='drilldown' && <MetricDrilldown from={period.from} to={period.to} branchId={branchId||undefined}/>}
+    {route==='reports' && <Reports from={period.from} to={period.to} branchId={branchId||undefined}/>}
+    {route==='reps' && <Reps from={period.from} to={period.to} branchId={branchId||undefined} isAdmin={profile.role==='admin'} month={month}/>} 
+    {route==='rep-daily' && <RepDaily from={period.from} to={period.to} branchId={branchId||undefined}/>}
+    {route==='receivables' && <Receivables from={period.from} to={period.to} branchId={branchId||undefined}/>}
+    {route==='monthly' && <Monthly year={period.from.slice(0,4)} branchId={branchId||undefined}/>}
+    {route==='products' && <Products from={period.from} to={period.to} branchId={branchId||undefined}/>}
+    {route==='banks' && <Banks from={period.from.slice(0,4)+'-01-01'} to={period.to} branchId={branchId||undefined}/>}
+    {route==='expenses' && <Expenses from={period.from} to={period.to} month={month} branchId={branchId||undefined} branches={branches} isAdmin={profile.role==='admin'}/>}
+    {route==='treasury' && <Treasury from={period.from} to={period.to} branchId={branchId||undefined} branches={branches} isAdmin={profile.role==='admin'}/>} 
+    {route==='inventory' && <Inventory from={period.from} to={period.to} branchId={branchId||undefined}/>}
+    {route==='vehicles' && <Vehicles from={period.from} to={period.to} month={month} branchId={branchId||undefined} branches={branches} isAdmin={profile.role==='admin'}/>}
+    {route==='imports' && <Imports month={month} branchId={branchId||undefined} branches={branches} isAdmin={profile.role==='admin'}/>}
+    {route==='branch-sheets' && profile.role==='admin' && <BranchSheets branches={branches} initialBranchId={branchId}/>}
+    {route==='branches' && profile.role==='admin' && <BranchesPage/>}
+    {route==='users' && profile.role==='admin' && <UsersPage/>}
+    {route==='settings' && <Settings/>}
+   </section>
   </main>
  </div>
 }
