@@ -1,8 +1,11 @@
 import {supabase} from '../lib/supabase'
 import {fetchAllPages} from './pagination'
+import {getApprovedBatchIds} from './core'
+const ZERO='00000000-0000-0000-0000-000000000000'
 export type CashRow={id:number;branch_id:string;entry_date:string;source_code:string|null;description:string|null;category:string|null;canonical_category:string|null;expense_group:string|null;treasury_account_id:string|null;direction:string;amount:number;running_balance:number|null;entry_kind:string|null;is_expense:boolean}
 export async function getTreasury(params:{from:string;to:string;branchId?:string}){
- return fetchAllPages<CashRow>((fromRow,toRow)=>{let q=supabase.from('cash_entries').select('id,branch_id,entry_date,source_code,description,category,canonical_category,expense_group,treasury_account_id,direction,amount,running_balance,entry_kind,is_expense').gte('entry_date',params.from).lte('entry_date',params.to).order('entry_date',{ascending:true}).order('id',{ascending:true});if(params.branchId)q=q.eq('branch_id',params.branchId);return q.range(fromRow,toRow)})
+ const ids=await getApprovedBatchIds(),safe=ids.length?ids:[ZERO]
+ return fetchAllPages<CashRow>((fromRow,toRow)=>{let q=supabase.from('cash_entries').select('id,branch_id,entry_date,source_code,description,category,canonical_category,expense_group,treasury_account_id,direction,amount,running_balance,entry_kind,is_expense').in('batch_id',safe).gte('entry_date',params.from).lte('entry_date',params.to).order('entry_date',{ascending:true}).order('id',{ascending:true});if(params.branchId)q=q.eq('branch_id',params.branchId);return q.range(fromRow,toRow)})
 }
 
 export async function updateCashEntry(input:{id:number;source_code:string;entry_date:string;description:string;category:string;inbound:number;outbound:number;running_balance:string|number;reason:string}){
