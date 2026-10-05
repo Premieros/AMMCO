@@ -8,6 +8,7 @@ const money=(n:number)=>new Intl.NumberFormat('en-US',{maximumFractionDigits:2})
 export function Treasury({from,to,branchId,branches,isAdmin=false}:{from:string;to:string;branchId?:string;branches:Branch[];isAdmin?:boolean}){
  const [rows,setRows]=useState<CashRow[]>([]),[loading,setLoading]=useState(true),[error,setError]=useState(''),[edit,setEdit]=useState<CashRow|null>(null),[msg,setMsg]=useState('')
  const [accounts,setAccounts]=useState<any[]>([]),[audit,setAudit]=useState<any[]>([])
+ const [activeTab,setActiveTab]=useState<'summary'|'movements'>('summary')
  const load=()=>{setLoading(true);return getTreasury({from,to,branchId}).then(setRows).catch(e=>setError(e.message||String(e))).finally(()=>setLoading(false))}
  useEffect(()=>{void load()},[from,to,branchId])
  const map=useMemo(()=>new Map(branches.map(b=>[b.id,b.name])),[branches])
@@ -67,7 +68,8 @@ export function Treasury({from,to,branchId,branches,isAdmin=false}:{from:string;
  if(loading)return <div className="panel loading">جاري تحميل الخزينة…</div>
  return <div>
   {error&&<div className="error-box">{error}</div>}
-  <div className="kpi-grid"><article className="kpi-card"><span>رصيد أول الفترة</span><strong>{money(openingCash)}</strong></article><article className="kpi-card"><span>الوارد</span><strong>{money(incoming)}</strong></article><article className="kpi-card"><span>الصادر</span><strong>{money(outgoing)}</strong></article><article className="kpi-card"><span>رصيد آخر / صافي النقدية</span><strong>{money(closingCash)}</strong><small>رصيد أول + الوارد − الصادر</small></article></div>
+  <div className="subpage-tabs no-print"><button className={activeTab==='summary'?'active':''} onClick={()=>setActiveTab('summary')}>الملخص</button><button className={activeTab==='movements'?'active':''} onClick={()=>setActiveTab('movements')}>الحركات</button></div>
+  {activeTab==='summary'&&<><div className="kpi-grid"><article className="kpi-card"><span>رصيد أول الفترة</span><strong>{money(openingCash)}</strong></article><article className="kpi-card"><span>الوارد</span><strong>{money(incoming)}</strong></article><article className="kpi-card"><span>الصادر</span><strong>{money(outgoing)}</strong></article><article className="kpi-card"><span>رصيد آخر / صافي النقدية</span><strong>{money(closingCash)}</strong><small>رصيد أول + الوارد − الصادر</small></article></div>
   <DataTable title={branchId?"ملخص خزينة الفرع":"صافي الخزينة حسب الفرع"} rows={branchCash} columns={[
    {key:'branch',label:'الفرع'},
    {key:'opening',label:'رصيد أول',numeric:true,render:r=>r.opening==null?'—':money(r.opening)},
@@ -76,11 +78,10 @@ export function Treasury({from,to,branchId,branches,isAdmin=false}:{from:string;
    {key:'net',label:'صافي الحركة',numeric:true,render:r=>money(r.net)},
    {key:'closing',label:'رصيد آخر',numeric:true,total:false,render:r=>r.closing==null?'—':money(r.closing)},
    {key:'lastDate',label:'آخر حركة',total:false}
-  ]}/> 
-  <DataTable title="حركات الخزينة" rows={rows.map(r=>({...r,branch:map.get(r.branch_id)||'—',inbound:r.direction==='in'?r.amount:0,outbound:r.direction==='out'?r.amount:0}))} columns={[
+  ]}/></>}
+  {activeTab==='movements'&&<DataTable title="حركات الخزينة" rows={rows.map(r=>({...r,branch:map.get(r.branch_id)||'—',inbound:r.direction==='in'?r.amount:0,outbound:r.direction==='out'?r.amount:0}))} columns={[
    {key:'entry_date',label:'التاريخ',render:r=>r.entry_date||'بدون تاريخ'},{key:'branch',label:'الفرع'},{key:'source_code',label:'الكود'},{key:'description',label:'البيان'},{key:'category',label:'التصنيف الأصلي'},{key:'canonical_category',label:'التوجيه الحالي'},{key:'inbound',label:'وارد',numeric:true,render:r=>money(r.inbound)},{key:'outbound',label:'صادر',numeric:true,render:r=>money(r.outbound)},{key:'running_balance',label:'الرصيد',numeric:true,total:false,render:r=>r.running_balance==null?'—':money(r.running_balance)},{key:'action',label:'إجراء',filter:false,render:r=>isAdmin?<button className="small-btn" onClick={()=>openEdit(r)}>تعديل / سجل</button>:'—'}
-  ]}/>
-
+  ]}/>}
   {edit&&<div className="modal-backdrop"><div className="modal-card wide-modal"><div className="modal-head"><h3>حركة الخزينة #{edit.id}</h3><button type="button" className="small-btn" onClick={()=>setEdit(null)}>إغلاق</button></div>
    <section className="modal-section"><h4>تعديل السطر الأصلي</h4><form onSubmit={saveSource}><div className="form-grid"><label>الكود<input name="source_code" defaultValue={edit.source_code||''}/></label><label>التاريخ<input name="entry_date" type="date" defaultValue={edit.entry_date||''}/></label><label>البيان<input name="description" defaultValue={edit.description||''}/></label><label>التصنيف<input name="category" defaultValue={edit.category||''}/></label><label>الوارد<input name="inbound" type="number" min="0" step="0.01" defaultValue={edit.direction==='in'?Number(edit.amount||0):0}/></label><label>الصادر<input name="outbound" type="number" min="0" step="0.01" defaultValue={edit.direction==='out'?Number(edit.amount||0):0}/></label><label>رصيد آخر<input name="running_balance" type="number" step="0.01" defaultValue={edit.running_balance??''}/></label><label className="full">سبب التعديل<textarea name="reason" rows={2} required placeholder="سبب التعديل"></textarea></label></div><button className="primary">حفظ السطر</button></form></section>
 
