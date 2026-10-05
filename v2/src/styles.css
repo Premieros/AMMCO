@@ -1,3 +1,4 @@
+@import url('https://fonts.googleapis.com/css2?family=Cairo:wght@400;500;600;700;800&display=swap');
 *{box-sizing:border-box}
 :root{font-family:"Noto Sans Arabic","Cairo",Tahoma,Arial,sans-serif;color:#172033;background:#f4f7fa;font-size:15px}
 body{margin:0;background:#f4f7fa}
@@ -2279,3 +2280,56 @@ td.num,th.num,
  .premium-kpi .kpi-copy>strong,.kpi-card strong{font-size:20px!important}
  .dashboard-hero h2{font-size:24px!important}
 }
+
+
+/* Final readability tuning for Cairo */
+body{
+ font-family:'Cairo',system-ui,-apple-system,BlinkMacSystemFont,'Segoe UI',sans-serif!important;
+ font-weight:500!important;
+}
+.sidebar nav a{
+ font-size:14.5px!important;
+ font-weight:600!important;
+}
+.nav-caption{font-size:11px!important}
+.strip-title strong{font-size:19px!important;font-weight:700!important}
+.strip-title small{font-size:10.5px!important}
+.strip-field span{font-size:10px!important}
+.strip-field select,.strip-field input{font-size:11.5px!important}
+.strip-pill,.strip-user{font-size:10.5px!important}
+.premium-kpi .kpi-copy>span,.kpi-card span{
+ font-size:12px!important;
+ font-weight:600!important;
+}
+.premium-kpi .kpi-copy>strong,.kpi-card strong{
+ font-size:22px!important;
+ font-weight:700!important;
+ line-height:1.35!important;
+}
+.premium-kpi small,.kpi-card small{
+ font-size:11px!important;
+ line-height:1.7!important;
+}
+.dashboard-section-head>div>span,
+.chart-eyebrow,
+.section-heading>div>span{
+ font-size:10.5px!important;
+}
+.dashboard-section-head h2,
+.premium-chart-head h2,
+.section-heading h2{
+ font-size:18px!important;
+ font-weight:700!important;
+}
+.dashboard-section-head small,
+.premium-chart-head small,
+.section-heading small{
+ font-size:11.5px!important;
+}
+.ranking-label>span{font-size:12.5px!important}
+.ranking-value strong{font-size:13.5px!important;font-weight:700!important}
+.ranking-value small{font-size:10.5px!important}
+table,th,td{font-size:12px!important}
+.column-filter,.table-head span{font-size:11px!important}
+.small-btn{font-size:11.5px!important}
+.muted,.loading,.panel p{font-size:12.5px!important}
