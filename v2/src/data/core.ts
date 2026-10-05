@@ -75,6 +75,7 @@ export async function getDashboardSummary(params:{from:string;to:string;branchId
   if(params.branchId)q=q.eq('branch_id',params.branchId)
   return q.range(fromRow,toRow)
  })
+ const cashRows=await fetchAllPages<any>((fromRow,toRow)=>{let q=supabase.from('cash_entries').select('branch_id,entry_date,id,direction,amount,running_balance').in('batch_id',safeIds).gte('entry_date',params.from).lte('entry_date',params.to).order('entry_date',{ascending:true}).order('id',{ascending:true});if(params.branchId)q=q.eq('branch_id',params.branchId);return q.range(fromRow,toRow)})
  const reps=await fetchAllPages<any>((fromRow,toRow)=>{
   let q=supabase.from('sales_rep_daily')
    .select('branch_id,business_date,raw_payload')
@@ -92,6 +93,15 @@ export async function getDashboardSummary(params:{from:string;to:string;branchId
  }
  for(const r of reps)equivalentQty+=Number(r.raw_payload?.equivalent_sales_qty||0)
  const closingDebt=[...latest.values()].reduce((s,x)=>s+x.debt,0)
- const closingCash=[...latest.values()].reduce((s,x)=>s+x.cash,0)
+ const cashByBranch=new Map<string,{opening:number|null,incoming:number,outgoing:number}>()
+ for(const r of cashRows){
+  let x=cashByBranch.get(r.branch_id)
+  if(!x){x={opening:null,incoming:0,outgoing:0};cashByBranch.set(r.branch_id,x)}
+  const amount=Number(r.amount||0),signed=r.direction==='in'?amount:-amount
+  if(x.opening===null&&r.running_balance!==null)x.opening=Number(r.running_balance)-signed
+  if(r.direction==='in')x.incoming+=amount
+  if(r.direction==='out')x.outgoing+=amount
+ }
+ const closingCash=[...cashByBranch.values()].reduce((s,x)=>s+(x.opening===null?0:x.opening+x.incoming-x.outgoing),0)
  return {netSales,grossSales,discounts,collections,closingDebt,expenses,closingCash,equivalentQty,avgPrice:equivalentQty?netSales/equivalentQty:0,branches:latest.size}
 }
