@@ -11,7 +11,25 @@ export function Treasury({from,to,branchId,branches,isAdmin=false}:{from:string;
  const load=()=>{setLoading(true);return getTreasury({from,to,branchId}).then(setRows).catch(e=>setError(e.message||String(e))).finally(()=>setLoading(false))}
  useEffect(()=>{void load()},[from,to,branchId])
  const map=useMemo(()=>new Map(branches.map(b=>[b.id,b.name])),[branches])
- const incoming=rows.filter(r=>r.direction==='in').reduce((s,r)=>s+Number(r.amount||0),0),outgoing=rows.filter(r=>r.direction==='out').reduce((s,r)=>s+Number(r.amount||0),0)
+ const branchCash=useMemo(()=>{
+  const by=new Map<string,{branchId:string;branch:string;opening:number|null;incoming:number;outgoing:number;net:number;closing:number|null;lastDate:string}>()
+  for(const r of rows){
+   let x=by.get(r.branch_id)
+   if(!x){x={branchId:r.branch_id,branch:map.get(r.branch_id)||'—',opening:null,incoming:0,outgoing:0,net:0,closing:null,lastDate:r.entry_date};by.set(r.branch_id,x)}
+   const amount=Number(r.amount||0),signed=r.direction==='in'?amount:-amount
+   if(x.opening===null&&r.running_balance!==null)x.opening=Number(r.running_balance)-signed
+   if(r.direction==='in')x.incoming+=amount
+   if(r.direction==='out')x.outgoing+=amount
+   x.net=x.incoming-x.outgoing
+   x.lastDate=r.entry_date
+  }
+  for(const x of by.values())if(x.opening!==null)x.closing=x.opening+x.incoming-x.outgoing
+  return [...by.values()].sort((a,b)=>a.branch.localeCompare(b.branch,'ar'))
+ },[rows,map])
+ const openingCash=branchCash.reduce((s,x)=>s+Number(x.opening||0),0)
+ const incoming=branchCash.reduce((s,x)=>s+x.incoming,0)
+ const outgoing=branchCash.reduce((s,x)=>s+x.outgoing,0)
+ const closingCash=openingCash+incoming-outgoing
 
  async function openEdit(r:CashRow){
   setEdit(r);setMsg('');setAccounts([]);setAudit([])
@@ -44,9 +62,18 @@ export function Treasury({from,to,branchId,branches,isAdmin=false}:{from:string;
  if(loading)return <div className="panel loading">جاري تحميل الخزينة…</div>
  return <div>
   {error&&<div className="error-box">{error}</div>}
-  <div className="kpi-grid"><article className="kpi-card"><span>الوارد</span><strong>{money(incoming)}</strong></article><article className="kpi-card"><span>الصادر</span><strong>{money(outgoing)}</strong></article><article className="kpi-card"><span>صافي الحركة</span><strong>{money(incoming-outgoing)}</strong></article></div>
+  <div className="kpi-grid"><article className="kpi-card"><span>رصيد أول الفترة</span><strong>{money(openingCash)}</strong></article><article className="kpi-card"><span>الوارد</span><strong>{money(incoming)}</strong></article><article className="kpi-card"><span>الصادر</span><strong>{money(outgoing)}</strong></article><article className="kpi-card"><span>رصيد آخر / صافي النقدية</span><strong>{money(closingCash)}</strong><small>رصيد أول + الوارد − الصادر</small></article></div>
+  {!branchId&&<DataTable title="صافي الخزينة حسب الفرع" rows={branchCash} columns={[
+   {key:'branch',label:'الفرع'},
+   {key:'opening',label:'رصيد أول',numeric:true,render:r=>r.opening==null?'—':money(r.opening)},
+   {key:'incoming',label:'الوارد',numeric:true,render:r=>money(r.incoming)},
+   {key:'outgoing',label:'الصادر',numeric:true,render:r=>money(r.outgoing)},
+   {key:'net',label:'صافي الحركة',numeric:true,render:r=>money(r.net)},
+   {key:'closing',label:'رصيد آخر',numeric:true,total:false,render:r=>r.closing==null?'—':money(r.closing)},
+   {key:'lastDate',label:'آخر حركة',total:false}
+  ]}/>} 
   <DataTable title="حركات الخزينة" rows={rows.map(r=>({...r,branch:map.get(r.branch_id)||'—',inbound:r.direction==='in'?r.amount:0,outbound:r.direction==='out'?r.amount:0}))} columns={[
-   {key:'entry_date',label:'التاريخ'},{key:'branch',label:'الفرع'},{key:'source_code',label:'الكود'},{key:'description',label:'البيان'},{key:'category',label:'التصنيف الأصلي'},{key:'canonical_category',label:'التوجيه الحالي'},{key:'inbound',label:'وارد',numeric:true,render:r=>money(r.inbound)},{key:'outbound',label:'صادر',numeric:true,render:r=>money(r.outbound)},{key:'running_balance',label:'الرصيد',numeric:true,render:r=>r.running_balance==null?'—':money(r.running_balance)},{key:'action',label:'إجراء',filter:false,render:r=>isAdmin?<button className="small-btn" onClick={()=>openEdit(r)}>تعديل / سجل</button>:'—'}
+   {key:'entry_date',label:'التاريخ'},{key:'branch',label:'الفرع'},{key:'source_code',label:'الكود'},{key:'description',label:'البيان'},{key:'category',label:'التصنيف الأصلي'},{key:'canonical_category',label:'التوجيه الحالي'},{key:'inbound',label:'وارد',numeric:true,render:r=>money(r.inbound)},{key:'outbound',label:'صادر',numeric:true,render:r=>money(r.outbound)},{key:'running_balance',label:'الرصيد',numeric:true,total:false,render:r=>r.running_balance==null?'—':money(r.running_balance)},{key:'action',label:'إجراء',filter:false,render:r=>isAdmin?<button className="small-btn" onClick={()=>openEdit(r)}>تعديل / سجل</button>:'—'}
   ]}/>
 
   {edit&&<div className="modal-backdrop"><div className="modal-card wide-modal"><div className="modal-head"><h3>حركة الخزينة #{edit.id}</h3><button type="button" className="small-btn" onClick={()=>setEdit(null)}>إغلاق</button></div>
