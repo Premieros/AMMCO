@@ -44,6 +44,17 @@ export function BranchSheets({branches,initialBranchId=''}:{branches:Branch[];in
   if(!selectedBatch)return
   try{setSaving(true);setMsg('جاري حفظ التعديلات وإعادة حساب المؤشرات…');const out=await saveBatchContents({batchId:selectedBatch.id,branchId,inventoryEdits:[...invEdits].map(([id,e])=>({id,...e})),repEdits:[...repEdits].map(([id,e])=>({id,...e})),cashEdits:[...cashEdits].map(([id,e])=>({id,...e})),warehouseEdits:[...whEdits].map(([id,e])=>({id,...e})),cashDeletes:[...cashDeletes],cashNew:cashNew.map(({__tempId,...r}:any)=>r)});setMsg('تم الحفظ وتحديث '+out.affectedDatesCount+' يوم');const x=await getBatchContents(selectedBatch.id);setInventory(x.inventory);setReps(x.reps);setCash(x.cash);setWarehouse(x.warehouse);setInvEdits(new Map());setRepEdits(new Map());setCashEdits(new Map());setWhEdits(new Map());setCashDeletes(new Set());setCashNew([])}catch(e:any){setMsg(e.message||String(e))}finally{setSaving(false)}
  }
+ useEffect(()=>{
+  const handler=(e:KeyboardEvent)=>{
+   if((e.ctrlKey||e.metaKey)&&e.key.toLowerCase()==='s'){
+    e.preventDefault()
+    if(dirty>0&&!saving)void saveAll()
+   }
+  }
+  window.addEventListener('keydown',handler)
+  return()=>window.removeEventListener('keydown',handler)
+ },[dirty,saving,batchId,branchId,invEdits,repEdits,cashEdits,whEdits,cashDeletes,cashNew])
+
 
  function addCash(){
   if(!selectedBatch)return
