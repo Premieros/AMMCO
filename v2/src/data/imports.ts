@@ -20,6 +20,21 @@ export async function getImportHistory(branchId?:string){
  })
 }
 
+
+export async function getImportedDays(input:{month:string;branchId?:string}){
+ const [y,m]=input.month.split('-').map(Number)
+ const from=input.month+'-01'
+ const to=input.month+'-'+String(new Date(y,m,0).getDate()).padStart(2,'0')
+ return fetchAllPages<{branch_id:string;business_date:string}>((a,b)=>{
+  let q=supabase.from('branch_day_submissions')
+   .select('branch_id,business_date')
+   .gte('business_date',from).lte('business_date',to)
+   .order('business_date',{ascending:true})
+  if(input.branchId)q=q.eq('branch_id',input.branchId)
+  return q.range(a,b)
+ })
+}
+
 export async function uploadBranchWorkbook(input:{branchId:string;month:string;file:File;historyMode:string;onProgress?:(x:string)=>void}){
  const [y,m]=input.month.split('-').map(Number)
  const periodStart=input.month+'-01',periodEnd=input.month+'-'+String(new Date(y,m,0).getDate()).padStart(2,'0')
