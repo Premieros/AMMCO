@@ -1,4 +1,4 @@
-import {useMemo,useRef,useState,type ReactNode} from 'react'
+import {useEffect,useMemo,useRef,useState,type ReactNode} from 'react'
 import * as XLSX from 'xlsx'
 
 export type Column<T>={
@@ -23,6 +23,21 @@ export function DataTable<T extends Record<string,any>>({title,columns,rows}:{ti
  const [sort,setSort]=useState<{key:string;dir:'asc'|'desc'}|null>(null)
  const [filters,setFilters]=useState<Record<string,string>>({})
  const wrapRef=useRef<HTMLDivElement>(null)
+
+ useEffect(()=>{
+  const el=wrapRef.current
+  if(!el)return
+  let down=false,startX=0,startLeft=0,moved=false
+  const onDown=(e:MouseEvent)=>{
+   if(e.button!==0||(e.target as HTMLElement).closest('button,input,select,textarea,a,label'))return
+   down=true;moved=false;startX=e.clientX;startLeft=el.scrollLeft;el.classList.add('dragging');e.preventDefault()
+  }
+  const onMove=(e:MouseEvent)=>{if(!down)return;const dx=e.clientX-startX;if(Math.abs(dx)>3)moved=true;el.scrollLeft=startLeft-dx}
+  const onUp=()=>{down=false;el.classList.remove('dragging')}
+  const onClick=(e:MouseEvent)=>{if(moved&&!(e.target as HTMLElement).closest('button,input,select,textarea,a,label')){e.preventDefault();e.stopPropagation();moved=false}}
+  el.addEventListener('mousedown',onDown);window.addEventListener('mousemove',onMove);window.addEventListener('mouseup',onUp);el.addEventListener('click',onClick,true)
+  return()=>{el.removeEventListener('mousedown',onDown);window.removeEventListener('mousemove',onMove);window.removeEventListener('mouseup',onUp);el.removeEventListener('click',onClick,true)}
+ },[])
 
  const filtered=useMemo(()=>{
   const q=search.trim().toLowerCase()
