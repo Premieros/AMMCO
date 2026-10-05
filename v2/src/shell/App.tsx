@@ -1,7 +1,7 @@
 import {useEffect,useMemo,useState} from 'react'
 import type {Session} from '@supabase/supabase-js'
 import {supabase} from '../lib/supabase'
-import {getAllowedBranchIds,getBranches,getLatestApprovedPeriod,getProfile} from '../data/core'
+import {getAllowedBranchIds,getApprovedMonths,getBranches,getLatestApprovedPeriod,getProfile} from '../data/core'
 import type {Branch,Profile} from '../domain/types'
 import {Dashboard} from '../pages/Dashboard'
 import {Reports} from '../pages/Reports'
@@ -68,10 +68,13 @@ export function App(){
  const [route,setRoute]=useState<Route>(routeFromHash())
  const [branchId,setBranchId]=useState('')
  const [month,setMonth]=useState('')
+ const [approvedMonths,setApprovedMonths]=useState<string[]>([])
  const [manualFrom,setManualFrom]=useState('')
  const [manualTo,setManualTo]=useState('')
  const [manualPeriod,setManualPeriod]=useState(false)
  const [ready,setReady]=useState(false)
+ const [navProgress,setNavProgress]=useState(0)
+ const [navLoading,setNavLoading]=useState(false)
  const [error,setError]=useState('')
 
  useEffect(()=>{
@@ -86,8 +89,8 @@ export function App(){
   let live=true
   if(!session){setProfile(null);setBranches([]);setAllowedIds([]);setReady(true);return}
   setReady(false);setError('')
-  Promise.all([getProfile(session.user.id),getBranches(),getLatestApprovedPeriod()])
-   .then(async([p,b,period])=>{
+  Promise.all([getProfile(session.user.id),getBranches(),getLatestApprovedPeriod(),getApprovedMonths()])
+   .then(async([p,b,period,months])=>{
     if(!live)return
     if(!p||!p.is_active)throw new Error('الحساب غير نشط أو غير مربوط بالمؤسسة.')
     const ids=await getAllowedBranchIds(session.user.id,p.role)
@@ -95,7 +98,8 @@ export function App(){
     setProfile(p);setAllowedIds(ids)
     setBranches((p.role==='admin'||p.role==='analyst')?b:b.filter(x=>ids.includes(x.id)))
     const initial=(period?.period_end||new Date().toISOString().slice(0,10)).slice(0,7)
-    setMonth(initial)
+    setApprovedMonths(months.length?months:[initial])
+    setMonth(months.includes(initial)?initial:(months[0]||initial))
     setReady(true)
    })
    .catch(e=>{if(live){setError(e.message||String(e));setReady(true)}})
@@ -103,6 +107,19 @@ export function App(){
  },[session?.user.id])
 
  const period=useMemo(()=>manualPeriod&&manualFrom&&manualTo&&manualTo>=manualFrom?{from:manualFrom,to:manualTo}:month?monthBounds(month):{from:'',to:''},[month,manualPeriod,manualFrom,manualTo])
+ const monthLabel=(value:string)=>{
+  const [y,m]=value.split('-').map(Number)
+  return new Intl.DateTimeFormat('ar-EG',{month:'long',year:'numeric'}).format(new Date(Date.UTC(y,m-1,1)))
+ }
+
+ useEffect(()=>{
+  if(!ready||!session)return
+  setNavLoading(true);setNavProgress(12)
+  const steps=[[90,32],[220,56],[420,78],[700,92],[950,100]] as const
+  const timers=steps.map(([ms,p])=>window.setTimeout(()=>setNavProgress(p),ms))
+  const done=window.setTimeout(()=>setNavLoading(false),1120)
+  return()=>{timers.forEach(clearTimeout);clearTimeout(done)}
+ },[route,branchId,month,manualPeriod,manualFrom,manualTo,ready,session?.user.id])
  const applyPreset=(type:'month'|'prev'|'ytd'|'last7')=>{
   if(type==='month'){setManualPeriod(false);return}
   const bounds=monthBounds(month),end=new Date(bounds.to+'T00:00:00')
@@ -122,6 +139,7 @@ export function App(){
  const activeBranch=branches.find(b=>b.id===branchId)
 
  return <div className="app-shell">
+  {navLoading&&<div className="route-progress" aria-live="polite"><span style={{width:navProgress+'%'}}/><b>{navProgress}%</b></div>}
   <aside>
    <div className="brand"><b>AMMCO</b><span>Management Intelligence v2</span></div>
    <nav>{visibleNav.map(([id,label,Icon])=><a key={id} className={route===id?'active':''} href={'#/'+id}><Icon size={18}/><span>{label}</span></a>)}</nav>
@@ -129,11 +147,16 @@ export function App(){
   <main>
    <header className="topbar">
     <div><h1>{visibleNav.find(x=>x[0]===route)?.[1]||'AMMCO'}</h1><span>{activeBranch?.name||'كل الفروع'} • {month}</span></div>
-    <div className="top-actions">
-     <label>الشهر<input type="month" value={month} onChange={e=>{setMonth(e.target.value);setManualPeriod(false)}}/></label>
-     <label>من<input type="date" value={manualFrom||period.from} onChange={e=>setManualFrom(e.target.value)}/></label>
-     <label>إلى<input type="date" value={manualTo||period.to} onChange={e=>setManualTo(e.target.value)}/></label>
-     <button className={'small-btn '+(manualPeriod?'active':'')} onClick={()=>{if(!manualPeriod){setManualFrom(manualFrom||period.from);setManualTo(manualTo||period.to)}setManualPeriod(!manualPeriod)}}>{manualPeriod?'العودة للشهر':'تطبيق الفترة'}</button>
+    <div className="top-actions no-print">
+     <label>الشهر<select value={month} onChange={e=>{setMonth(e.target.value);setManualPeriod(false)}}>{approvedMonths.map(m=><option key={m} value={m}>{monthLabel(m)}</option>)}</select></label>
+     <label className="range-label">الفترة
+      <span className={'range-control '+(manualPeriod?'active':'')}>
+       <input aria-label="من" type="date" value={manualFrom||period.from} onChange={e=>{setManualFrom(e.target.value);setManualPeriod(true)}}/>
+       <b>—</b>
+       <input aria-label="إلى" type="date" value={manualTo||period.to} onChange={e=>{setManualTo(e.target.value);setManualPeriod(true)}}/>
+      </span>
+     </label>
+     {manualPeriod&&<button className="small-btn active" onClick={()=>setManualPeriod(false)}>العودة للشهر</button>}
      <div className="preset-actions"><button className="small-btn" onClick={()=>applyPreset('month')}>هذا الشهر</button><button className="small-btn" onClick={()=>applyPreset('prev')}>الشهر السابق</button><button className="small-btn" onClick={()=>applyPreset('ytd')}>YTD</button><button className="small-btn" onClick={()=>applyPreset('last7')}>آخر 7 أيام</button></div>
      <label>الفرع<select value={branchId} onChange={e=>setBranchId(e.target.value)}><option value="">كل الفروع</option>{branches.map(b=><option key={b.id} value={b.id}>{b.name}</option>)}</select></label>
      <span className="user-chip">{profile.full_name||session.user.email}</span>
