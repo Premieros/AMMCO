@@ -14,7 +14,7 @@ export function FuelAnalysis({from,to,branchId}:{from:string;to:string;branchId?
   const ids=await getApprovedBatchIds(),safe=ids.length?ids:[ZERO]
   const [sales,assignments,vehicles,branches]=await Promise.all([
    fetchAllPages<any>((a,b)=>{let q=supabase.from('sales_rep_daily').select('branch_id,rep_name,sales_before_discount,discounts,net_after_discount,raw_payload').in('batch_id',safe).gte('business_date',from).lte('business_date',to);if(branchId)q=q.eq('branch_id',branchId);return q.range(a,b)}),
-   fetchAllPages<any>((a,b)=>{let q=supabase.from('vehicle_daily').select('id,branch_id,business_date,vehicle_label,rep_name,raw_payload').in('batch_id',safe).contains('raw_payload',{manual_assignment:true}).order('id',{ascending:false});if(branchId)q=q.eq('branch_id',branchId);return q.range(a,b)}),
+   fetchAllPages<any>((a,b)=>{let q=supabase.from('vehicle_daily').select('id,branch_id,business_date,vehicle_label,rep_name,raw_payload').in('batch_id',safe).lte('business_date',to).contains('raw_payload',{manual_assignment:true}).order('business_date',{ascending:false}).order('id',{ascending:false});if(branchId)q=q.eq('branch_id',branchId);return q.range(a,b)}),
    fetchAllPages<any>((a,b)=>{let q=supabase.from('vehicle_daily').select('branch_id,business_date,vehicle_label,rep_name,fuel_expense,other_expense,raw_payload').in('batch_id',safe).gte('business_date',from).lte('business_date',to).contains('raw_payload',{non_cash:true});if(branchId)q=q.eq('branch_id',branchId);return q.range(a,b)}),
    fetchAllPages<any>((a,b)=>supabase.from('branches').select('id,name').eq('is_active',true).range(a,b))
   ])
