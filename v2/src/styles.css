@@ -418,3 +418,44 @@ button:focus-visible,.sidebar nav a:focus-visible{
 @media(max-width:560px){
  .column-picker{position:fixed;left:12px;right:12px;top:auto;bottom:68px;width:auto;max-height:55vh}
 }
+
+
+/* De-cluttered table toolbar */
+.compact-tools{gap:5px;flex-wrap:nowrap}
+.search-shell{display:flex;align-items:center;gap:6px;height:34px;min-width:190px;border:1px solid #d4dde6;border-radius:9px;background:#fff;padding:0 9px;color:#8593a3}
+.search-shell:focus-within{border-color:#7e9caf;box-shadow:0 0 0 3px rgba(31,75,103,.08)}
+.search-shell .table-search{border:0!important;box-shadow:none!important;min-width:120px;height:30px;padding:0;background:transparent;flex:1}
+.table-icon-btn{width:34px;height:34px;min-width:34px;border-radius:9px}
+.table-icon-btn.active{background:#1f4b67;color:#fff;border-color:#1f4b67}
+.more-wrap{position:relative}
+.more-menu{position:absolute;top:calc(100% + 7px);left:0;z-index:125;min-width:150px;background:#fff;border:1px solid #dce4eb;border-radius:11px;box-shadow:0 18px 48px rgba(16,24,40,.15);padding:6px}
+.more-menu button{width:100%;display:flex;align-items:center;gap:8px;border:0;background:transparent;border-radius:8px;padding:8px 9px;color:#344054;font-size:11px;text-align:right;cursor:pointer}
+.more-menu button:hover{background:#f5f7f9}
+.table-head{gap:8px}
+.table-head>div:first-child{min-width:0}
+.table-head h2{white-space:nowrap;overflow:hidden;text-overflow:ellipsis;max-width:420px}
+.column-picker{width:min(300px,76vw)}
+.column-picker-list{max-height:280px;overflow:auto;padding-left:2px}
+.column-picker-list label{padding:6px 7px}
+.column-picker-actions{padding:7px 0}
+
+/* Reduce overall control density */
+.top-actions{gap:6px}
+.preset-actions{gap:4px}
+.preset-actions .small-btn{min-height:32px;padding:0 8px;font-size:10px}
+.user-chip{padding:8px 10px}
+.panel{margin-bottom:12px}
+.kpi-grid{gap:10px}
+.kpi-card{padding:15px;min-height:108px}
+
+@media(max-width:900px){
+ .compact-tools{flex-wrap:wrap}
+ .search-shell{flex:1;min-width:160px}
+}
+@media(max-width:560px){
+ .table-head{align-items:flex-start}
+ .compact-tools{display:flex!important;grid-template-columns:none!important}
+ .search-shell{width:100%;flex-basis:100%}
+ .more-menu{position:fixed;left:12px;right:12px;top:auto;bottom:68px;min-width:0}
+ .column-picker{bottom:68px}
+}
