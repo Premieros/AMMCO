@@ -515,3 +515,45 @@ th[style],td[style]{overflow:hidden;text-overflow:ellipsis}
 .table-wrap .column-filter{
  min-width:0;
 }
+
+
+/* Fix sticky first-column overlap while horizontal scrolling */
+.table-wrap tbody td,
+.table-wrap thead th,
+.table-wrap tfoot th,
+.table-wrap tfoot td{
+ overflow:hidden!important;
+ text-overflow:clip!important;
+}
+.table-wrap thead th:first-child,
+.table-wrap tbody td:first-child,
+.table-wrap tfoot th:first-child,
+.table-wrap tfoot td:first-child{
+ position:sticky!important;
+ right:0!important;
+ background:#fff!important;
+ box-shadow:-1px 0 0 #dfe6ee,-8px 0 14px rgba(255,255,255,.96);
+}
+.table-wrap thead th:first-child{
+ z-index:12!important;
+ background:#edf2f6!important;
+}
+.table-wrap tbody td:first-child{
+ z-index:6!important;
+}
+.table-wrap tbody tr:nth-child(even) td:first-child{
+ background:#fafcfd!important;
+}
+.table-wrap tbody tr:hover td:first-child{
+ background:#f2f7fa!important;
+}
+.table-wrap tfoot th:first-child,
+.table-wrap tfoot td:first-child{
+ z-index:10!important;
+ background:#eaf0f4!important;
+}
+.table-wrap td.num,
+.table-wrap th.num{
+ overflow:hidden!important;
+ white-space:nowrap!important;
+}
