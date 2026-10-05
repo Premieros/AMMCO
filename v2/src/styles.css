@@ -138,14 +138,14 @@ tfoot th,tfoot td{font-size:12px}
 .pdf-capture tfoot th,.pdf-capture tfoot td{background:#e7edf4!important;font-weight:800!important}
 
 @media print{
- @page{size:A4 landscape;margin:10mm}
+ @page{size:A4 landscape;margin:5mm}
  .no-print,.app-shell>aside,.topbar,.table-tools,.column-filter,.route-progress,.small-btn,.primary,.icon-btn{display:none!important}
  .app-shell{display:block!important}
  main{padding:0!important}
  .panel,.table-panel{border:0!important;box-shadow:none!important;margin:0 0 10px!important}
  .table-wrap{overflow:visible!important;max-height:none!important}
- table{min-width:0!important;font-size:10px!important}
- thead th,td,tfoot th,tfoot td{position:static!important}
+ table{min-width:0!important;width:100%!important;table-layout:fixed!important;font-size:8.5px!important}
+ thead{display:table-header-group!important}tfoot{display:table-footer-group!important}tr{page-break-inside:avoid!important}thead th,td,tfoot th,tfoot td{position:static!important;white-space:normal!important;word-break:break-word!important;overflow-wrap:anywhere!important;padding:4px 5px!important}
 }
 @media(max-width:760px){
  .range-label{min-width:100%;width:100%}
