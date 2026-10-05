@@ -93,11 +93,19 @@ export function Dashboard({from,to,branchId}:{from:string;to:string;branchId?:st
      </div>
     </div>
    </div>
-   <div className="ranking-chart" role="img" aria-label={'ترتيب '+metricLabel+' '+(rankBy==='branch'?'حسب الفروع':'حسب المناديب')}>
-    {ranking.length?ranking.map((x,i)=><div className="ranking-row" key={rankBy+'-'+x.name+'-'+i}>
-     <div className="ranking-label"><b>{i+1}</b><span>{x.name}</span></div>
-     <div className="ranking-bar-track"><span style={{width:Math.max(2,(x.value/maxRankValue)*100)+'%'}}/></div>
-     <div className="ranking-value"><strong>{money(x.value)}</strong><small>{(x.percent*100).toFixed(1)}% {ratioLabel}</small></div>
+   <div className="ranking-chart" role="img" aria-label={'ترتيب '+metricLabel+' '+(rankBy==='branch'?'حسب الفروع':'حسب المناديب')} style={{display:'grid',gap:8,width:'100%',maxHeight:520,overflow:'auto'}}>
+    {ranking.length?ranking.map((x,i)=><div className="ranking-row" key={rankBy+'-'+x.name+'-'+i} style={{display:'grid',gridTemplateColumns:'minmax(150px,220px) minmax(220px,1fr) minmax(165px,210px)',alignItems:'center',gap:12,minHeight:54,padding:'8px 10px',border:'1px solid #e5ebf1',borderRadius:12,background:'#fff',direction:'rtl'}}>
+     <div className="ranking-label" style={{display:'flex',alignItems:'center',gap:9,minWidth:0}}>
+      <b style={{width:28,height:28,display:'grid',placeItems:'center',flex:'0 0 28px',borderRadius:8,background:'#eef3f7',color:'#496174',fontSize:10}}>{i+1}</b>
+      <span style={{minWidth:0,overflow:'hidden',textOverflow:'ellipsis',whiteSpace:'nowrap',fontWeight:800,fontSize:11}}>{x.name}</span>
+     </div>
+     <div className="ranking-bar-track" style={{height:12,borderRadius:999,background:'#edf2f6',overflow:'hidden',direction:'rtl'}}>
+      <span style={{display:'block',height:'100%',borderRadius:999,background:'linear-gradient(90deg,#5f8197,#1f4b67)',width:Math.max(2,(x.value/maxRankValue)*100)+'%',minWidth:3}}/>
+     </div>
+     <div className="ranking-value" style={{display:'grid',justifyItems:'end',gap:2,minWidth:0,direction:'rtl'}}>
+      <strong style={{fontSize:12,whiteSpace:'nowrap'}}>{money(x.value)}</strong>
+      <small style={{fontSize:9,color:'#667085',whiteSpace:'nowrap'}}>{(x.percent*100).toFixed(1)}% {ratioLabel}</small>
+     </div>
     </div>):<p className="muted">لا توجد بيانات للترتيب في الفترة المحددة.</p>}
    </div>
   </section>
