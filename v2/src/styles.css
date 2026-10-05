@@ -313,3 +313,78 @@ tfoot th,tfoot td{background:#eaf0f4;color:#23384a;border-top-color:#cad4dd;font
  .top-actions{display:grid;grid-template-columns:1fr}
  .preset-actions{display:grid;grid-template-columns:1fr 1fr}
 }
+
+
+/* Immediate interaction feedback */
+.interaction-pressed{
+ transform:translateY(1px) scale(.985)!important;
+ box-shadow:inset 0 0 0 2px rgba(31,75,103,.12)!important;
+ filter:saturate(.9);
+}
+.interaction-toast{
+ position:fixed;
+ left:18px;
+ bottom:18px;
+ z-index:3500;
+ display:flex;
+ align-items:center;
+ gap:9px;
+ min-height:42px;
+ max-width:min(420px,calc(100vw - 36px));
+ padding:9px 12px;
+ border:1px solid #d4dee7;
+ border-radius:12px;
+ background:rgba(255,255,255,.96);
+ color:#23384a;
+ box-shadow:0 12px 34px rgba(16,24,40,.14);
+ backdrop-filter:blur(12px);
+ animation:interactionIn .16s ease both;
+}
+.interaction-toast b{font-size:11px;line-height:1.45;font-weight:700;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.action-spinner,.mini-spinner,.spinner-dot{
+ display:inline-block;
+ border-radius:50%;
+ border:2px solid #c9d6df;
+ border-top-color:#1f4b67;
+ animation:spin .72s linear infinite;
+ flex:0 0 auto;
+}
+.action-spinner{width:18px;height:18px}
+.mini-spinner{width:16px;height:16px}
+.spinner-dot{width:12px;height:12px;border-width:2px;vertical-align:-2px;margin-left:5px;border-color:rgba(255,255,255,.35);border-top-color:#fff}
+@keyframes spin{to{transform:rotate(360deg)}}
+@keyframes interactionIn{from{opacity:0;transform:translateY(6px)}to{opacity:1;transform:none}}
+
+.route-progress{
+ height:5px!important;
+ background:#dbe4eb!important;
+ box-shadow:0 1px 0 rgba(16,24,40,.04);
+}
+.route-progress span{
+ background:linear-gradient(90deg,#6d93aa,#1f4b67)!important;
+ box-shadow:0 0 10px rgba(31,75,103,.28);
+}
+.route-progress b{
+ display:flex!important;
+ align-items:center;
+ gap:2px;
+ top:10px!important;
+ left:16px!important;
+ padding:5px 9px!important;
+ font-size:10px!important;
+}
+
+button,.small-btn,.primary,.icon-btn,.sidebar nav a{
+ cursor:pointer;
+ -webkit-tap-highlight-color:transparent;
+}
+button:active,.small-btn:active,.primary:active,.icon-btn:active,.sidebar nav a:active{
+ transform:translateY(1px) scale(.985);
+}
+button:focus-visible,.sidebar nav a:focus-visible{
+ outline:3px solid rgba(31,75,103,.14);
+ outline-offset:2px;
+}
+@media(max-width:560px){
+ .interaction-toast{left:12px;right:12px;bottom:12px;max-width:none}
+}
