@@ -60,6 +60,7 @@ async function adminCall(payload:any){
  const out=await res.json();if(!res.ok)throw new Error(out.error||'تعذر تنفيذ العملية');return out
 }
 export const uploadPetroUp=(month:string,rows:any[])=>adminCall({action:'import_global',report_type:'petro_up_non_cash',month,rows})
+export const uploadVehicleReport=(branchId:string,month:string,rows:any[])=>adminCall({action:'import',branch_id:branchId,month,rows})
 export const saveVehicleAssignment=(input:{branchId:string;month:string;vehicleLabel:string;repName:string})=>adminCall({action:'assign',branch_id:input.branchId,month:input.month,vehicle_label:input.vehicleLabel,rep_name:input.repName})
 
 export async function getVehicles(params:{from:string;to:string;branchId?:string}){
