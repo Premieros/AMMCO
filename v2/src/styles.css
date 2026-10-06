@@ -2457,3 +2457,90 @@ table,th,td{font-size:12px!important}
  }
  .ranking-bar-track{height:13px!important}
 }
+
+
+/* Import month coverage matrix */
+.coverage-month{
+ display:grid;
+ gap:4px;
+ color:#64748b;
+ font-size:11px;
+ font-weight:700;
+}
+.coverage-month input{
+ height:34px;
+ border:1px solid #d7dee8;
+ border-radius:8px;
+ padding:0 9px;
+ background:#fff;
+}
+.coverage-table-wrap{
+ overflow:auto;
+ border:1px solid #e2e8f0;
+ border-radius:12px;
+ background:#fff;
+}
+.coverage-table{
+ min-width:max-content;
+ display:grid;
+}
+.coverage-header,
+.coverage-row{
+ display:grid;
+ grid-template-columns:150px repeat(var(--days),34px) 72px;
+ align-items:center;
+ min-height:38px;
+ border-bottom:1px solid #edf1f5;
+}
+.coverage-header{
+ position:sticky;
+ top:0;
+ z-index:2;
+ background:#f8fafc;
+ color:#475569;
+ font-size:10px;
+ font-weight:800;
+}
+.coverage-header>b:first-child,
+.coverage-row>b{
+ position:sticky;
+ right:0;
+ z-index:1;
+ background:inherit;
+ padding:0 10px;
+}
+.coverage-row{
+ background:#fff;
+}
+.coverage-row:nth-child(even){background:#fbfdff}
+.coverage-header span,
+.coverage-row span,
+.coverage-header>b:last-child,
+.coverage-row strong{
+ height:100%;
+ display:grid;
+ place-items:center;
+ border-right:1px solid #eef2f6;
+ font-size:10px;
+}
+.coverage-row span{
+ color:#cbd5e1;
+ font-weight:800;
+}
+.coverage-row span.filled{
+ background:#eaf8ef;
+ color:#15803d;
+}
+.coverage-row strong{
+ color:#64748b;
+ font-size:10.5px;
+}
+.coverage-row strong.complete{
+ color:#15803d;
+ background:#eefaf2;
+}
+@media(max-width:700px){
+ .coverage-header,.coverage-row{
+  grid-template-columns:110px repeat(var(--days),30px) 64px;
+ }
+}
