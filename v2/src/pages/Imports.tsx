@@ -1,6 +1,6 @@
 import {FormEvent,useEffect,useMemo,useState} from 'react'
 import type {Branch} from '../domain/types'
-import {approveImport,deleteImport,getImportHistory,getImportReview,getImportedDays,getSubmittedDays,processImport,reuploadImport,resolveReviewedImport,uploadBranchWorkbook} from '../data/imports'
+import {approveImport,deleteImport,getImportHistory,getImportReview,getImportedDays,processImport,reuploadImport,resolveReviewedImport,uploadBranchWorkbook} from '../data/imports'
 import {DataTable} from '../components/DataTable'
 
 function snapshotMetrics(s:any){
@@ -43,8 +43,6 @@ export function Imports({month,branchId,branches,isAdmin}:{month:string;branchId
   const chosenMonth=String(f.get('month')||uploadMonth)
   const historyMode=String(f.get('historyMode')||'append_only')
   const selectedBranch=String(f.get('branch_id'))
-  const monthDays=new Date(Number(chosenMonth.slice(0,4)),Number(chosenMonth.slice(5,7)),0).getDate()
-  if(historyMode==='append_only'&&filledDays.length>=monthDays){setMsg('هذا الفرع مكتمل '+monthDays+'/'+monthDays+' يومًا في '+chosenMonth+' — اختر «مراجعة التغييرات السابقة» إذا كنت تريد تحديث النسخة البه بيع/توريدة.');return}
   const name=file.name.toLowerCase()
   const octoberNamed=/اكتوبر|أكتوبر|october|oct\b/.test(name)
   if(octoberNamed&&!chosenMonth.endsWith('-10')){setMsg('اسم الملف يشير إلى أكتوبر بينما الشهر المختار '+chosenMonth+' — صحح الشهر قبل الرفع');return}
@@ -54,7 +52,7 @@ export function Imports({month,branchId,branches,isAdmin}:{month:string;branchId
    if(out.processed.status==='validated'){
     await approveImport(out.uploaded.batchId)
     setMsg('تم رفع الشيت وتحليله واعتماده بنجاح')
-   }else if(out.processed.noNewDays)setMsg('لا توجد أيام جديدة — الشهر مكتمل بالفعل. اختر المراجعة إذا كانت هذه نسخة محدثة.')
+   }else if(out.processed.noNewDays)setMsg('لا توجد حركة جديدة مقارنة بآخر نسخة معتمدة.')
    else setMsg('تم الرفع ويحتاج مراجعة التغييرات قبل الاستبدال')
    ;(e.currentTarget as HTMLFormElement).reset()
    await load()
@@ -100,7 +98,7 @@ export function Imports({month,branchId,branches,isAdmin}:{month:string;branchId
     <label>شهر الرفع<input name="month" type="month" value={uploadMonth} onChange={e=>setUploadMonth(e.target.value)} required/></label>
     <label>الفرع<select name="branch_id" value={uploadBranch} onChange={e=>setUploadBranch(e.target.value)} required><option value="">اختر الفرع</option>{branches.map(b=><option key={b.id} value={b.id}>{b.name}</option>)}</select></label>
     <label>ملف Excel<input name="file" type="file" accept=".xlsx" required/></label>
-    <label>طريقة الاستيراد<select name="historyMode" defaultValue="append_only"><option value="append_only">الأيام الجديدة فقط</option><option value="review">مراجعة التغييرات السابقة</option></select></label>
+    <label>طريقة الاستيراد<select name="historyMode" defaultValue="append_only"><option value="append_only">تحديث يومي تراكمي</option><option value="review">مراجعة التغييرات السابقة</option></select></label>
     <button className="primary" disabled={busy}>{busy?'جاري المعالجة…':'رفع وتحليل'}</button>
    </form>
 
@@ -119,7 +117,7 @@ export function Imports({month,branchId,branches,isAdmin}:{month:string;branchId
   {activeTab==='bulk'&&isAdmin&&<section className="panel import-section">
    <div className="section-heading"><div><span>رفع متعدد</span><h2>رفع جماعي للفروع</h2></div><small>شهر واحد لكل الملفات المختارة</small></div>
    <form className="bulk-v2" onSubmit={bulk}>
-    <div className="upload-form"><label>شهر الرفع<input name="month" type="month" value={bulkMonth} onChange={e=>setBulkMonth(e.target.value)}/></label><label>طريقة التعامل<select name="historyMode" defaultValue="append_only"><option value="append_only">الأيام الجديدة فقط</option><option value="review">مراجعة التغييرات</option></select></label></div>
+    <div className="upload-form"><label>شهر الرفع<input name="month" type="month" value={bulkMonth} onChange={e=>setBulkMonth(e.target.value)}/></label><label>طريقة التعامل<select name="historyMode" defaultValue="append_only"><option value="append_only">تحديث يومي تراكمي</option><option value="review">مراجعة التغييرات</option></select></label></div>
     <div className="bulk-list">{branches.map(b=><label className="bulk-item" key={b.id}><span><b>{b.name}</b><small>{b.code||''}</small></span><input type="file" data-branch-id={b.id} data-branch-name={b.name} accept=".xlsx"/></label>)}</div>
     <button className="primary" disabled={busy}>رفع الملفات المحددة</button>
    </form>
