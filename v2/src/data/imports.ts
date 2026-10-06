@@ -25,14 +25,15 @@ export async function getImportedDays(input:{month:string;branchId?:string}){
  const [y,m]=input.month.split('-').map(Number)
  const from=input.month+'-01'
  const to=input.month+'-'+String(new Date(y,m,0).getDate()).padStart(2,'0')
- return fetchAllPages<{branch_id:string;business_date:string}>((a,b)=>{
-  let q=supabase.from('branch_day_submissions')
-   .select('branch_id,business_date')
+ const rows=await fetchAllPages<{branch_id:string;business_date:string;net_sales:number;collections:number}>((a,b)=>{
+  let q=supabase.from('v_branch_daily_kpis')
+   .select('branch_id,business_date,net_sales,collections')
    .gte('business_date',from).lte('business_date',to)
    .order('business_date',{ascending:true})
   if(input.branchId)q=q.eq('branch_id',input.branchId)
   return q.range(a,b)
  })
+ return rows.filter(r=>Math.abs(Number(r.net_sales||0))>.005||Math.abs(Number(r.collections||0))>.005)
 }
 
 export async function uploadBranchWorkbook(input:{branchId:string;month:string;file:File;historyMode:string;onProgress?:(x:string)=>void}){
