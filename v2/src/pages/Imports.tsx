@@ -1,4 +1,4 @@
-import {FormEvent,useEffect,useMemo,useState} from 'react'
+import {FormEvent,useEffect,useMemo,useRef,useState} from 'react'
 import type {Branch} from '../domain/types'
 import {approveImport,deleteImport,getImportHistory,getImportReview,getImportedDays,processImport,reuploadImport,resolveReviewedImport,uploadBranchWorkbook} from '../data/imports'
 import {DataTable} from '../components/DataTable'
@@ -29,6 +29,7 @@ export function Imports({month,branchId,branches,isAdmin}:{month:string;branchId
  const [activeTab,setActiveTab]=useState<'single'|'bulk'|'coverage'|'history'>('single')
  const [filledDays,setFilledDays]=useState<string[]>([])
  const [coverageDays,setCoverageDays]=useState<Record<string,string[]>>({})
+ const autoResumeKey=useRef('')
  const map=useMemo(()=>new Map(branches.map(b=>[b.id,b.name])),[branches])
  const load=()=>getImportHistory(branchId).then(setRows).catch(e=>setMsg(e.message||String(e)))
  useEffect(()=>{void load()},[branchId])
@@ -36,6 +37,41 @@ export function Imports({month,branchId,branches,isAdmin}:{month:string;branchId
  useEffect(()=>{if(branchId)setUploadBranch(branchId)},[branchId])
  useEffect(()=>{let live=true;if(!uploadBranch||!uploadMonth){setFilledDays([]);return}getImportedDays({month:uploadMonth,branchId:uploadBranch}).then(x=>{if(live)setFilledDays([...new Set(x.map(r=>r.business_date))])}).catch(()=>{if(live)setFilledDays([])});return()=>{live=false}},[uploadMonth,uploadBranch])
  useEffect(()=>{let live=true;if(!uploadMonth){setCoverageDays({});return}getImportedDays({month:uploadMonth}).then(rows=>{if(!live)return;const next:Record<string,string[]>={};for(const r of rows){(next[r.branch_id]??=[]).push(r.business_date)};for(const k of Object.keys(next))next[k]=[...new Set(next[k])];setCoverageDays(next)}).catch(()=>{if(live)setCoverageDays({})});return()=>{live=false}},[uploadMonth])
+ useEffect(()=>{
+  if(!isAdmin||busy||!rows.length||!uploadMonth)return
+  const latestByBranch=new Map<string,any>()
+  for(const r of rows){
+   if(!String(r.period_start||'').startsWith(uploadMonth))continue
+   if(!['processing','rejected'].includes(r.status))continue
+   if(!latestByBranch.has(r.branch_id))latestByBranch.set(r.branch_id,r)
+  }
+  const pending=[...latestByBranch.values()]
+  const key=uploadMonth+'|'+pending.map(r=>r.id+':'+r.status).join(',')
+  if(!pending.length||autoResumeKey.current===key)return
+  autoResumeKey.current=key
+  let cancelled=false
+  ;(async()=>{
+   setBusy(true)
+   let done=0,failed=0
+   for(const r of pending){
+    if(cancelled)break
+    try{
+     setMsg('استكمال رفع '+(map.get(r.branch_id)||r.original_file_name||'الفرع')+'…')
+     const out=await processImport(r.id,'append_only')
+     if(out.status==='validated'){await approveImport(r.id);done++}
+     else failed++
+    }catch{failed++}
+   }
+   if(cancelled)return
+   setMsg('اكتمل استئناف الرفع — تم الاعتماد: '+done+(failed?' • تعذر: '+failed:''))
+   await load()
+   const allDays=await getImportedDays({month:uploadMonth})
+   if(cancelled)return
+   const next:Record<string,string[]>={};for(const r of allDays){(next[r.branch_id]??=[]).push(r.business_date)};for(const k of Object.keys(next))next[k]=[...new Set(next[k])];setCoverageDays(next)
+   setBusy(false)
+  })()
+  return()=>{cancelled=true}
+ },[rows,isAdmin,uploadMonth])
 
  async function submit(e:FormEvent<HTMLFormElement>){
   e.preventDefault();const f=new FormData(e.currentTarget),file=f.get('file')
