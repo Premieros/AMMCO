@@ -26,23 +26,42 @@ export function Imports({month,branchId,branches,isAdmin}:{month:string;branchId
  const [uploadMonth,setUploadMonth]=useState(month)
  const [bulkMonth,setBulkMonth]=useState(month)
  const [uploadBranch,setUploadBranch]=useState(branchId||'')
- const [activeTab,setActiveTab]=useState<'single'|'bulk'|'history'>('single')
+ const [activeTab,setActiveTab]=useState<'single'|'bulk'|'coverage'|'history'>('single')
  const [filledDays,setFilledDays]=useState<string[]>([])
+ const [coverageDays,setCoverageDays]=useState<Record<string,string[]>>({})
  const map=useMemo(()=>new Map(branches.map(b=>[b.id,b.name])),[branches])
  const load=()=>getImportHistory(branchId).then(setRows).catch(e=>setMsg(e.message||String(e)))
  useEffect(()=>{void load()},[branchId])
  useEffect(()=>{setUploadMonth(month);setBulkMonth(month)},[month])
  useEffect(()=>{if(branchId)setUploadBranch(branchId)},[branchId])
- useEffect(()=>{let live=true;if(!uploadBranch||!uploadMonth){setFilledDays([]);return}getImportedDays({month:uploadMonth,branchId:uploadBranch}).then(x=>{if(live)setFilledDays(x.map(r=>r.business_date))}).catch(()=>{if(live)setFilledDays([])});return()=>{live=false}},[uploadMonth,uploadBranch])
+ useEffect(()=>{let live=true;if(!uploadBranch||!uploadMonth){setFilledDays([]);return}getImportedDays({month:uploadMonth,branchId:uploadBranch}).then(x=>{if(live)setFilledDays([...new Set(x.map(r=>r.business_date))])}).catch(()=>{if(live)setFilledDays([])});return()=>{live=false}},[uploadMonth,uploadBranch])
+ useEffect(()=>{let live=true;if(!uploadMonth){setCoverageDays({});return}getImportedDays({month:uploadMonth}).then(rows=>{if(!live)return;const next:Record<string,string[]>={};for(const r of rows){(next[r.branch_id]??=[]).push(r.business_date)};for(const k of Object.keys(next))next[k]=[...new Set(next[k])];setCoverageDays(next)}).catch(()=>{if(live)setCoverageDays({})});return()=>{live=false}},[uploadMonth])
 
  async function submit(e:FormEvent<HTMLFormElement>){
   e.preventDefault();const f=new FormData(e.currentTarget),file=f.get('file')
   if(!(file instanceof File)||!file.size)return
   const chosenMonth=String(f.get('month')||uploadMonth)
+  const historyMode=String(f.get('historyMode')||'append_only')
+  const selectedBranch=String(f.get('branch_id'))
+  const monthDays=new Date(Number(chosenMonth.slice(0,4)),Number(chosenMonth.slice(5,7)),0).getDate()
+  if(historyMode==='append_only'&&filledDays.length>=monthDays){setMsg('هذا الفرع مكتمل '+monthDays+'/'+monthDays+' يومًا في '+chosenMonth+' — اختر «مراجعة التغييرات السابقة» إذا كنت تريد تحديث النسخة الموجودة.');return}
   const name=file.name.toLowerCase()
   const octoberNamed=/اكتوبر|أكتوبر|october|oct\b/.test(name)
   if(octoberNamed&&!chosenMonth.endsWith('-10')){setMsg('اسم الملف يشير إلى أكتوبر بينما الشهر المختار '+chosenMonth+' — صحح الشهر قبل الرفع');return}
-  try{setBusy(true);const out=await uploadBranchWorkbook({branchId:String(f.get('branch_id')),month:chosenMonth,file,historyMode:String(f.get('historyMode')||'append_only'),onProgress:setMsg});setMsg(out.processed.status==='validated'?'تم الرفع والتحليل — جاهز للاعتماد':out.processed.noNewDays?'لا توجد أيام جديدة':'تم الرفع ويحتاج مراجعة');(e.currentTarget as HTMLFormElement).reset();await load();const days=await getImportedDays({month:chosenMonth,branchId:String(f.get('branch_id'))});setFilledDays(days.map(r=>r.business_date))}catch(x:any){setMsg(x.message||String(x))}finally{setBusy(false)}
+  try{
+   setBusy(true)
+   const out=await uploadBranchWorkbook({branchId:selectedBranch,month:chosenMonth,file,historyMode,onProgress:setMsg})
+   if(out.processed.status==='validated'){
+    await approveImport(out.uploaded.batchId)
+    setMsg('تم رفع الشيت وتحليله واعتماده بنجاح')
+   }else if(out.processed.noNewDays)setMsg('لا توجد أيام جديدة — الشهر مكتمل بالفعل. اختر المراجعة إذا كانت هذه نسخة محدثة.')
+   else setMsg('تم الرفع ويحتاج مراجعة التغييرات قبل الاستبدال')
+   ;(e.currentTarget as HTMLFormElement).reset()
+   await load()
+   const [days,allDays]=await Promise.all([getImportedDays({month:chosenMonth,branchId:selectedBranch}),getImportedDays({month:chosenMonth})])
+   setFilledDays([...new Set(days.map(r=>r.business_date))])
+   const next:Record<string,string[]>={};for(const r of allDays){(next[r.branch_id]??=[]).push(r.business_date)};for(const k of Object.keys(next))next[k]=[...new Set(next[k])];setCoverageDays(next)
+  }catch(x:any){setMsg(x.message||String(x))}finally{setBusy(false)}
  }
 
  async function bulk(e:FormEvent<HTMLFormElement>){
@@ -53,11 +72,11 @@ export function Imports({month,branchId,branches,isAdmin}:{month:string;branchId
   for(const input of inputs){
    try{
     const out=await uploadBranchWorkbook({branchId:String(input.dataset.branchId),month:m,file:input.files![0],historyMode:mode,onProgress:s=>setMsg((input.dataset.branchName||'الفرع')+' — '+s)})
-    if(out.processed.status==='validated')ok++;else reviewCount++
+    if(out.processed.status==='validated'){await approveImport(out.uploaded.batchId);ok++}else reviewCount++
     input.value=''
    }catch{failed++}
   }
-  setBusy(false);setMsg('انتهى الرفع الجماعي — ناجح: '+ok+' • مراجعة: '+reviewCount+' • فشل: '+failed);await load()
+  setBusy(false);setMsg('انتهى الرفع الجماعي — تم الاعتماد: '+ok+' • تحتاج مراجعة: '+reviewCount+' • فشل: '+failed);await load();const allDays=await getImportedDays({month:m});const next:Record<string,string[]>={};for(const r of allDays){(next[r.branch_id]??=[]).push(r.business_date)};for(const k of Object.keys(next))next[k]=[...new Set(next[k])];setCoverageDays(next)
  }
 
  async function approve(id:string){try{setMsg('جاري الاعتماد…');await approveImport(id);setMsg('تم اعتماد الشيت');await load()}catch(x:any){setMsg(x.message||String(x))}}
@@ -71,6 +90,7 @@ export function Imports({month,branchId,branches,isAdmin}:{month:string;branchId
   <div className="subpage-tabs no-print">
    <button className={activeTab==='single'?'active':''} onClick={()=>setActiveTab('single')}>رفع فردي</button>
    {isAdmin&&<button className={activeTab==='bulk'?'active':''} onClick={()=>setActiveTab('bulk')}>رفع جماعي</button>}
+   <button className={activeTab==='coverage'?'active':''} onClick={()=>setActiveTab('coverage')}>تغطية الأيام</button>
    <button className={activeTab==='history'?'active':''} onClick={()=>setActiveTab('history')}>سجل الاستيراد</button>
   </div>
 
@@ -106,6 +126,17 @@ export function Imports({month,branchId,branches,isAdmin}:{month:string;branchId
   </section>}
 
   {msg&&<div className="panel"><p className="muted">{msg}</p></div>}
+
+  {activeTab==='coverage'&&<section className="panel import-section">
+   <div className="section-heading"><div><span>متابعة الشهر</span><h2>تغطية الأيام لكل فرع</h2></div><label className="coverage-month">الشهر<input type="month" value={uploadMonth} onChange={e=>setUploadMonth(e.target.value)}/></label></div>
+   <div className="coverage-table-wrap">
+    <div className="coverage-table" style={{'--days':new Date(Number(uploadMonth.slice(0,4)),Number(uploadMonth.slice(5,7)),0).getDate()} as any}>
+     <div className="coverage-header"><b>الفرع</b>{Array.from({length:new Date(Number(uploadMonth.slice(0,4)),Number(uploadMonth.slice(5,7)),0).getDate()},(_,i)=><span key={i+1}>{i+1}</span>)}<b>المجموع</b></div>
+     {branches.map(b=>{const days=new Set(coverageDays[b.id]||[]),daysInMonth=new Date(Number(uploadMonth.slice(0,4)),Number(uploadMonth.slice(5,7)),0).getDate();return <div className="coverage-row" key={b.id}><b>{b.name}</b>{Array.from({length:daysInMonth},(_,i)=>{const day=i+1,d=uploadMonth+'-'+String(day).padStart(2,'0'),filled=days.has(d);return <span key={day} className={filled?'filled':''} title={filled?'معبأ':'غير موجود'}>{filled?'✓':'·'}</span>})}<strong className={days.size===daysInMonth?'complete':''}>{days.size}/{daysInMonth}</strong></div>})}
+    </div>
+   </div>
+   <div className="days-legend"><span><i className="legend-dot filled"/>يوم معبأ</span><span><i className="legend-dot"/>غير موجود</span></div>
+  </section>}
 
   {activeTab==='history'&&<DataTable title="سجل الاستيراد" rows={rows.map(r=>({...r,branch:map.get(r.branch_id)||'—'}))} columns={[
    {key:'branch',label:'الفرع'},{key:'original_file_name',label:'الملف'},{key:'period_start',label:'من'},{key:'period_end',label:'إلى'},{key:'version',label:'الإصدار'},{key:'status',label:'الحالة'},
