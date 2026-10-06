@@ -80,6 +80,20 @@ export function Imports({month,branchId,branches,isAdmin}:{month:string;branchId
  async function approve(id:string){try{setMsg('جاري الاعتماد…');await approveImport(id);setMsg('تم اعتماد الشيت');await load()}catch(x:any){setMsg(x.message||String(x))}}
  async function remove(r:any){if(!confirm('سيتم حذف الشيت «'+(r.original_file_name||'')+'» وبياناته المرتبطة. هل تريد المتابعة؟'))return;try{setMsg('جاري الحذف…');await deleteImport(r.id);setMsg('تم الحذف');await load()}catch(x:any){setMsg(x.message||String(x))}}
  async function rerun(id:string){try{setMsg('جاري إعادة التحليل…');await processImport(id);setMsg('تمت إعادة المعالجة');await load()}catch(x:any){setMsg(x.message||String(x))}}
+ async function rerunCumulative(id:string){
+  try{
+   setMsg('جاري إعادة التحليل بالتحديث اليومي التراكمي…')
+   const out=await processImport(id,'append_only')
+   if(out.status==='validated'){
+    await approveImport(id)
+    setMsg('تمت إعادة المعالجة والاعتماد بنجاح')
+   }else if(out.noNewDays)setMsg('لا توجد حركة جديدة في هذه النسخة')
+   else setMsg('تمت إعادة المعالجة وتحتاج مراجعة')
+   await load()
+   const allDays=await getImportedDays({month:uploadMonth})
+   const next:Record<string,string[]>={};for(const r of allDays){(next[r.branch_id]??=[]).push(r.business_date)};for(const k of Object.keys(next))next[k]=[...new Set(next[k])];setCoverageDays(next)
+  }catch(x:any){setMsg(x.message||String(x))}
+ }
  async function openReview(r:any){try{setMsg('جاري تحميل المراجعة…');const data=await getImportReview(r.id);setReview({batch:r,...data});setMsg('')}catch(x:any){setMsg(x.message||String(x))}}
  async function submitReupload(e:FormEvent<HTMLFormElement>){e.preventDefault();if(!reupload)return;const f=new FormData(e.currentTarget),file=f.get('file');if(!(file instanceof File)||!file.size)return;try{setBusy(true);const out=await reuploadImport({branchId:reupload.branch_id,periodStart:reupload.period_start,periodEnd:reupload.period_end,file,onProgress:setMsg});setMsg(out.processed.status==='validated'?'تم رفع النسخة الجديدة وتحليلها واعتمادها':'تم رفع النسخة الجديدة وتحتاج مراجعة');setReupload(null);await load()}catch(x:any){setMsg(x.message||String(x))}finally{setBusy(false)}}
  async function resolve(mode:'append_only'|'replace'){if(!review)return;try{setMsg('جاري تجهيز النسخة…');await resolveReviewedImport(review.batch.id,mode);setReview(null);setMsg(mode==='replace'?'تم اعتماد الاستبدال':'تم الاحتفاظ بالقديم واعتماد الجديد فقط');await load()}catch(x:any){setMsg(x.message||String(x))}}
@@ -137,12 +151,13 @@ export function Imports({month,branchId,branches,isAdmin}:{month:string;branchId
   </section>}
 
   {activeTab==='history'&&<DataTable title="سجل الاستيراد" rows={rows.map(r=>({...r,branch:map.get(r.branch_id)||'—'}))} columns={[
-   {key:'branch',label:'الفرع'},{key:'original_file_name',label:'الملف'},{key:'period_start',label:'من'},{key:'period_end',label:'إلى'},{key:'version',label:'الإصدار'},{key:'status',label:'الحالة'},
+   {key:'branch',label:'الفرع'},{key:'original_file_name',label:'الملف'},{key:'period_start',label:'من'},{key:'period_end',label:'إلى'},{key:'version',label:'الإصدار'},{key:'status',label:'الحالة',render:r=>r.status==='approved'?'معتمد':r.status==='validated'?'جاهز للاعتماد':r.status==='processing'?'جاري التحليل':r.status==='rejected'&&r.metadata?.no_new_days?'نسخة قديمة — أعد التحليل':r.status==='rejected'?'تحتاج مراجعة':r.status},
    {key:'uploaded_at',label:'تاريخ الرفع',render:r=>new Date(r.uploaded_at).toLocaleString('en-GB')},
    {key:'action',label:'إجراء',filter:false,render:r=><div className="inline-actions">
     {isAdmin&&r.status==='validated'&&<button className="small-btn" onClick={()=>approve(r.id)}>اعتماد</button>}
     {isAdmin&&['uploaded','failed'].includes(r.status)&&<button className="small-btn" onClick={()=>rerun(r.id)}>إعادة التحليل</button>}
-    {r.status==='rejected'&&<button className="small-btn" onClick={()=>openReview(r)}>مراجعة</button>}
+    {r.status==='rejected'&&r.metadata?.no_new_days&&<button className="small-btn" onClick={()=>rerunCumulative(r.id)}>إعادة تحليل تراكمي</button>}
+    {r.status==='rejected'&&!r.metadata?.no_new_days&&<button className="small-btn" onClick={()=>openReview(r)}>مراجعة</button>}
     {isAdmin&&<button className="small-btn" onClick={()=>setReupload(r)}>إعادة رفع</button>}
     {isAdmin&&<button className="small-btn" onClick={()=>remove(r)}>حذف</button>}
    </div>}
