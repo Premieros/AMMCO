@@ -98,17 +98,20 @@ export function Imports({month,branchId,branches,isAdmin}:{month:string;branchId
  async function submitReupload(e:FormEvent<HTMLFormElement>){e.preventDefault();if(!reupload)return;const f=new FormData(e.currentTarget),file=f.get('file');if(!(file instanceof File)||!file.size)return;try{setBusy(true);const out=await reuploadImport({branchId:reupload.branch_id,periodStart:reupload.period_start,periodEnd:reupload.period_end,file,onProgress:setMsg});setMsg(out.processed.status==='validated'?'تم رفع النسخة الجديدة وتحليلها واعتمادها':'تم رفع النسخة الجديدة وتحتاج قرار');setReupload(null);await load()}catch(x:any){setMsg(x.message||String(x))}finally{setBusy(false)}}
  async function resolve(mode:'append_only'|'replace'){
   if(!review||busy)return
+  const batchId=review.batch.id
+  setReview(null)
   try{
    setBusy(true)
    setMsg(mode==='replace'?'جارٍ تطبيق التحديث واعتماد النسخة…':'جارٍ اعتماد الإضافات الجديدة مع الاحتفاظ بالسابق…')
-   await resolveReviewedImport(review.batch.id,mode)
-   setReview(null)
+   await resolveReviewedImport(batchId,mode)
    setMsg(mode==='replace'?'تم تطبيق التحديث واعتماد النسخة الجديدة':'تم الاحتفاظ بالسابق واعتماد الإضافات الجديدة')
    await load()
    const allDays=await getImportedDays({month:uploadMonth})
    const next:Record<string,string[]>={};for(const r of allDays){(next[r.branch_id]??=[]).push(r.business_date)};for(const k of Object.keys(next))next[k]=[...new Set(next[k])];setCoverageDays(next)
-  }catch(x:any){setMsg(x.message||String(x))}
-  finally{setBusy(false)}
+  }catch(x:any){
+   setMsg('تعذر إكمال التحديث: '+(x.message||String(x)))
+   await load()
+  }finally{setBusy(false)}
  }
 
  return <div className="imports-page">
