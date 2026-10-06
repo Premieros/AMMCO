@@ -91,7 +91,7 @@ export async function getImportReview(batchId:string){
 export async function resolveReviewedImport(batchId:string,mode:'append_only'|'replace'){
  const out=await processImport(batchId,mode)
  if(out.noNewDays)return out
- if(out.status!=='validated')throw new Error('النسخة ما زالت تحتاج مراجعة')
+ if(out.status!=='validated')throw new Error('تعذر اعتماد التحديث تلقائيًا — توجد فروق تحتاج قرارًا')
  await approveImport(batchId)
  return out
 }
