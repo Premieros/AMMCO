@@ -88,7 +88,7 @@ export function Imports({month,branchId,branches,isAdmin}:{month:string;branchId
     await approveImport(id)
     setMsg('تمت إعادة المعالجة والاعتماد بنجاح')
    }else if(out.noNewDays)setMsg('لا توجد حركة جديدة في هذه النسخة')
-   else setMsg('تمت إعادة المعالجة وتحتاج قرار')
+   else setMsg('تعذر الاعتماد التلقائي — تحقق من الأخطاء المسجلة')
    await load()
    const allDays=await getImportedDays({month:uploadMonth})
    const next:Record<string,string[]>={};for(const r of allDays){(next[r.branch_id]??=[]).push(r.business_date)};for(const k of Object.keys(next))next[k]=[...new Set(next[k])];setCoverageDays(next)
@@ -167,24 +167,19 @@ export function Imports({month,branchId,branches,isAdmin}:{month:string;branchId
   </section>}
 
   {activeTab==='history'&&<DataTable title="سجل الاستيراد" rows={rows.map(r=>({...r,branch:map.get(r.branch_id)||'—'}))} columns={[
-   {key:'branch',label:'الفرع'},{key:'original_file_name',label:'الملف'},{key:'period_start',label:'من'},{key:'period_end',label:'إلى'},{key:'version',label:'الإصدار'},{key:'status',label:'الحالة',render:r=>r.status==='approved'?'معتمد':r.status==='validated'?'جاهز للاعتماد':r.status==='processing'?'جاري التحليل':r.status==='rejected'&&r.metadata?.no_new_days?'نسخة قديمة — أعد التحليل':r.status==='rejected'?'تحتاج قرار':r.status},
+   {key:'branch',label:'الفرع'},{key:'original_file_name',label:'الملف'},{key:'period_start',label:'من'},{key:'period_end',label:'إلى'},{key:'version',label:'الإصدار'},{key:'status',label:'الحالة',render:r=>r.status==='approved'?'معتمد':r.status==='validated'?'جاهز للاعتماد':r.status==='processing'?'جاري تطبيق التحديث':r.status==='rejected'?'بانتظار إعادة الاعتماد':r.status},
    {key:'uploaded_at',label:'تاريخ الرفع',render:r=>new Date(r.uploaded_at).toLocaleString('en-GB')},
    {key:'action',label:'إجراء',filter:false,render:r=><div className="inline-actions">
     {isAdmin&&r.status==='validated'&&<button className="small-btn" onClick={()=>approve(r.id)}>اعتماد</button>}
     {isAdmin&&['uploaded','failed'].includes(r.status)&&<button className="small-btn" onClick={()=>rerun(r.id)}>إعادة التحليل</button>}
-    {r.status==='rejected'&&r.metadata?.no_new_days&&<button className="small-btn" onClick={()=>rerunCumulative(r.id)}>إعادة تحليل تراكمي</button>}
-    {r.status==='rejected'&&!r.metadata?.no_new_days&&<button className="small-btn" onClick={()=>openReview(r)}>فروق</button>}
+    {isAdmin&&r.status==='rejected'&&<button className="small-btn" onClick={()=>rerunCumulative(r.id)}>اعتماد التحديث</button>}
+    {isAdmin&&r.status==='processing'&&<button className="small-btn" onClick={()=>rerunCumulative(r.id)}>استكمال التحديث</button>}
     {isAdmin&&<button className="small-btn" onClick={()=>setReupload(r)}>إعادة رفع</button>}
     {isAdmin&&<button className="small-btn" onClick={()=>remove(r)}>حذف</button>}
    </div>}
   ]}/>}
 
   {reupload&&<div className="modal-backdrop"><form className="modal-card" onSubmit={submitReupload}><div className="modal-head"><h3>إعادة رفع الشيت</h3><button type="button" className="small-btn" onClick={()=>setReupload(null)}>إغلاق</button></div><p className="muted">الفترة: {reupload.period_start} — {reupload.period_end}</p><label className="upload-file-label">ملف Excel الجديد<input name="file" type="file" accept=".xlsx" required/></label>{msg&&<p className="muted">{msg}</p>}<button className="primary" disabled={busy}>{busy?'جاري الرفع…':'رفع وتحليل النسخة الجديدة'}</button></form></div>}
-  {review&&<div className="modal-backdrop"><div className="modal-card wide-modal"><div className="modal-head"><h3>فروق فروق الشيت</h3><button className="small-btn" onClick={()=>setReview(null)}>إغلاق</button></div>
-   <p className="muted">الأخطاء: {review.issues.filter((x:any)=>x.severity==='error').length} • التحذيرات: {review.issues.filter((x:any)=>x.severity==='warning').length} • الأيام المتغيرة: {review.changes.length}</p>
-   {!!review.issues.length&&<section className="review-section"><h4>ملاحظات التحقق</h4><div className="review-list">{review.issues.map((x:any,i:number)=><div className={'review-card issue-'+x.severity} key={i}><div><b>{x.code||'ملاحظة'}</b><span>{x.sheet_name||'—'}{x.row_number?' • صف '+x.row_number:''}</span></div><span>{x.severity} — {x.message}</span></div>)}</div></section>}
-   {!!review.changes.length&&<section className="review-section"><h4>الأيام المتغيرة</h4><div className="review-list">{review.changes.map((ch:any)=>{const a=snapshotMetrics(ch.old_snapshot),b=snapshotMetrics(ch.new_snapshot);const diffs=[['صافي المبيعات',a.net,b.net],['التحصيل',a.collections,b.collections],['مديونية آخر',a.debt,b.debt],['المصروفات',a.expenses,b.expenses],['قيمة المخزون',a.inventory,b.inventory]].filter((x:any)=>Math.abs(Number(x[1])-Number(x[2]))>.02);return <div className="review-card review-change" key={ch.business_date}><div><b>{ch.business_date}</b><span>{changedSections(ch.old_snapshot,ch.new_snapshot).join('، ')||'تغيير في محتوى اليوم'}</span></div><div className="diff-grid">{diffs.map((x:any)=><span key={x[0]}><small>{x[0]}</small><b>{fm(x[1])} ← {fm(x[2])}</b></span>)}</div><em>{ch.resolution_status||'غير محسوم'}</em></div>})}</div></section>}
-   <div className="inline-actions review-actions"><button className="small-btn" disabled={busy} onClick={()=>resolve('append_only')}>احتفظ بالسابق واعتمد الإضافات فقط</button><button className="primary" disabled={busy} onClick={()=>resolve('replace')}>{busy?'جارٍ تطبيق التحديث…':'اعتماد التحديث'}</button></div>
-  </div></div>}
+
  </div>
 }
