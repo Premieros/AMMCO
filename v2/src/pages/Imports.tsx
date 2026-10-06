@@ -44,7 +44,7 @@ export function Imports({month,branchId,branches,isAdmin}:{month:string;branchId
   const historyMode=String(f.get('historyMode')||'append_only')
   const selectedBranch=String(f.get('branch_id'))
   const monthDays=new Date(Number(chosenMonth.slice(0,4)),Number(chosenMonth.slice(5,7)),0).getDate()
-  if(historyMode==='append_only'&&filledDays.length>=monthDays){setMsg('هذا الفرع مكتمل '+monthDays+'/'+monthDays+' يومًا في '+chosenMonth+' — اختر «مراجعة التغييرات السابقة» إذا كنت تريد تحديث النسخة الموجودة.');return}
+  if(historyMode==='append_only'&&filledDays.length>=monthDays){setMsg('هذا الفرع مكتمل '+monthDays+'/'+monthDays+' يومًا في '+chosenMonth+' — اختر «مراجعة التغييرات السابقة» إذا كنت تريد تحديث النسخة البه بيع/توريدة.');return}
   const name=file.name.toLowerCase()
   const octoberNamed=/اكتوبر|أكتوبر|october|oct\b/.test(name)
   if(octoberNamed&&!chosenMonth.endsWith('-10')){setMsg('اسم الملف يشير إلى أكتوبر بينما الشهر المختار '+chosenMonth+' — صحح الشهر قبل الرفع');return}
@@ -105,14 +105,14 @@ export function Imports({month,branchId,branches,isAdmin}:{month:string;branchId
    </form>
 
    <div className="filled-days-card">
-    <div className="filled-days-head"><div><b>أيام الشهر المعبأة</b><span>{uploadBranch?((map.get(uploadBranch)||'الفرع')+' · '+uploadMonth):'اختر الفرع لعرض الأيام'}</span></div><strong>{filledDays.length}</strong></div>
+    <div className="filled-days-head"><div><b>أيام بها بيع أو توريد</b><span>{uploadBranch?((map.get(uploadBranch)||'الفرع')+' · '+uploadMonth):'اختر الفرع لعرض الأيام'}</span></div><strong>{filledDays.length}</strong></div>
     {uploadBranch&&uploadMonth?<div className="days-grid">
      {Array.from({length:new Date(Number(uploadMonth.slice(0,4)),Number(uploadMonth.slice(5,7)),0).getDate()},(_,i)=>i+1).map(day=>{
       const d=uploadMonth+'-'+String(day).padStart(2,'0'),filled=filledDays.includes(d)
-      return <span key={day} className={filled?'filled':''} title={filled?'موجود':'غير موجود'}>{day}</span>
+      return <span key={day} className={filled?'filled':''} title={filled?'به بيع/توريد':'بدون بيع/توريد'}>{day}</span>
      })}
-    </div>:<p className="muted">بعد اختيار الفرع سيظهر هنا كل يوم موجود فعليًا في النظام لهذا الشهر.</p>}
-    <div className="days-legend"><span><i className="legend-dot filled"/>معبأ</span><span><i className="legend-dot"/>غير موجود</span></div>
+    </div>:<p className="muted">بعد اختيار الفرع سيظهر هنا كل يوم به بيع/توريد فعليًا في النظام لهذا الشهر.</p>}
+    <div className="days-legend"><span><i className="legend-dot filled"/>بيع/توريد</span><span><i className="legend-dot"/>بدون بيع/توريد</span></div>
    </div>
   </section>}
 
@@ -132,10 +132,10 @@ export function Imports({month,branchId,branches,isAdmin}:{month:string;branchId
    <div className="coverage-table-wrap">
     <div className="coverage-table" style={{'--days':new Date(Number(uploadMonth.slice(0,4)),Number(uploadMonth.slice(5,7)),0).getDate()} as any}>
      <div className="coverage-header"><b>الفرع</b>{Array.from({length:new Date(Number(uploadMonth.slice(0,4)),Number(uploadMonth.slice(5,7)),0).getDate()},(_,i)=><span key={i+1}>{i+1}</span>)}<b>المجموع</b></div>
-     {branches.map(b=>{const days=new Set(coverageDays[b.id]||[]),daysInMonth=new Date(Number(uploadMonth.slice(0,4)),Number(uploadMonth.slice(5,7)),0).getDate();return <div className="coverage-row" key={b.id}><b>{b.name}</b>{Array.from({length:daysInMonth},(_,i)=>{const day=i+1,d=uploadMonth+'-'+String(day).padStart(2,'0'),filled=days.has(d);return <span key={day} className={filled?'filled':''} title={filled?'معبأ':'غير موجود'}>{filled?'✓':'·'}</span>})}<strong className={days.size===daysInMonth?'complete':''}>{days.size}/{daysInMonth}</strong></div>})}
+     {branches.map(b=>{const days=new Set(coverageDays[b.id]||[]),daysInMonth=new Date(Number(uploadMonth.slice(0,4)),Number(uploadMonth.slice(5,7)),0).getDate();return <div className="coverage-row" key={b.id}><b>{b.name}</b>{Array.from({length:daysInMonth},(_,i)=>{const day=i+1,d=uploadMonth+'-'+String(day).padStart(2,'0'),filled=days.has(d);return <span key={day} className={filled?'filled':''} title={filled?'بيع/توريد':'بدون بيع/توريد'}>{filled?'✓':'·'}</span>})}<strong className={days.size===daysInMonth?'complete':''}>{days.size}/{daysInMonth}</strong></div>})}
     </div>
    </div>
-   <div className="days-legend"><span><i className="legend-dot filled"/>يوم معبأ</span><span><i className="legend-dot"/>غير موجود</span></div>
+   <div className="days-legend"><span><i className="legend-dot filled"/>يوم بيع/توريد</span><span><i className="legend-dot"/>بدون بيع/توريد</span></div>
   </section>}
 
   {activeTab==='history'&&<DataTable title="سجل الاستيراد" rows={rows.map(r=>({...r,branch:map.get(r.branch_id)||'—'}))} columns={[
