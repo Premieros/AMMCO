@@ -47,7 +47,7 @@ const BranchSheets=lazy(()=>pageLoaders['branch-sheets']().then(m=>({default:m.B
 const ExecutiveComparison=lazy(()=>pageLoaders.comparison().then(m=>({default:m.ExecutiveComparison})))
 const MetricDrilldown=lazy(()=>pageLoaders.drilldown().then(m=>({default:m.MetricDrilldown})))
 import {Login} from '../pages/Login'
-import {LayoutDashboard,FileBarChart2,Users,Receipt,WalletCards,Upload,UserCog,LogOut,Boxes,Truck,Settings as SettingsIcon,ShieldAlert} from 'lucide-react'
+import {LayoutDashboard,FileBarChart2,Users,Receipt,WalletCards,Upload,UserCog,LogOut,Boxes,Truck,Settings as SettingsIcon,ShieldAlert,ChevronDown} from 'lucide-react'
 
 type Route='dashboard'|'management'|'comparison'|'drilldown'|'reports'|'reps'|'rep-daily'|'receivables'|'monthly'|'products'|'banks'|'expenses'|'treasury'|'inventory'|'vehicles'|'imports'|'branch-sheets'|'branches'|'users'|'settings'
 const nav=[
@@ -71,6 +71,15 @@ const nav=[
  ['branches','إدارة الفروع',Boxes],
  ['users','إدارة المستخدمين',UserCog],
  ['settings','الإعدادات',SettingsIcon],
+] as const
+
+const navGroups=[
+ {id:'home',label:'الرئيسية',routes:['dashboard','management']},
+ {id:'sales',label:'المبيعات والعملاء',routes:['reps','rep-daily','receivables']},
+ {id:'analysis',label:'التقارير والتحليل',routes:['comparison','drilldown','reports','monthly']},
+ {id:'finance',label:'المالية',routes:['banks','expenses','treasury']},
+ {id:'operations',label:'المخزون والتشغيل',routes:['products','inventory','vehicles','imports']},
+ {id:'admin',label:'الإدارة والإعدادات',routes:['branch-sheets','branches','users','settings']},
 ] as const
 
 const monthBounds=(month:string)=>{
@@ -101,6 +110,7 @@ export function App(){
  const [interactionBusy,setInteractionBusy]=useState(false)
  const [interactionLabel,setInteractionLabel]=useState('جاري التنفيذ…')
  const [error,setError]=useState('')
+ const [openNavGroups,setOpenNavGroups]=useState<Record<string,boolean>>({home:true})
 
  useEffect(()=>{
   supabase.auth.getSession().then(async({data})=>{
@@ -186,6 +196,7 @@ export function App(){
  if(!profile||!month)return <div className="boot">AMMCO</div>
 
  const visibleNav=nav.filter(([id])=>!['users','branches','branch-sheets'].includes(id)||profile.role==='admin')
+ const activeGroup=navGroups.find(g=>g.routes.includes(route as never))?.id
  const activeBranch=branches.find(b=>b.id===branchId)
 
  return <div className="app-shell">
@@ -193,12 +204,22 @@ export function App(){
   {interactionBusy&&<div className="interaction-toast" aria-live="polite"><span className="action-spinner"/><b>{interactionLabel}</b></div>}
   <aside className="sidebar">
    <div className="brand"><span className="brand-mark">A</span><div><b>AMMCO</b><span>Management Intelligence</span></div></div>
-   <div className="nav-caption">القائمة الرئيسية</div>
-   <nav>{visibleNav.map(([id,label,Icon])=><a key={id} className={route===id?'active':''} href={'#/'+id}
-    onMouseEnter={()=>{const load=pageLoaders[id as keyof typeof pageLoaders];void load?.()}}
-    onFocus={()=>{const load=pageLoaders[id as keyof typeof pageLoaders];void load?.()}}
-    onClick={()=>{setNavProgress(35);setNavLoading(true);setInteractionLabel('جاري فتح '+label);setInteractionBusy(true)}}>
-    <span className="nav-icon"><Icon size={18}/></span><span>{label}</span></a>)}</nav>
+   <div className="nav-caption">الأقسام</div>
+   <nav className="grouped-nav">{navGroups.map(group=>{
+    const items=visibleNav.filter(([id])=>(group.routes as readonly string[]).includes(id))
+    if(!items.length)return null
+    const isOpen=openNavGroups[group.id]??group.id===activeGroup
+    return <section className={'nav-group '+(isOpen?'open':'')} key={group.id}>
+     <button className="nav-group-head" type="button" onClick={()=>setOpenNavGroups(s=>({...s,[group.id]:!isOpen}))}>
+      <span>{group.label}</span><ChevronDown size={15}/>
+     </button>
+     {isOpen&&<div className="nav-group-items">{items.map(([id,label,Icon])=><a key={id} className={route===id?'active':''} href={'#/'+id}
+      onMouseEnter={()=>{const load=pageLoaders[id as keyof typeof pageLoaders];void load?.()}}
+      onFocus={()=>{const load=pageLoaders[id as keyof typeof pageLoaders];void load?.()}}
+      onClick={()=>{setNavProgress(35);setNavLoading(true);setInteractionLabel('جاري فتح '+label);setInteractionBusy(true)}}>
+      <span className="nav-icon"><Icon size={17}/></span><span>{label}</span></a>)}</div>}
+    </section>
+   })}</nav>
    <div className="sidebar-foot"><span>AMMCO v2</span><small>نظام التقارير والإدارة</small></div>
   </aside>
   <main>
