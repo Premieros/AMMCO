@@ -1,7 +1,5 @@
 import {supabase} from '../lib/supabase'
 import {fetchAllPages} from './pagination'
-import {getApprovedBatchIds} from './core'
-
 const ZERO='00000000-0000-0000-0000-000000000000'
 
 export type DashboardPoint={date:string;sales:number;expenses:number;collections:number}
@@ -23,7 +21,11 @@ export async function getDashboardAnalytics(params:{from:string;to:string;branch
   if(params.branchId)q=q.eq('branch_id',params.branchId)
   return q.range(a,b)
  })
- const approvedIds=await getApprovedBatchIds(),safeIds=approvedIds.length?approvedIds:[ZERO]
+ const approvedRows=await fetchAllPages<any>((a,b)=>supabase.from('import_batches')
+  .select('id').eq('status','approved')
+  .lte('period_start',params.to).gte('period_end',params.from)
+  .range(a,b))
+ const safeIds=approvedRows.length?approvedRows.map(x=>x.id as string):[ZERO]
  const loadReps=()=>fetchAllPages<any>((a,b)=>{
   let q=supabase.from('sales_rep_daily')
    .select('branch_id,business_date,rep_name,net_after_discount,deposit_amount,closing_balance,discounts')
