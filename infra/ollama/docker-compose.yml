@@ -1,0 +1,30 @@
+services:
+  ollama:
+    image: ollama/ollama:latest
+    restart: unless-stopped
+    volumes:
+      - ollama-data:/root/.ollama
+    expose:
+      - "11434"
+    gpus: all
+
+  gateway:
+    image: caddy:2-alpine
+    restart: unless-stopped
+    depends_on:
+      - ollama
+    ports:
+      - "80:80"
+      - "443:443"
+    environment:
+      OLLAMA_DOMAIN: ${OLLAMA_DOMAIN}
+      OLLAMA_API_KEY: ${OLLAMA_API_KEY}
+    volumes:
+      - ./Caddyfile:/etc/caddy/Caddyfile:ro
+      - caddy-data:/data
+      - caddy-config:/config
+
+volumes:
+  ollama-data:
+  caddy-data:
+  caddy-config:

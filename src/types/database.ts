@@ -173,6 +173,66 @@ export type Database = {
           },
         ]
       }
+      branch_expense_accrual_settings: {
+        Row: {
+          branch_id: string
+          branch_manager: number
+          carried_expenses: number
+          commission_rate: number
+          month_start: string
+          organization_id: string
+          rent: number
+          sector_manager: number
+          updated_at: string
+          updated_by: string | null
+          wages: number
+          working_days_basis: number
+        }
+        Insert: {
+          branch_id: string
+          branch_manager?: number
+          carried_expenses?: number
+          commission_rate?: number
+          month_start: string
+          organization_id: string
+          rent?: number
+          sector_manager?: number
+          updated_at?: string
+          updated_by?: string | null
+          wages?: number
+          working_days_basis?: number
+        }
+        Update: {
+          branch_id?: string
+          branch_manager?: number
+          carried_expenses?: number
+          commission_rate?: number
+          month_start?: string
+          organization_id?: string
+          rent?: number
+          sector_manager?: number
+          updated_at?: string
+          updated_by?: string | null
+          wages?: number
+          working_days_basis?: number
+        }
+        Relationships: [
+          {
+            foreignKeyName: "branch_expense_accrual_settings_branch_id_fkey"
+            columns: ["branch_id"]
+            isOneToOne: false
+            referencedRelation: "branches"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "branch_expense_accrual_settings_organization_id_fkey"
+            columns: ["organization_id"]
+            isOneToOne: false
+            referencedRelation: "organizations"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
       branches: {
         Row: {
           code: string
@@ -208,6 +268,57 @@ export type Database = {
           },
         ]
       }
+      cash_destinations: {
+        Row: {
+          branch_id: string | null
+          created_at: string
+          created_by: string | null
+          destination_type: string
+          id: string
+          is_active: boolean
+          name: string
+          organization_id: string
+          treasury_account_id: string | null
+        }
+        Insert: {
+          branch_id?: string | null
+          created_at?: string
+          created_by?: string | null
+          destination_type?: string
+          id?: string
+          is_active?: boolean
+          name: string
+          organization_id: string
+          treasury_account_id?: string | null
+        }
+        Update: {
+          branch_id?: string | null
+          created_at?: string
+          created_by?: string | null
+          destination_type?: string
+          id?: string
+          is_active?: boolean
+          name?: string
+          organization_id?: string
+          treasury_account_id?: string | null
+        }
+        Relationships: [
+          {
+            foreignKeyName: "cash_destinations_branch_id_fkey"
+            columns: ["branch_id"]
+            isOneToOne: false
+            referencedRelation: "branches"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "cash_destinations_treasury_account_id_fkey"
+            columns: ["treasury_account_id"]
+            isOneToOne: false
+            referencedRelation: "treasury_accounts"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
       cash_entries: {
         Row: {
           account_code: string | null
@@ -218,6 +329,7 @@ export type Database = {
           category: string | null
           classification_confidence: string
           description: string | null
+          destination_id: string | null
           direction: string
           entry_date: string | null
           entry_kind: string
@@ -239,6 +351,7 @@ export type Database = {
           category?: string | null
           classification_confidence?: string
           description?: string | null
+          destination_id?: string | null
           direction: string
           entry_date?: string | null
           entry_kind?: string
@@ -260,6 +373,7 @@ export type Database = {
           category?: string | null
           classification_confidence?: string
           description?: string | null
+          destination_id?: string | null
           direction?: string
           entry_date?: string | null
           entry_kind?: string
@@ -288,6 +402,13 @@ export type Database = {
             referencedColumns: ["id"]
           },
           {
+            foreignKeyName: "cash_entries_destination_id_fkey"
+            columns: ["destination_id"]
+            isOneToOne: false
+            referencedRelation: "cash_destinations"
+            referencedColumns: ["id"]
+          },
+          {
             foreignKeyName: "cash_entries_treasury_account_id_fkey"
             columns: ["treasury_account_id"]
             isOneToOne: false
@@ -305,11 +426,17 @@ export type Database = {
           id: number
           new_canonical_category: string | null
           new_description: string | null
+          new_destination_id: string | null
+          new_entry_kind: string | null
           new_expense_group: string | null
+          new_is_expense: boolean | null
           new_treasury_account_id: string | null
           old_canonical_category: string | null
           old_description: string | null
+          old_destination_id: string | null
+          old_entry_kind: string | null
           old_expense_group: string | null
+          old_is_expense: boolean | null
           old_treasury_account_id: string | null
           reason: string
         }
@@ -321,11 +448,17 @@ export type Database = {
           id?: never
           new_canonical_category?: string | null
           new_description?: string | null
+          new_destination_id?: string | null
+          new_entry_kind?: string | null
           new_expense_group?: string | null
+          new_is_expense?: boolean | null
           new_treasury_account_id?: string | null
           old_canonical_category?: string | null
           old_description?: string | null
+          old_destination_id?: string | null
+          old_entry_kind?: string | null
           old_expense_group?: string | null
+          old_is_expense?: boolean | null
           old_treasury_account_id?: string | null
           reason: string
         }
@@ -337,11 +470,17 @@ export type Database = {
           id?: never
           new_canonical_category?: string | null
           new_description?: string | null
+          new_destination_id?: string | null
+          new_entry_kind?: string | null
           new_expense_group?: string | null
+          new_is_expense?: boolean | null
           new_treasury_account_id?: string | null
           old_canonical_category?: string | null
           old_description?: string | null
+          old_destination_id?: string | null
+          old_entry_kind?: string | null
           old_expense_group?: string | null
+          old_is_expense?: boolean | null
           old_treasury_account_id?: string | null
           reason?: string
         }
@@ -368,10 +507,24 @@ export type Database = {
             referencedColumns: ["id"]
           },
           {
+            foreignKeyName: "cash_entry_correction_log_new_destination_id_fkey"
+            columns: ["new_destination_id"]
+            isOneToOne: false
+            referencedRelation: "cash_destinations"
+            referencedColumns: ["id"]
+          },
+          {
             foreignKeyName: "cash_entry_correction_log_new_treasury_account_id_fkey"
             columns: ["new_treasury_account_id"]
             isOneToOne: false
             referencedRelation: "treasury_accounts"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "cash_entry_correction_log_old_destination_id_fkey"
+            columns: ["old_destination_id"]
+            isOneToOne: false
+            referencedRelation: "cash_destinations"
             referencedColumns: ["id"]
           },
           {
@@ -1191,8 +1344,8 @@ export type Database = {
           collection_rate: number | null
           collections: number
           deposit_amount: number
-          expense_amount: number
           discounts: number
+          expense_amount: number
           id: number
           net_after_discount: number
           opening_balance: number
@@ -1211,8 +1364,8 @@ export type Database = {
           collection_rate?: number | null
           collections?: number
           deposit_amount?: number
-          expense_amount?: number
           discounts?: number
+          expense_amount?: number
           id?: number
           net_after_discount?: number
           opening_balance?: number
@@ -1232,6 +1385,7 @@ export type Database = {
           collections?: number
           deposit_amount?: number
           discounts?: number
+          expense_amount?: number
           id?: number
           net_after_discount?: number
           opening_balance?: number
@@ -1255,66 +1409,6 @@ export type Database = {
             columns: ["branch_id"]
             isOneToOne: false
             referencedRelation: "branches"
-            referencedColumns: ["id"]
-          },
-        ]
-      }
-      branch_expense_accrual_settings: {
-        Row: {
-          branch_id: string
-          organization_id: string
-          month_start: string
-          wages: number
-          branch_manager: number
-          sector_manager: number
-          rent: number
-          carried_expenses: number
-          commission_rate: number
-          working_days_basis: number
-          updated_by: string | null
-          updated_at: string
-        }
-        Insert: {
-          branch_id: string
-          organization_id: string
-          month_start: string
-          wages?: number
-          branch_manager?: number
-          sector_manager?: number
-          rent?: number
-          carried_expenses?: number
-          commission_rate?: number
-          working_days_basis?: number
-          updated_by?: string | null
-          updated_at?: string
-        }
-        Update: {
-          branch_id?: string
-          organization_id?: string
-          month_start?: string
-          wages?: number
-          branch_manager?: number
-          sector_manager?: number
-          rent?: number
-          carried_expenses?: number
-          commission_rate?: number
-          working_days_basis?: number
-          updated_by?: string | null
-          updated_at?: string
-        }
-        Relationships: [
-          {
-            foreignKeyName: "branch_expense_accrual_settings_branch_id_fkey"
-            columns: ["branch_id"]
-            isOneToOne: false
-            referencedRelation: "branches"
-            referencedColumns: ["id"]
-          },
-          {
-            foreignKeyName: "branch_expense_accrual_settings_organization_id_fkey"
-            columns: ["organization_id"]
-            isOneToOne: false
-            referencedRelation: "organizations"
             referencedColumns: ["id"]
           },
         ]
@@ -1709,6 +1803,7 @@ export type Database = {
           category: string | null
           classification_confidence: string
           description: string | null
+          destination_id: string | null
           direction: string
           entry_date: string | null
           entry_kind: string
@@ -1763,6 +1858,82 @@ export type Database = {
           category: string | null
           classification_confidence: string
           description: string | null
+          destination_id: string | null
+          direction: string
+          entry_date: string | null
+          entry_kind: string
+          expense_group: string | null
+          id: number
+          is_expense: boolean
+          raw_payload: Json
+          running_balance: number | null
+          source_code: string | null
+          source_row: number | null
+          treasury_account_id: string | null
+        }
+        SetofOptions: {
+          from: "*"
+          to: "cash_entries"
+          isOneToOne: true
+          isSetofReturn: false
+        }
+      }
+      edit_cash_entry_classification: {
+        Args: {
+          p_canonical_category: string
+          p_cash_entry_id: number
+          p_description: string
+          p_entry_kind: string
+          p_expense_group: string
+          p_is_expense: boolean
+          p_reason: string
+          p_treasury_account_id: string
+        }
+        Returns: {
+          account_code: string | null
+          amount: number
+          batch_id: string
+          branch_id: string
+          canonical_category: string | null
+          category: string | null
+          classification_confidence: string
+          description: string | null
+          destination_id: string | null
+          direction: string
+          entry_date: string | null
+          entry_kind: string
+          expense_group: string | null
+          id: number
+          is_expense: boolean
+          raw_payload: Json
+          running_balance: number | null
+          source_code: string | null
+          source_row: number | null
+          treasury_account_id: string | null
+        }
+        SetofOptions: {
+          from: "*"
+          to: "cash_entries"
+          isOneToOne: true
+          isSetofReturn: false
+        }
+      }
+      set_cash_entry_destination: {
+        Args: {
+          p_cash_entry_id: number
+          p_destination_id: string
+          p_reason: string
+        }
+        Returns: {
+          account_code: string | null
+          amount: number
+          batch_id: string
+          branch_id: string
+          canonical_category: string | null
+          category: string | null
+          classification_confidence: string
+          description: string | null
+          destination_id: string | null
           direction: string
           entry_date: string | null
           entry_kind: string
