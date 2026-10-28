@@ -5,81 +5,22 @@ import {getAllowedBranchIds,getApprovedMonths,getBranches,getLatestApprovedPerio
 import type {Branch,Profile} from '../domain/types'
 const pageLoaders={
  dashboard:()=>import('../pages/Dashboard'),
- reports:()=>import('../pages/Reports'),
- reps:()=>import('../pages/Reps'),
- 'rep-daily':()=>import('../pages/RepDaily'),
- receivables:()=>import('../pages/Receivables'),
- monthly:()=>import('../pages/Monthly'),
- products:()=>import('../pages/Products'),
- banks:()=>import('../pages/Banks'),
- expenses:()=>import('../pages/Expenses'),
- treasury:()=>import('../pages/Treasury'),
- imports:()=>import('../pages/Imports'),
- inventory:()=>import('../pages/Inventory'),
- vehicles:()=>import('../pages/Vehicles'),
- users:()=>import('../pages/Users'),
- branches:()=>import('../pages/Branches'),
- settings:()=>import('../pages/Settings'),
- management:()=>import('../pages/ManagementCenter'),
- 'branch-sheets':()=>import('../pages/BranchSheets'),
- comparison:()=>import('../pages/ExecutiveComparison'),
- drilldown:()=>import('../pages/MetricDrilldown')
+ imports:()=>import('../pages/Imports')
 } as const
 
 const Dashboard=lazy(()=>pageLoaders.dashboard().then(m=>({default:m.Dashboard})))
-const Reports=lazy(()=>pageLoaders.reports().then(m=>({default:m.Reports})))
-const Reps=lazy(()=>pageLoaders.reps().then(m=>({default:m.Reps})))
-const RepDaily=lazy(()=>pageLoaders['rep-daily']().then(m=>({default:m.RepDaily})))
-const Receivables=lazy(()=>pageLoaders.receivables().then(m=>({default:m.Receivables})))
-const Monthly=lazy(()=>pageLoaders.monthly().then(m=>({default:m.Monthly})))
-const Products=lazy(()=>pageLoaders.products().then(m=>({default:m.Products})))
-const Banks=lazy(()=>pageLoaders.banks().then(m=>({default:m.Banks})))
-const Expenses=lazy(()=>pageLoaders.expenses().then(m=>({default:m.Expenses})))
-const Treasury=lazy(()=>pageLoaders.treasury().then(m=>({default:m.Treasury})))
 const Imports=lazy(()=>pageLoaders.imports().then(m=>({default:m.Imports})))
-const Inventory=lazy(()=>pageLoaders.inventory().then(m=>({default:m.Inventory})))
-const Vehicles=lazy(()=>pageLoaders.vehicles().then(m=>({default:m.Vehicles})))
-const UsersPage=lazy(()=>pageLoaders.users().then(m=>({default:m.UsersPage})))
-const BranchesPage=lazy(()=>pageLoaders.branches().then(m=>({default:m.BranchesPage})))
-const Settings=lazy(()=>pageLoaders.settings().then(m=>({default:m.Settings})))
-const ManagementCenter=lazy(()=>pageLoaders.management().then(m=>({default:m.ManagementCenter})))
-const BranchSheets=lazy(()=>pageLoaders['branch-sheets']().then(m=>({default:m.BranchSheets})))
-const ExecutiveComparison=lazy(()=>pageLoaders.comparison().then(m=>({default:m.ExecutiveComparison})))
-const MetricDrilldown=lazy(()=>pageLoaders.drilldown().then(m=>({default:m.MetricDrilldown})))
 import {Login} from '../pages/Login'
-import {LayoutDashboard,FileBarChart2,Users,Receipt,WalletCards,Upload,UserCog,LogOut,Boxes,Truck,Settings as SettingsIcon,ShieldAlert,ChevronDown} from 'lucide-react'
+import {LayoutDashboard,Upload,LogOut,ChevronDown} from 'lucide-react'
 
-type Route='dashboard'|'management'|'comparison'|'drilldown'|'reports'|'reps'|'rep-daily'|'receivables'|'monthly'|'products'|'banks'|'expenses'|'treasury'|'inventory'|'vehicles'|'imports'|'branch-sheets'|'branches'|'users'|'settings'
+type Route='dashboard'|'imports'
 const nav=[
  ['dashboard','لوحة التحكم',LayoutDashboard],
- ['management','مركز الإدارة',ShieldAlert],
- ['comparison','المقارنة التنفيذية',FileBarChart2],
- ['drilldown','تحليل المؤشرات',LayoutDashboard],
- ['reports','التقارير',FileBarChart2],
- ['reps','المناديب',Users],
- ['rep-daily','يوميات المناديب',Users],
- ['receivables','المديونية والتحصيل',WalletCards],
- ['monthly','التحليل الشهري وYTD',FileBarChart2],
- ['products','الأصناف',Boxes],
- ['banks','البنوك وYTD',WalletCards],
- ['expenses','المصروفات',Receipt],
- ['treasury','الخزينة',WalletCards],
- ['inventory','المخزون',Boxes],
- ['vehicles','السيارات وبترو اب',Truck],
- ['imports','الاستيراد',Upload],
- ['branch-sheets','محرر الشيتات',FileBarChart2],
- ['branches','إدارة الفروع',Boxes],
- ['users','إدارة المستخدمين',UserCog],
- ['settings','الإعدادات',SettingsIcon],
+ ['imports','رفع التقارير',Upload]
 ] as const
 
 const navGroups=[
- {id:'home',label:'الرئيسية',routes:['dashboard','management']},
- {id:'sales',label:'المبيعات والعملاء',routes:['reps','rep-daily','receivables']},
- {id:'analysis',label:'التقارير والتحليل',routes:['comparison','drilldown','reports','monthly']},
- {id:'finance',label:'المالية',routes:['banks','expenses','treasury']},
- {id:'operations',label:'المخزون والتشغيل',routes:['products','inventory','vehicles','imports']},
- {id:'admin',label:'الإدارة والإعدادات',routes:['branch-sheets','branches','users','settings']},
+ {id:'home',label:'الرئيسية',routes:['dashboard','imports']}
 ] as const
 
 const monthBounds=(month:string)=>{
@@ -195,7 +136,7 @@ export function App(){
  if(error)return <main className="login-page"><div className="login-card"><div className="error-box">{error}</div><button className="primary" onClick={()=>supabase.auth.signOut()}>خروج</button></div></main>
  if(!profile||!month)return <div className="boot">AMMCO</div>
 
- const visibleNav=nav.filter(([id])=>!['users','branches','branch-sheets'].includes(id)||profile.role==='admin')
+ const visibleNav=nav
  const activeGroup=navGroups.find(g=>g.routes.includes(route as never))?.id
  const activeBranch=branches.find(b=>b.id===branchId)
 
@@ -247,25 +188,7 @@ export function App(){
    <section className="page-content">
     <Suspense fallback={<div className="panel loading fast-page-loader">جاري فتح الصفحة…</div>}>
     {route==='dashboard' && <Dashboard from={period.from} to={period.to} branchId={branchId||undefined}/>}
-    {route==='management' && <ManagementCenter from={period.from} to={period.to} branchId={branchId||undefined}/>}
-    {route==='comparison' && <ExecutiveComparison from={period.from} to={period.to} branchId={branchId||undefined}/>}
-    {route==='drilldown' && <MetricDrilldown from={period.from} to={period.to} branchId={branchId||undefined}/>}
-    {route==='reports' && <Reports from={period.from} to={period.to} branchId={branchId||undefined}/>}
-    {route==='reps' && <Reps from={period.from} to={period.to} branchId={branchId||undefined} isAdmin={profile.role==='admin'} month={month}/>} 
-    {route==='rep-daily' && <RepDaily from={period.from} to={period.to} branchId={branchId||undefined}/>}
-    {route==='receivables' && <Receivables from={period.from} to={period.to} branchId={branchId||undefined}/>}
-    {route==='monthly' && <Monthly year={period.from.slice(0,4)} branchId={branchId||undefined}/>}
-    {route==='products' && <Products from={period.from} to={period.to} branchId={branchId||undefined}/>}
-    {route==='banks' && <Banks from={period.from.slice(0,4)+'-01-01'} to={period.to} branchId={branchId||undefined}/>}
-    {route==='expenses' && <Expenses from={period.from} to={period.to} month={month} branchId={branchId||undefined} branches={branches} isAdmin={profile.role==='admin'}/>}
-    {route==='treasury' && <Treasury from={period.from} to={period.to} branchId={branchId||undefined} branches={branches} isAdmin={profile.role==='admin'}/>} 
-    {route==='inventory' && <Inventory from={period.from} to={period.to} branchId={branchId||undefined}/>}
-    {route==='vehicles' && <Vehicles from={period.from} to={period.to} month={month} branchId={branchId||undefined} branches={branches} isAdmin={profile.role==='admin'}/>}
     {route==='imports' && <Imports month={month} branchId={branchId||undefined} branches={branches} isAdmin={profile.role==='admin'}/>}
-    {route==='branch-sheets' && profile.role==='admin' && <BranchSheets branches={branches} initialBranchId={branchId}/>}
-    {route==='branches' && profile.role==='admin' && <BranchesPage/>}
-    {route==='users' && profile.role==='admin' && <UsersPage/>}
-    {route==='settings' && <Settings/>}
     </Suspense>
    </section>
   </main>
